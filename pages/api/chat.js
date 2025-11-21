@@ -1,13 +1,15 @@
 // pages/api/chat.js
-import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res
+      .status(500)
+      .json({ error: "OPENAI_API_KEY не задан в переменных окружения" });
   }
 
   try {
@@ -19,7 +21,9 @@ export default async function handler(req, res) {
     } = context || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: "Messages array is required" });
+      return res
+        .status(400)
+        .json({ error: "Messages array is required" });
     }
 
     const systemPrompt = [
@@ -38,14 +42,38 @@ export default async function handler(req, res) {
       })),
     ];
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: openAiMessages,
-      temperature: 0.5,
-    });
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini", // при желании можешь заменить на другой
+          messages: openAiMessages,
+          temperature: 0.5,
+        }),
+      }
+    );
+
+    if (!openaiResponse.ok) {
+      let errText = "";
+      try {
+        errText = await openaiResponse.text();
+      } catch (_) {}
+      console.error("OpenAI API error:", openaiResponse.status, errText);
+      return res.status(500).json({
+        error: "Ошибка при обращении к OpenAI",
+        details: errText || openaiResponse.statusText,
+      });
+    }
+
+    const data = await openaiResponse.json();
 
     const answer =
-      completion.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.message?.content ||
       "Извини, у меня не получилось сформировать ответ. Попробуй переформулировать вопрос.";
 
     return res.status(200).json({ reply: answer });
