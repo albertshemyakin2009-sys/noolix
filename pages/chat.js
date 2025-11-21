@@ -13,6 +13,14 @@ const secondaryMenuItems = [
   { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
 ];
 
+function formatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Склонения предметов для фраз типа "по физике"
 function getSubjectPrepositional(subject) {
   if (!subject) return '';
   const s = subject.toLowerCase();
@@ -30,13 +38,6 @@ function getSubjectPrepositional(subject) {
   }
 }
 
-function formatTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-}
-
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState({
@@ -48,9 +49,10 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const messagesEndRef = useRef(null);
 
-  // загрузка контекста и истории
+  // Инициализация: подтягиваем контекст и историю
   useEffect(() => {
     try {
       const rawContext = window.localStorage.getItem('noolixContext');
@@ -91,7 +93,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // сохраняем историю при каждом изменении
+  // Сохранение истории
   useEffect(() => {
     try {
       if (messages.length > 0) {
@@ -102,12 +104,58 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // автоскролл вниз при новых сообщениях
+  // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, thinking]);
+
+  const callBackend = async (userMessages) => {
+    try {
+      setError('');
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: userMessages.map(({ role, content }) => ({ role, content })),
+          context,
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = {};
+        }
+        throw new Error(data.error || 'Ошибка при обращении к серверу');
+      }
+
+      const data = await res.json();
+      const replyText =
+        typeof data.reply === 'string'
+          ? data.reply
+          : 'У меня не получилось получить ответ от ИИ. Попробуй ещё раз.';
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: replyText,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      console.error(err);
+      setError('Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу.');
+    } finally {
+      setThinking(false);
+    }
+  };
 
   const sendMessage = () => {
     const text = input.trim();
@@ -120,23 +168,12 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
     setThinking(true);
 
-    // имитация "думает" и ответа
-    setTimeout(() => {
-      const reply = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content:
-          'Я пока в режиме макета: ещё не подключён к ИИ-бэкенду, но скоро здесь будут полноценные ответы. Сейчас я просто повторю твой вопрос, чтобы показать логику чата: ' +
-          `"${text}"`,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, reply]);
-      setThinking(false);
-    }, 600);
+    callBackend(newMessages);
   };
 
   const handleSubmit = (e) => {
@@ -158,8 +195,8 @@ export default function ChatPage() {
   ];
 
   const handleQuickAction = (key) => {
-    let text = '';
     const subjPrep = getSubjectPrepositional(context.subject);
+    let text = '';
     if (key === 'explain') {
       text = `Объясни тему по ${subjPrep}: `;
     } else if (key === 'steps') {
@@ -170,25 +207,24 @@ export default function ChatPage() {
     setInput(text);
   };
 
-if (loading) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white gap-3">
-      <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent animate-pulse tracking-wide">
-        NOOLIX
-      </h1>
-      <p className="text-xs text-purple-100/80">Загружаем контекст диалога…</p>
-      <div className="flex gap-1 text-sm text-purple-100">
-        <span className="animate-pulse">•</span>
-        <span className="animate-pulse opacity-70">•</span>
-        <span className="animate-pulse opacity-40">•</span>
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white gap-3">
+        <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent animate-pulse tracking-wide">
+          NOOLIX
+        </h1>
+        <p className="text-xs text-purple-100/80">Загружаем контекст диалога…</p>
+        <div className="flex gap-1 text-sm text-purple-100">
+          <span className="animate-pulse">•</span>
+          <span className="animate-pulse opacity-70">•</span>
+          <span className="animate-pulse opacity-40">•</span>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* Оверлей для мобильного меню */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -196,7 +232,6 @@ if (loading) {
         />
       )}
 
-      {/* Кнопка меню на мобиле */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -204,10 +239,8 @@ if (loading) {
         ☰ Меню
       </button>
 
-      {/* Сайдбар */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
-        transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -231,8 +264,7 @@ if (loading) {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md
-                    bg-gradient-to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === 'chat' ? 'ring-2 ring-purple-200' : ''}
                   `}
                 >
@@ -264,11 +296,9 @@ if (loading) {
         </nav>
       </aside>
 
-      {/* Основная зона */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Левая колонка: контекст сессии */}
             <aside className="space-y-4">
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -312,11 +342,15 @@ if (loading) {
                   ))}
                 </div>
               </section>
+
+              {error && (
+                <section className="bg-red-900/40 border border-red-500/60 rounded-2xl p-3">
+                  <p className="text-[11px] text-red-100">{error}</p>
+                </section>
+              )}
             </aside>
 
-            {/* Правая колонка: чат */}
             <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/30 border border-white/10 rounded-2xl">
-              {/* Хедер чата */}
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
@@ -330,7 +364,6 @@ if (loading) {
                 </div>
               </header>
 
-              {/* Лента сообщений */}
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
                 {messages.map((m) => (
                   <div
@@ -371,7 +404,6 @@ if (loading) {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Поле ввода */}
               <form
                 onSubmit={handleSubmit}
                 className="border-t border-white/10 px-3 py-3 flex items-center gap-2"
@@ -387,15 +419,14 @@ if (loading) {
                 <button
                   type="submit"
                   disabled={thinking || !input.trim()}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg.white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   ➤
                 </button>
               </form>
 
               <p className="px-4 pb-3 text-[10px] text-purple-300/80">
-                NOOLIX сейчас в режиме прототипа. Ответы могут быть неточными; позже здесь будет
-                подключён полноценный ИИ-бэкенд.
+                NOOLIX сейчас в режиме прототипа. Ответы могут быть неточными, проверяй важные моменты.
               </p>
             </section>
           </div>
