@@ -395,12 +395,13 @@ export default function ProgressPage() {
                           <span>
                             Обновлений по теме: {state.attempts || 0}
                           </span>
-                          <a
+    <a
   href={`/chat?topic=${encodeURIComponent(topic.title)}`}
   className="px-3 py-1 rounded-full border border-white/25 hover:bg-white/10 transition"
 >
   Потренироваться в чате
 </a>
+
 
                         </div>
                       </div>
