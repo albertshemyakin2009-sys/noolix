@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 
 const primaryMenuItems = [
   { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
@@ -40,7 +39,6 @@ function getSubjectPrepositional(subject) {
 }
 
 export default function ChatPage() {
-    const router = useRouter();
   const [currentTopic, setCurrentTopic] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState({
@@ -73,6 +71,20 @@ export default function ChatPage() {
           initialMessages = arr;
         }
       }
+      useEffect(() => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const topicFromQuery = params.get('topic');
+
+    if (topicFromQuery && topicFromQuery.trim()) {
+      setCurrentTopic(topicFromQuery.trim());
+    }
+  } catch (e) {
+    console.warn('Failed to parse topic from URL', e);
+  }
+}, []);
 
       setContext(ctx);
 
@@ -126,16 +138,16 @@ export default function ChatPage() {
       
       setError('');
       const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-body: JSON.stringify({
-  messages: userMessages.map(({ role, content }) => ({ role, content })),
-  context: { ...context, currentTopic },
-}),
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    messages: userMessages.map(({ role, content }) => ({ role, content })),
+    context: { ...context, currentTopic },
+  }),
+});
 
-      });
 
           if (!res.ok) {
       let data = {};
@@ -378,6 +390,7 @@ body: JSON.stringify({
   {context.subject} • {context.level}
   {currentTopic && <> • Тема: {currentTopic}</>}
 </p>
+
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
