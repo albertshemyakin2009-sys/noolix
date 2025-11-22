@@ -14,31 +14,27 @@ export default async function handler(req, res) {
 
   try {
     const { messages, context } = req.body || {};
-const {
-  subject = "Математика",
-  level = "10–11 класс",
-  mode = "exam_prep",
-  currentTopic = "",
-} = context || {};
-
+    const {
+      subject = "Математика",
+      level = "10–11 класс",
+      mode = "exam_prep",
+      currentTopic = "",
+    } = context || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Messages array is required" });
+      return res.status(400).json({ error: "Messages array is required" });
     }
 
     const systemPrompt = [
-  "Ты — дружелюбный и терпеливый тьютор по школьным и базовым вузовским предметам.",
-  `Текущий предмет: ${subject}. Уровень: ${level}. Режим: ${mode}.`,
-  currentTopic
-    ? `Текущая тема: ${currentTopic}. Старайся подбирать объяснения, примеры и задачи именно по этой теме.`
-    : "",
-  "Объясняй по шагам, простым языком, как для старшеклассника.",
-  "Если у ученика задача, сначала помоги ему самому дойти до решения, задавая наводящие вопросы.",
-  "Не придумывай факты. Если чего-то не знаешь, честно скажи об этом и предложи общую стратегию.",
-].join(" ");
-
+      "Ты — дружелюбный и терпеливый тьютор по школьным и базовым вузовским предметам.",
+      `Текущий предмет: ${subject}. Уровень: ${level}. Режим: ${mode}.`,
+      currentTopic
+        ? `Текущая тема: ${currentTopic}. Старайся подбирать объяснения, примеры и задачи именно по этой теме.`
+        : "",
+      "Объясняй по шагам, простым языком, как для старшеклассника.",
+      "Если у ученика задача, сначала помоги ему самому дойти до решения, задавая наводящие вопросы.",
+      "Не придумывай факты. Если чего-то не знаешь, честно скажи об этом и предложи общую стратегию.",
+    ].join(" ");
 
     const openAiMessages = [
       { role: "system", content: systemPrompt },
@@ -57,7 +53,7 @@ const {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: "gpt-4.1-mini", // при желании можешь заменить на другой
+          model: "gpt-4.1-mini",
           messages: openAiMessages,
           temperature: 0.5,
         }),
