@@ -21,6 +21,7 @@ const {
   currentTopic = "",
 } = context || {};
 
+
     if (!Array.isArray(messages) || messages.length === 0) {
       return res
         .status(400)
@@ -37,6 +38,7 @@ const {
   "Если у ученика задача, сначала помоги ему самому дойти до решения, задавая наводящие вопросы.",
   "Не придумывай факты. Если чего-то не знаешь, честно скажи об этом и предложи общую стратегию.",
 ].join(" ");
+
 
     const openAiMessages = [
       { role: "system", content: systemPrompt },
