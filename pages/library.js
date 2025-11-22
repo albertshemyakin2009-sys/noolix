@@ -1,5 +1,11 @@
 // pages/library.js
 import { useEffect, useState } from 'react';
+export default function LibraryPage() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState('Все предметы');
+  const [levelFilter, setLevelFilter] = useState('Все уровни');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true); // <- добавили
 
 const primaryMenuItems = [
   { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
@@ -104,17 +110,19 @@ export default function LibraryPage() {
 
   // Подтягиваем предмет/уровень из контекста, чтобы фильтры чувствовали систему
   useEffect(() => {
-    try {
-      const rawContext = window.localStorage.getItem('noolixContext');
-      if (rawContext) {
-        const ctx = JSON.parse(rawContext);
-        if (ctx.subject) setSubjectFilter(ctx.subject);
-        if (ctx.level) setLevelFilter(ctx.level);
-      }
-    } catch (e) {
-      console.warn('Failed to load context for library', e);
+  try {
+    const rawContext = window.localStorage.getItem('noolixContext');
+    if (rawContext) {
+      const ctx = JSON.parse(rawContext);
+      if (ctx.subject) setSubjectFilter(ctx.subject);
+      if (ctx.level) setLevelFilter(ctx.level);
     }
-  }, []);
+  } catch (e) {
+    console.warn('Failed to load context for library', e);
+  } finally {
+    setLoading(false); // <- как бы ни прошло, мы заканчиваем загрузку
+  }
+}, []);
 
   const normalize = (s) => (s || '').toLowerCase();
 
@@ -130,6 +138,23 @@ export default function LibraryPage() {
       !search.trim() ||
       normalize(item.title).includes(normalize(search)) ||
       normalize(item.subject).includes(normalize(search));
+      if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+            NOOLIX
+          </div>
+          <p className="text-xs text-purple-100/80">Загружаем библиотеку…</p>
+          <div className="flex gap-1 text-sm text-purple-100">
+            <span className="animate-pulse">•</span>
+            <span className="animate-pulse opacity-70">•</span>
+            <span className="animate-pulse opacity-40">•</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
     return bySubject && byLevel && bySearch;
   };
