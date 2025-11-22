@@ -381,7 +381,7 @@ export default function ChatPage() {
               )}
             </aside>
 
-            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/30 border border-white/10 rounded-2xl">
+            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/50 border border-white/5 rounded-2xl">
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
