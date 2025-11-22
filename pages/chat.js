@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 
 const primaryMenuItems = [
   { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
@@ -39,6 +40,8 @@ function getSubjectPrepositional(subject) {
 }
 
 export default function ChatPage() {
+    const router = useRouter();
+  const [currentTopic, setCurrentTopic] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState({
     subject: 'Математика',
@@ -113,16 +116,25 @@ export default function ChatPage() {
 
   const callBackend = async (userMessages) => {
     try {
+        useEffect(() => {
+    if (!router.isReady) return;
+    const topicFromQuery = router.query.topic;
+    if (typeof topicFromQuery === 'string' && topicFromQuery.trim()) {
+      setCurrentTopic(topicFromQuery.trim());
+    }
+  }, [router.isReady, router.query.topic]);
+      
       setError('');
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          messages: userMessages.map(({ role, content }) => ({ role, content })),
-          context,
-        }),
+body: JSON.stringify({
+  messages: userMessages.map(({ role, content }) => ({ role, content })),
+  context: { ...context, currentTopic },
+}),
+
       });
 
       if (!res.ok) {
@@ -355,8 +367,9 @@ export default function ChatPage() {
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
                   <p className="text-[11px] text-purple-200">
-                    {context.subject} • {context.level}
-                  </p>
+  {context.subject} • {context.level}
+  {currentTopic && <> • Тема: {currentTopic}</>}
+</p>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
