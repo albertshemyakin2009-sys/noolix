@@ -323,7 +323,7 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+              <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/5 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <aside className="space-y-4">
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -381,7 +381,7 @@ export default function ChatPage() {
               )}
             </aside>
 
-            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/50 border border-white/5 rounded-2xl">
+            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
@@ -408,18 +408,19 @@ export default function ChatPage() {
                       className={`flex flex-col max-w-[80%] ${
                         m.role === "user" ? "items-end" : "items-start"
                       }`}
-                    >
-                    <div
+
+  <div
   className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
     ${
       m.role === "user"
         ? "bg-purple-500/80 text-white rounded-br-sm"
-        : "bg-black/60 text-purple-50 border border-white/5 rounded-bl-sm"
+        : "bg-black/80 text-purple-50 rounded-bl-sm"
     }
   `}
 >
   {m.content}
 </div>
+
 
                       <span className="mt-1 text-[10px] text-purple-300/80">
                         {formatTime(m.createdAt)}
