@@ -1,69 +1,71 @@
-import { useEffect, useRef, useState } from 'react';
+// pages/chat.js
+import { useEffect, useRef, useState } from "react";
 
 const primaryMenuItems = [
-  { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
-  { label: 'Диалог', href: '/chat', icon: '💬', key: 'chat' },
-  { label: 'Тесты', href: '/tests', icon: '🧪', key: 'tests' },
-  { label: 'Прогресс', href: '/progress', icon: '📈', key: 'progress' },
+  { label: "Главная", href: "/", icon: "🏛", key: "home" },
+  { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
+  { label: "Тесты", href: "/tests", icon: "🧪", key: "tests" },
+  { label: "Прогресс", href: "/progress", icon: "📈", key: "progress" },
 ];
 
 const secondaryMenuItems = [
-  { label: 'Библиотека', href: '/library', icon: '📚', key: 'library' },
-  { label: 'Цели', href: '/goals', icon: '🎯', key: 'goals' },
-  { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
+  { label: "Библиотека", href: "/library", icon: "📚", key: "library" },
+  { label: "Цели", href: "/goals", icon: "🎯", key: "goals" },
+  { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
 function formatTime(iso) {
-  if (!iso) return '';
+  if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-// Склонения предметов для фраз типа "по физике"
 function getSubjectPrepositional(subject) {
-  if (!subject) return '';
+  if (!subject) return "";
   const s = subject.toLowerCase();
   switch (s) {
-    case 'математика':
-      return 'математике';
-    case 'физика':
-      return 'физике';
-    case 'русский язык':
-      return 'русскому языку';
-    case 'английский язык':
-      return 'английскому языку';
+    case "математика":
+      return "математике";
+    case "физика":
+      return "физике";
+    case "русский язык":
+      return "русскому языку";
+    case "английский язык":
+      return "английскому языку";
     default:
       return s;
   }
 }
 
 export default function ChatPage() {
-  const [currentTopic, setCurrentTopic] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState({
-    subject: 'Математика',
-    level: '10–11 класс',
-    mode: 'exam_prep',
+    subject: "Математика",
+    level: "10–11 класс",
+    mode: "exam_prep",
   });
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [currentTopic, setCurrentTopic] = useState("");
   const messagesEndRef = useRef(null);
 
   // Инициализация: подтягиваем контекст и историю
   useEffect(() => {
     try {
-      const rawContext = window.localStorage.getItem('noolixContext');
-      let ctx = { subject: 'Математика', level: '10–11 класс', mode: 'exam_prep' };
+      // контекст (предмет, уровень)
+      const rawContext = window.localStorage.getItem("noolixContext");
+      let ctx = { subject: "Математика", level: "10–11 класс", mode: "exam_prep" };
       if (rawContext) {
         const parsed = JSON.parse(rawContext);
         ctx = { ...ctx, ...parsed };
       }
 
-      const rawHistory = window.localStorage.getItem('noolixChatHistory');
+      // история чата
+      const rawHistory = window.localStorage.getItem("noolixChatHistory");
       let initialMessages = [];
       if (rawHistory) {
         const arr = JSON.parse(rawHistory);
@@ -71,20 +73,6 @@ export default function ChatPage() {
           initialMessages = arr;
         }
       }
-      useEffect(() => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const topicFromQuery = params.get('topic');
-
-    if (topicFromQuery && topicFromQuery.trim()) {
-      setCurrentTopic(topicFromQuery.trim());
-    }
-  } catch (e) {
-    console.warn('Failed to parse topic from URL', e);
-  }
-}, []);
 
       setContext(ctx);
 
@@ -94,7 +82,7 @@ export default function ChatPage() {
         initialMessages = [
           {
             id: Date.now(),
-            role: 'assistant',
+            role: "assistant",
             content: `Привет! Я NOOLIX. Давай разберёмся с предметом «${ctx.subject}» на уровне «${ctx.level}». Расскажи, что именно тебе сейчас сложно или что хочешь повторить?`,
             createdAt: new Date().toISOString(),
           },
@@ -102,91 +90,96 @@ export default function ChatPage() {
         setMessages(initialMessages);
       }
     } catch (e) {
-      console.warn('Failed to init chat context/history', e);
+      console.warn("Failed to init chat context/history", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Сохранение истории
+  // Читаем тему из URL (?topic=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const topicFromQuery = params.get("topic");
+      if (topicFromQuery && topicFromQuery.trim()) {
+        setCurrentTopic(topicFromQuery.trim());
+      }
+    } catch (e) {
+      console.warn("Failed to parse topic from URL", e);
+    }
+  }, []);
+
+  // Сохраняем историю в localStorage
   useEffect(() => {
     try {
       if (messages.length > 0) {
-        window.localStorage.setItem('noolixChatHistory', JSON.stringify(messages));
+        window.localStorage.setItem("noolixChatHistory", JSON.stringify(messages));
       }
     } catch (e) {
-      console.warn('Failed to save chat history', e);
+      console.warn("Failed to save chat history", e);
     }
   }, [messages]);
 
   // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
 
   const callBackend = async (userMessages) => {
     try {
-        useEffect(() => {
-    if (!router.isReady) return;
-    const topicFromQuery = router.query.topic;
-    if (typeof topicFromQuery === 'string' && topicFromQuery.trim()) {
-      setCurrentTopic(topicFromQuery.trim());
-    }
-  }, [router.isReady, router.query.topic]);
-      
-      setError('');
-      const res = await fetch('/api/chat', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    messages: userMessages.map(({ role, content }) => ({ role, content })),
-    context: { ...context, currentTopic },
-  }),
-});
+      setError("");
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: userMessages.map(({ role, content }) => ({ role, content })),
+          context: { ...context, currentTopic },
+        }),
+      });
 
-
-          if (!res.ok) {
-      let data = {};
-      try {
-        data = await res.json();
-      } catch (e) {
-        data = {};
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = {};
+        }
+        console.error("API /api/chat error:", data);
+        throw new Error(
+          data.error ||
+            data.details ||
+            "Ошибка при обращении к серверу"
+        );
       }
-      console.error('API /api/chat error:', data);
-      throw new Error(
-        data.error ||
-          data.details ||
-          'Ошибка при обращении к серверу'
-      );
-    }
 
       const data = await res.json();
       const replyText =
-        typeof data.reply === 'string'
+        typeof data.reply === "string"
           ? data.reply
-          : 'У меня не получилось получить ответ от ИИ. Попробуй ещё раз.';
+          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
 
       const assistantMessage = {
         id: Date.now() + 1,
-        role: 'assistant',
+        role: "assistant",
         content: replyText,
         createdAt: new Date().toISOString(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      } catch (err) {
-    console.error(err);
-    setError(
-      err?.message ||
-        'Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу.'
-    );
-  } finally {
-    setThinking(false);
-  }
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
+      );
+    } finally {
+      setThinking(false);
+    }
   };
 
   const sendMessage = () => {
@@ -195,14 +188,14 @@ export default function ChatPage() {
 
     const userMessage = {
       id: Date.now(),
-      role: 'user',
+      role: "user",
       content: text,
       createdAt: new Date().toISOString(),
     };
 
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
-    setInput('');
+    setInput("");
     setThinking(true);
 
     callBackend(newMessages);
@@ -214,26 +207,26 @@ export default function ChatPage() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
 
   const quickActions = [
-    { key: 'explain', label: 'Объясни тему' },
-    { key: 'steps', label: 'Разбери задачу по шагам' },
-    { key: 'test', label: 'Сделай мини-тест' },
+    { key: "explain", label: "Объясни тему" },
+    { key: "steps", label: "Разбери задачу по шагам" },
+    { key: "test", label: "Сделай мини-тест" },
   ];
 
   const handleQuickAction = (key) => {
     const subjPrep = getSubjectPrepositional(context.subject);
-    let text = '';
-    if (key === 'explain') {
+    let text = "";
+    if (key === "explain") {
       text = `Объясни тему по ${subjPrep}: `;
-    } else if (key === 'steps') {
+    } else if (key === "steps") {
       text = `Разбери по шагам задачу по ${subjPrep}: `;
-    } else if (key === 'test') {
+    } else if (key === "test") {
       text = `Сделай мини-тест по ${subjPrep}: `;
     }
     setInput(text);
@@ -256,7 +249,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <div className="min-h-screen bg-gradient.to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -273,7 +266,7 @@ export default function ChatPage() {
 
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
         <div className="mb-3">
@@ -292,17 +285,17 @@ export default function ChatPage() {
                 key={item.key}
                 href={item.href}
                 className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === 'chat' ? 'bg-white/15' : 'hover:bg-white/5'}
+                  ${item.key === "chat" ? "bg-white/15" : "hover:bg-white/5"}
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === 'chat' ? 'ring-2 ring-purple-200' : ''}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient.to-br from-purple-100 to-white
+                    ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
                   {item.icon}
                 </span>
-                <span className={item.key === 'chat' ? 'font-semibold' : ''}>
+                <span className={item.key === "chat" ? "font-semibold" : ""}>
                   {item.label}
                 </span>
               </a>
@@ -318,7 +311,7 @@ export default function ChatPage() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient.to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -346,6 +339,12 @@ export default function ChatPage() {
                 <p className="text-[11px] text-purple-300/80 mt-1">
                   Режим: подготовка к экзамену
                 </p>
+                {currentTopic && (
+                  <p className="text-[11px] text-purple-200 mt-1">
+                    Тема с карты знаний:{" "}
+                    <span className="font-semibold">{currentTopic}</span>
+                  </p>
+                )}
               </section>
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
@@ -387,14 +386,13 @@ export default function ChatPage() {
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
                   <p className="text-[11px] text-purple-200">
-  {context.subject} • {context.level}
-  {currentTopic && <> • Тема: {currentTopic}</>}
-</p>
-
+                    {context.subject} • {context.level}
+                    {currentTopic && <> • Тема: {currentTopic}</>}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
-                  <span>{thinking ? 'Обрабатываю вопрос…' : 'Готов к диалогу'}</span>
+                  <span>{thinking ? "Обрабатываю вопрос…" : "Готов к диалогу"}</span>
                 </div>
               </header>
 
@@ -402,19 +400,21 @@ export default function ChatPage() {
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                   >
                     <div
                       className={`flex flex-col max-w-[80%] ${
-                        m.role === 'user' ? 'items-end' : 'items-start'
+                        m.role === "user" ? "items-end" : "items-start"
                       }`}
                     >
                       <div
                         className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
                           ${
-                            m.role === 'user'
-                              ? 'bg-purple-500/80 text-white rounded-br-sm'
-                              : 'bg-white/5 text-purple-50 border border-white/10 rounded-bl-sm'
+                            m.role === "user"
+                              ? "bg-purple-500/80 text-white rounded-br-sm"
+                              : "bg-white/5 text-purple-50 border border-white/10 rounded-bl-sm"
                           }
                         `}
                       >
@@ -453,7 +453,7 @@ export default function ChatPage() {
                 <button
                   type="submit"
                   disabled={thinking || !input.trim()}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg.white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   ➤
                 </button>
