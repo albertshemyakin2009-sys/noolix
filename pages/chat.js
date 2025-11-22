@@ -409,17 +409,18 @@ export default function ChatPage() {
                         m.role === "user" ? "items-end" : "items-start"
                       }`}
                     >
-                      <div
-                        className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
-                          ${
-                            m.role === "user"
-                              ? "bg-purple-500/80 text-white rounded-br-sm"
-                              : "bg-white/5 text-purple-50 border border-white/10 rounded-bl-sm"
-                          }
-                        `}
-                      >
-                        {m.content}
-                      </div>
+                    <div
+  className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
+    ${
+      m.role === "user"
+        ? "bg-purple-500/80 text-white rounded-br-sm"
+        : "bg-black/60 text-purple-50 border border-white/5 rounded-bl-sm"
+    }
+  `}
+>
+  {m.content}
+</div>
+
                       <span className="mt-1 text-[10px] text-purple-300/80">
                         {formatTime(m.createdAt)}
                       </span>
