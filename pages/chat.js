@@ -137,15 +137,20 @@ body: JSON.stringify({
 
       });
 
-      if (!res.ok) {
-        let data = {};
-        try {
-          data = await res.json();
-        } catch (e) {
-          data = {};
-        }
-        throw new Error(data.error || 'Ошибка при обращении к серверу');
+          if (!res.ok) {
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = {};
       }
+      console.error('API /api/chat error:', data);
+      throw new Error(
+        data.error ||
+          data.details ||
+          'Ошибка при обращении к серверу'
+      );
+    }
 
       const data = await res.json();
       const replyText =
@@ -161,12 +166,15 @@ body: JSON.stringify({
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      console.error(err);
-      setError('Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу.');
-    } finally {
-      setThinking(false);
-    }
+      } catch (err) {
+    console.error(err);
+    setError(
+      err?.message ||
+        'Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу.'
+    );
+  } finally {
+    setThinking(false);
+  }
   };
 
   const sendMessage = () => {
