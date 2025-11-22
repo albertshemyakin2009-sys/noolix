@@ -1,11 +1,5 @@
 // pages/library.js
 import { useEffect, useState } from 'react';
-export default function LibraryPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [subjectFilter, setSubjectFilter] = useState('Все предметы');
-  const [levelFilter, setLevelFilter] = useState('Все уровни');
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true); // <- добавили
 
 const primaryMenuItems = [
   { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
@@ -107,38 +101,50 @@ export default function LibraryPage() {
   const [subjectFilter, setSubjectFilter] = useState('Все предметы');
   const [levelFilter, setLevelFilter] = useState('Все уровни');
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
   // Подтягиваем предмет/уровень из контекста, чтобы фильтры чувствовали систему
   useEffect(() => {
-  try {
-    const rawContext = window.localStorage.getItem('noolixContext');
-    if (rawContext) {
-      const ctx = JSON.parse(rawContext);
-      if (ctx.subject) setSubjectFilter(ctx.subject);
-      if (ctx.level) setLevelFilter(ctx.level);
+    try {
+      const rawContext = window.localStorage.getItem('noolixContext');
+      if (rawContext) {
+        const ctx = JSON.parse(rawContext);
+        if (ctx.subject) setSubjectFilter(ctx.subject);
+        if (ctx.level) setLevelFilter(ctx.level);
+      }
+    } catch (e) {
+      console.warn('Failed to load context for library', e);
+    } finally {
+      setLoading(false);
     }
-  } catch (e) {
-    console.warn('Failed to load context for library', e);
-  } finally {
-    setLoading(false); // <- как бы ни прошло, мы заканчиваем загрузку
-  }
-}, []);
+  }, []);
 
   const normalize = (s) => (s || '').toLowerCase();
 
   const matchesFilters = (item) => {
     const bySubject =
       subjectFilter === 'Все предметы' || item.subject === subjectFilter;
+
     const byLevel =
       levelFilter === 'Все уровни' ||
       item.level === levelFilter ||
-      (item.level && item.level.includes(levelFilter.replace('класс', '').trim()));
+      (item.level &&
+        item.level.includes(levelFilter.replace('класс', '').trim()));
 
     const bySearch =
       !search.trim() ||
       normalize(item.title).includes(normalize(search)) ||
       normalize(item.subject).includes(normalize(search));
-      if (loading) {
+
+    return bySubject && byLevel && bySearch;
+  };
+
+  const filteredContinue = mockContinue.filter(matchesFilters);
+  const filteredSaved = mockSaved.filter(matchesFilters);
+  const filteredCollections = mockCollections.filter(matchesFilters);
+
+  // Экран загрузки, чтобы не было мерцания
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -155,13 +161,6 @@ export default function LibraryPage() {
       </div>
     );
   }
-
-    return bySubject && byLevel && bySearch;
-  };
-
-  const filteredContinue = mockContinue.filter(matchesFilters);
-  const filteredSaved = mockSaved.filter(matchesFilters);
-  const filteredCollections = mockCollections.filter(matchesFilters);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -217,7 +216,7 @@ export default function LibraryPage() {
                 key={item.key}
                 href={item.href}
                 className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === 'library' ? 'bg-white/15' : 'hover:bg-white/5'}
+                  ${item.key === 'library' ? 'bg-white/15' : 'hover:bg.white/5'}
                 `}
               >
                 <span
@@ -256,7 +255,7 @@ export default function LibraryPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 w-full md:w-[260px]">
+              <div className="flex flex-col gap-2 w.full md:w-[260px]">
                 <input
                   type="text"
                   value={search}
@@ -327,7 +326,7 @@ export default function LibraryPage() {
                         <span>Обновлено: {item.updatedAt}</span>
                         <a
                           href="/chat"
-                          className="px-3 py-1 rounded-full bg-white text-black text-[11px] font-semibold shadow hover:bg-purple-100 transition"
+                          className="px-3 py-1 rounded-full bg.white text-black text-[11px] font-semibold shadow hover:bg-purple-100 transition"
                         >
                           Продолжить в диалоге
                         </a>
@@ -431,11 +430,11 @@ export default function LibraryPage() {
                           Тем в подборке: {item.topics}
                         </p>
                       </div>
-                      <div className="mt-3 flex items-center justify-between text-[11px] text-purple-200/80">
+                      <div className="mt-3 flex items.center justify-between text-[11px] text-purple-200/80">
                         <span>Режим: теория + практика</span>
                         <a
                           href="/chat"
-                          className="px-3 py-1 rounded-full border border-white/25 text-[11px] hover:bg-white/10 transition"
+                          className="px-3 py-1 rounded-full border border-white/25 text-[11px] hover:bg.white/10 transition"
                         >
                           Начать с этой подборки
                         </a>
