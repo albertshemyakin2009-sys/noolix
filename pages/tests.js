@@ -67,10 +67,10 @@ export default function TestsPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedMode, setSelectedMode] = useState("topic_quick"); // пока один режим
-  const [topicSource, setTopicSource] = useState("manual"); // "manual" | "weak"
+  const [topicSource, setTopicSource] = useState("custom"); // "custom" | "weak"
 
   const [selectedSubject, setSelectedSubject] = useState("Математика");
-  const [selectedTopicId, setSelectedTopicId] = useState("");
+  const [customTopicTitle, setCustomTopicTitle] = useState("");
   const [selectedTopicsMulti, setSelectedTopicsMulti] = useState([]);
   const [questionCount, setQuestionCount] = useState(5);
 
@@ -166,17 +166,18 @@ export default function TestsPage() {
 
     let topicsForTest = [];
 
-    if (topicSource === "manual") {
-      if (!selectedTopicId) {
-        setUiError("Выбери тему, по которой хочешь пройти тест.");
+    if (topicSource === "custom") {
+      const title = customTopicTitle.trim();
+      if (!title) {
+        setUiError("Напиши тему, по которой хочешь пройти тест.");
         return;
       }
-      const topic = subjectTopics.find((t) => t.id === selectedTopicId);
-      if (!topic) {
-        setUiError("Выбранная тема не найдена. Попробуй выбрать другую.");
-        return;
-      }
-      topicsForTest = [topic];
+      topicsForTest = [
+        {
+          id: "custom",
+          title,
+        },
+      ];
     } else {
       // topicSource === "weak"
       if (weakTopicsForSubject.length === 0) {
@@ -215,9 +216,9 @@ export default function TestsPage() {
   };
 
   const handleQuickStartRecommendation = (topic) => {
-    setTopicSource("manual");
+    setTopicSource("custom");
     setSelectedSubject(context.subject);
-    setSelectedTopicId(topic.id);
+    setCustomTopicTitle(topic.title);
     setSelectedTopicsMulti([]);
     setFeedback("");
     setUiError("");
@@ -317,7 +318,7 @@ export default function TestsPage() {
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify.center">
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Левая колонка — контекст и рекомендации */}
             <aside className="space-y-4">
@@ -352,7 +353,7 @@ export default function TestsPage() {
                     {recommendedTopics.map((t) => (
                       <div
                         key={t.id}
-                        className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                        className="flex items-center justify-between gap-2 bg-black/40 border border.white/10 rounded-xl px-3 py-2"
                       >
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold">
@@ -367,7 +368,7 @@ export default function TestsPage() {
                           onClick={() => handleQuickStartRecommendation(t)}
                           className="text-[10px] px-3 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100 transition"
                         >
-                          Выбрать
+                          Свой тест по этой теме
                         </button>
                       </div>
                     ))}
@@ -392,7 +393,7 @@ export default function TestsPage() {
                       const sourceLabel =
                         t.topicSource === "weak"
                           ? "слабые темы"
-                          : "ручной выбор";
+                          : "свой вариант";
                       return (
                         <div
                           key={t.id}
@@ -424,8 +425,8 @@ export default function TestsPage() {
                     Тесты и тренировки по предмету
                   </h1>
                   <p className="text-[11px] text-purple-200 mt-1">
-                    Выбери режим и темы — NOOLIX подготовит для тебя вопросы и
-                    поможет оценить, насколько ты уверен в материале.
+                    Выбери, как собирать тест: придумать тему сам или взять
+                    слабые темы из карты знаний.
                   </p>
                 </div>
 
@@ -465,14 +466,14 @@ export default function TestsPage() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setTopicSource("manual")}
+                          onClick={() => setTopicSource("custom")}
                           className={`text-[11px] px-3 py-1 rounded-full border ${
-                            topicSource === "manual"
+                            topicSource === "custom"
                               ? "bg-white text-black border-white"
                               : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
                           } transition`}
                         >
-                          Выбрать вручную
+                          Свой вариант
                         </button>
                         <button
                           type="button"
@@ -480,7 +481,7 @@ export default function TestsPage() {
                           className={`text-[11px] px-3 py-1 rounded-full border ${
                             topicSource === "weak"
                               ? "bg-white text-black border-white"
-                              : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+                              : "bg-black/40 text-purple-100 border-white/20 hover:bg.white/5"
                           } transition`}
                         >
                           Слабые темы из карты знаний
@@ -488,8 +489,8 @@ export default function TestsPage() {
                       </div>
                     </div>
 
-                    {/* Ручной выбор темы */}
-                    {topicSource === "manual" && (
+                    {/* Свой вариант темы */}
+                    {topicSource === "custom" && (
                       <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
                         <div className="space-y-1">
                           <p className="text-[11px] text-purple-200/90">
@@ -500,7 +501,6 @@ export default function TestsPage() {
                             value={selectedSubject}
                             onChange={(e) => {
                               setSelectedSubject(e.target.value);
-                              setSelectedTopicId("");
                               setSelectedTopicsMulti([]);
                             }}
                           >
@@ -514,27 +514,17 @@ export default function TestsPage() {
 
                         <div className="space-y-1 md:col-span-2">
                           <p className="text-[11px] text-purple-200/90">
-                            Тема
+                            Тема (напиши сам)
                           </p>
-                          <select
-                            className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                            value={selectedTopicId}
-                            onChange={(e) => setSelectedTopicId(e.target.value)}
-                          >
-                            <option value="">Выбери тему…</option>
-                            {subjectTopics.map((topic) => {
-                              const state = getTopicState(
-                                selectedSubject,
-                                topic.id
-                              );
-                              return (
-                                <option key={topic.id} value={topic.id}>
-                                  {topic.title} • {topic.levelHint} (
-                                  {state.label})
-                                </option>
-                              );
-                            })}
-                          </select>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
+                            placeholder="Например: «Интегралы», «Сложное предложение», «Второе условие Ньютона»"
+                            value={customTopicTitle}
+                            onChange={(e) =>
+                              setCustomTopicTitle(e.target.value)
+                            }
+                          />
                         </div>
                       </div>
                     )}
@@ -566,9 +556,7 @@ export default function TestsPage() {
                                     checked={selectedTopicsMulti.includes(
                                       topic.id
                                     )}
-                                    onChange={() =>
-                                      toggleWeakTopic(topic.id)
-                                    }
+                                    onChange={() => toggleWeakTopic(topic.id)}
                                     className="h-3 w-3 rounded border border-white/40 bg-black/60"
                                   />
                                   <div className="flex flex-col">
