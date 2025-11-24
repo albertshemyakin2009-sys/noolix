@@ -14,28 +14,93 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Набор тем (тот же, что и в progress.js)
+// Набор тем (как в progress.js)
 const TOPICS = {
-  "Математика": [
-    { id: "math_quadratic", title: "Квадратные уравнения", area: "Алгебра", levelHint: "8–9 класс" },
-    { id: "math_linear", title: "Линейные уравнения и системы", area: "Алгебра", levelHint: "7–8 класс" },
-    { id: "math_derivative", title: "Производная и её смысл", area: "Математический анализ", levelHint: "10–11 класс" },
-    { id: "math_trig", title: "Тригонометрические уравнения", area: "Алгебра", levelHint: "10–11 класс" },
+  Математика: [
+    {
+      id: "math_quadratic",
+      title: "Квадратные уравнения",
+      area: "Алгебра",
+      levelHint: "8–9 класс",
+    },
+    {
+      id: "math_linear",
+      title: "Линейные уравнения и системы",
+      area: "Алгебра",
+      levelHint: "7–8 класс",
+    },
+    {
+      id: "math_derivative",
+      title: "Производная и её смысл",
+      area: "Математический анализ",
+      levelHint: "10–11 класс",
+    },
+    {
+      id: "math_trig",
+      title: "Тригонометрические уравнения",
+      area: "Алгебра",
+      levelHint: "10–11 класс",
+    },
   ],
-  "Физика": [
-    { id: "phys_newton2", title: "Второй закон Ньютона", area: "Механика", levelHint: "9–10 класс" },
-    { id: "phys_kinematics", title: "Равноускоренное движение", area: "Механика", levelHint: "9 класс" },
-    { id: "phys_energy", title: "Работа и энергия", area: "Механика", levelHint: "9–10 класс" },
+  Физика: [
+    {
+      id: "phys_newton2",
+      title: "Второй закон Ньютона",
+      area: "Механика",
+      levelHint: "9–10 класс",
+    },
+    {
+      id: "phys_kinematics",
+      title: "Равноускоренное движение",
+      area: "Механика",
+      levelHint: "9 класс",
+    },
+    {
+      id: "phys_energy",
+      title: "Работа и энергия",
+      area: "Механика",
+      levelHint: "9–10 класс",
+    },
   ],
   "Русский язык": [
-    { id: "rus_participles", title: "Причастные обороты", area: "Синтаксис", levelHint: "7–9 класс" },
-    { id: "rus_spelling", title: "Правописание Н и НН", area: "Орфография", levelHint: "8–9 класс" },
-    { id: "rus_essay", title: "Структура сочинения", area: "Письменная речь", levelHint: "9–11 класс" },
+    {
+      id: "rus_participles",
+      title: "Причастные обороты",
+      area: "Синтаксис",
+      levelHint: "7–9 класс",
+    },
+    {
+      id: "rus_spelling",
+      title: "Правописание Н и НН",
+      area: "Орфография",
+      levelHint: "8–9 класс",
+    },
+    {
+      id: "rus_essay",
+      title: "Структура сочинения",
+      area: "Письменная речь",
+      levelHint: "9–11 класс",
+    },
   ],
   "Английский язык": [
-    { id: "eng_tenses", title: "Основные времена (Present/Past/Future)", area: "Грамматика", levelHint: "7–9 класс" },
-    { id: "eng_perf", title: "Perfect времена", area: "Грамматика", levelHint: "9–11 класс" },
-    { id: "eng_vocab", title: "Расширение словарного запаса", area: "Лексика", levelHint: "Все уровни" },
+    {
+      id: "eng_tenses",
+      title: "Основные времена (Present/Past/Future)",
+      area: "Грамматика",
+      levelHint: "7–9 класс",
+    },
+    {
+      id: "eng_perf",
+      title: "Perfect времена",
+      area: "Грамматика",
+      levelHint: "9–11 класс",
+    },
+    {
+      id: "eng_vocab",
+      title: "Расширение словарного запаса",
+      area: "Лексика",
+      levelHint: "Все уровни",
+    },
   ],
 };
 
@@ -66,7 +131,7 @@ export default function TestsPage() {
   const [knowledgeMap, setKnowledgeMap] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [selectedMode, setSelectedMode] = useState("topic_quick"); // пока один режим
+  const [selectedMode, setSelectedMode] = useState("topic_quick");
   const [topicSource, setTopicSource] = useState("custom"); // "custom" | "weak"
 
   const [selectedSubject, setSelectedSubject] = useState("Математика");
@@ -75,10 +140,20 @@ export default function TestsPage() {
   const [questionCount, setQuestionCount] = useState(5);
 
   const [testHistory, setTestHistory] = useState([]);
+
   const [uiError, setUiError] = useState("");
   const [feedback, setFeedback] = useState("");
 
-  // Инициализация: контекст, карта знаний, история тестов
+  // Текущий тест
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentTest, setCurrentTest] = useState(null); // {id, subject, topics, questions}
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(null);
+  const [questionResults, setQuestionResults] = useState([]); // {selectedIndex, isCorrect}
+  const [testFinished, setTestFinished] = useState(false);
+  const [testSummary, setTestSummary] = useState(null); // {correctCount, total, perTopic}
+
+  // Инициализация
   useEffect(() => {
     try {
       const rawContext = window.localStorage.getItem("noolixContext");
@@ -116,6 +191,18 @@ export default function TestsPage() {
     }
   }, []);
 
+  // Сохраняем карту знаний
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        KNOWLEDGE_STORAGE_KEY,
+        JSON.stringify(knowledgeMap)
+      );
+    } catch (e) {
+      console.warn("Failed to save knowledge map", e);
+    }
+  }, [knowledgeMap]);
+
   // Сохраняем историю тестов
   useEffect(() => {
     try {
@@ -133,7 +220,6 @@ export default function TestsPage() {
     return subjectEntry[topicId];
   };
 
-  // Рекомендации: слабые темы по текущему предмету из context.subject
   const recommendedTopics = (() => {
     const currentSubjectTopics = TOPICS[context.subject] || [];
     const withState = currentSubjectTopics.map((t) => ({
@@ -144,7 +230,6 @@ export default function TestsPage() {
     return weakOrMedium.slice(0, 3);
   })();
 
-  // "Слабые темы" для выбранного в параметрах предмета (для мультивыбора)
   const weakTopicsForSubject = (() => {
     const all = TOPICS[selectedSubject] || [];
     return all
@@ -160,9 +245,68 @@ export default function TestsPage() {
     );
   };
 
-  const handleStartTest = () => {
+  const resetCurrentTest = () => {
+    setCurrentTest(null);
+    setCurrentQuestionIndex(0);
+    setSelectedOptionIndex(null);
+    setQuestionResults([]);
+    setTestFinished(false);
+    setTestSummary(null);
+  };
+
+  const updateKnowledgeAfterTest = (subject, topics, questions, results) => {
+    const statsByTopic = {};
+
+    questions.forEach((q, index) => {
+      const topicId = q.topicId || "custom";
+      if (topicId === "custom") return;
+      if (!statsByTopic[topicId]) {
+        statsByTopic[topicId] = { correct: 0, total: 0, title: q.topicTitle };
+      }
+      statsByTopic[topicId].total += 1;
+      const r = results[index];
+      if (r && r.isCorrect) {
+        statsByTopic[topicId].correct += 1;
+      }
+    });
+
+    setKnowledgeMap((prev) => {
+      const copy = { ...prev };
+      if (!copy[subject]) copy[subject] = {};
+      const subjEntry = { ...copy[subject] };
+
+      Object.entries(statsByTopic).forEach(([topicId, stat]) => {
+        const accuracy = stat.total > 0 ? stat.correct / stat.total : 0;
+        const prevState = subjEntry[topicId] || defaultTopicState;
+        const prevAttempts = prevState.attempts || 0;
+        const newAttempts = prevAttempts + 1;
+        const newScore =
+          prevAttempts === 0
+            ? accuracy
+            : (prevState.score * prevAttempts + accuracy) / newAttempts;
+
+        let label = "Не начато";
+        if (newScore >= 0.8) label = "Уверен";
+        else if (newScore >= 0.4) label = "Требует практики";
+        else if (newScore > 0) label = "Слабая зона";
+
+        subjEntry[topicId] = {
+          score: newScore,
+          label,
+          attempts: newAttempts,
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+
+      copy[subject] = subjEntry;
+      return copy;
+    });
+  };
+
+  const handleStartTest = async () => {
     setUiError("");
     setFeedback("");
+    resetCurrentTest();
 
     let topicsForTest = [];
 
@@ -172,14 +316,8 @@ export default function TestsPage() {
         setUiError("Напиши тему, по которой хочешь пройти тест.");
         return;
       }
-      topicsForTest = [
-        {
-          id: "custom",
-          title,
-        },
-      ];
+      topicsForTest = [{ id: "custom", title }];
     } else {
-      // topicSource === "weak"
       if (weakTopicsForSubject.length === 0) {
         setUiError(
           "По выбранному предмету нет слабых тем. Отметь свои слабые темы в карте знаний."
@@ -193,25 +331,155 @@ export default function TestsPage() {
         setUiError("Выбери хотя бы одну слабую тему из списка.");
         return;
       }
-      topicsForTest = selected;
+      topicsForTest = selected.map((t) => ({ id: t.id, title: t.title }));
     }
 
-    const entry = {
-      id: Date.now(),
-      subject: selectedSubject,
-      mode: selectedMode,
-      topicSource,
-      topicIds: topicsForTest.map((t) => t.id),
-      topicTitles: topicsForTest.map((t) => t.title),
-      questionCount,
-      correctCount: null, // потом сюда положим результат реального теста
-      createdAt: new Date().toISOString(),
-    };
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/generate-test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: selectedSubject,
+          topics: topicsForTest,
+          questionCount,
+        }),
+      });
 
-    setTestHistory((prev) => [entry, ...prev].slice(0, 20));
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        throw new Error(
+          data.error ||
+            data.details ||
+            "Ошибка при генерации теста. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      const questions = Array.isArray(data.questions) ? data.questions : [];
+
+      if (questions.length === 0) {
+        throw new Error(
+          "Не получилось получить вопросы для теста. Попробуй ещё раз."
+        );
+      }
+
+      const testId = Date.now();
+      setCurrentTest({
+        id: testId,
+        subject: selectedSubject,
+        topicSource,
+        topics: topicsForTest,
+        questions,
+      });
+      setCurrentQuestionIndex(0);
+      setSelectedOptionIndex(null);
+      setQuestionResults([]);
+      setTestFinished(false);
+      setTestSummary(null);
+      setFeedback("");
+    } catch (error) {
+      console.error(error);
+      setUiError(
+        error?.message ||
+          "Произошла ошибка при генерации теста. Попробуй ещё раз."
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAnswerAndNext = () => {
+    if (!currentTest || !currentTest.questions) return;
+    const questions = currentTest.questions;
+    const q = questions[currentQuestionIndex];
+
+    if (selectedOptionIndex === null) {
+      setUiError("Выбери вариант ответа перед продолжением.");
+      return;
+    }
+
+    setUiError("");
+    const isCorrect = selectedOptionIndex === q.correctIndex;
+
+    setQuestionResults((prev) => {
+      const copy = [...prev];
+      copy[currentQuestionIndex] = {
+        selectedIndex: selectedOptionIndex,
+        isCorrect,
+      };
+      return copy;
+    });
+
+    const isLast = currentQuestionIndex === questions.length - 1;
+    if (isLast) {
+      const allResults = [
+        ...questionResults.slice(0, currentQuestionIndex),
+        { selectedIndex: selectedOptionIndex, isCorrect },
+      ];
+      finishTest(currentTest, allResults);
+    } else {
+      setCurrentQuestionIndex((prev) => prev + 1);
+      setSelectedOptionIndex(null);
+    }
+  };
+
+  const finishTest = (test, results) => {
+    const questions = test.questions || [];
+    const total = questions.length;
+    const correctCount = results.filter((r) => r && r.isCorrect).length;
+
+    const perTopic = {};
+    questions.forEach((q, index) => {
+      const topicId = q.topicId || "custom";
+      const topicTitle = q.topicTitle || "Тема";
+      if (!perTopic[topicId]) {
+        perTopic[topicId] = {
+          title: topicTitle,
+          correct: 0,
+          total: 0,
+        };
+      }
+      perTopic[topicId].total += 1;
+      const r = results[index];
+      if (r && r.isCorrect) {
+        perTopic[topicId].correct += 1;
+      }
+    });
+
+    setTestSummary({
+      correctCount,
+      total,
+      perTopic,
+    });
+    setTestFinished(true);
+
+    updateKnowledgeAfterTest(test.subject, test.topics, questions, results);
+
+    setTestHistory((prev) => {
+      const entry = {
+        id: test.id,
+        subject: test.subject,
+        mode: selectedMode,
+        topicSource: test.topicSource,
+        topicIds: test.topics.map((t) => t.id),
+        topicTitles: test.topics.map((t) => t.title),
+        questionCount: total,
+        correctCount,
+        createdAt: new Date().toISOString(),
+      };
+      return [entry, ...prev].slice(0, 20);
+    });
 
     setFeedback(
-      "Тестовый режим пока в разработке: мы сохранили эту попытку как план. Скоро здесь появятся реальные вопросы и проверка ответов."
+      `Тест завершён: ${correctCount} из ${total} верно. Карта знаний обновлена по темам, которые были в тесте.`
     );
   };
 
@@ -222,6 +490,7 @@ export default function TestsPage() {
     setSelectedTopicsMulti([]);
     setFeedback("");
     setUiError("");
+    resetCurrentTest();
   };
 
   if (loading) {
@@ -243,6 +512,11 @@ export default function TestsPage() {
       </div>
     );
   }
+
+  const currentQuestion =
+    currentTest && currentTest.questions
+      ? currentTest.questions[currentQuestionIndex]
+      : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -307,7 +581,7 @@ export default function TestsPage() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text.black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -318,9 +592,9 @@ export default function TestsPage() {
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify.center">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Левая колонка — контекст и рекомендации */}
+            {/* Левая колонка */}
             <aside className="space-y-4">
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -334,7 +608,7 @@ export default function TestsPage() {
                   <span className="font-semibold">{context.level}</span>
                 </p>
                 <p className="text-[11px] text-purple-300/80 mt-1">
-                  Тесты помогают обновлять твою карту знаний и готовиться к
+                  Тесты помогают обновлять твою карту знаний и подготовиться к
                   экзаменам.
                 </p>
               </section>
@@ -353,7 +627,7 @@ export default function TestsPage() {
                     {recommendedTopics.map((t) => (
                       <div
                         key={t.id}
-                        className="flex items-center justify-between gap-2 bg-black/40 border border.white/10 rounded-xl px-3 py-2"
+                        className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                       >
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold">
@@ -368,7 +642,7 @@ export default function TestsPage() {
                           onClick={() => handleQuickStartRecommendation(t)}
                           className="text-[10px] px-3 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100 transition"
                         >
-                          Свой тест по этой теме
+                          Усвоить материал по этой теме
                         </button>
                       </div>
                     ))}
@@ -379,7 +653,7 @@ export default function TestsPage() {
               {testHistory.length > 0 && (
                 <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Последние попытки
+                    Последние тесты
                   </p>
                   <div className="space-y-1 max-h-40 overflow-y-auto text-[11px] text-purple-100">
                     {testHistory.slice(0, 5).map((t) => {
@@ -394,6 +668,11 @@ export default function TestsPage() {
                         t.topicSource === "weak"
                           ? "слабые темы"
                           : "свой вариант";
+                      const resultLabel =
+                        typeof t.correctCount === "number" &&
+                        typeof t.questionCount === "number"
+                          ? `${t.correctCount}/${t.questionCount}`
+                          : "—";
                       return (
                         <div
                           key={t.id}
@@ -402,8 +681,8 @@ export default function TestsPage() {
                           <div>
                             <p className="font-medium">{topicsLabel}</p>
                             <p className="text-[10px] text-purple-200/80">
-                              {t.subject} • {t.questionCount} вопросов •{" "}
-                              {sourceLabel}
+                              {t.subject} • {sourceLabel} • результат:{" "}
+                              {resultLabel}
                             </p>
                           </div>
                           <span className="text-[10px] text-purple-200/70">
@@ -417,7 +696,7 @@ export default function TestsPage() {
               )}
             </aside>
 
-            {/* Правая колонка — режимы тестов и настройки */}
+            {/* Правая колонка */}
             <section className="flex flex-col gap-4">
               <header className="border-b border-white/10 pb-3 space-y-2">
                 <div>
@@ -426,7 +705,8 @@ export default function TestsPage() {
                   </h1>
                   <p className="text-[11px] text-purple-200 mt-1">
                     Выбери, как собирать тест: придумать тему сам или взять
-                    слабые темы из карты знаний.
+                    слабые темы из карты знаний. После завершения NOOLIX
+                    обновит твою карту знаний.
                   </p>
                 </div>
 
@@ -466,7 +746,10 @@ export default function TestsPage() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setTopicSource("custom")}
+                          onClick={() => {
+                            setTopicSource("custom");
+                            resetCurrentTest();
+                          }}
                           className={`text-[11px] px-3 py-1 rounded-full border ${
                             topicSource === "custom"
                               ? "bg-white text-black border-white"
@@ -477,11 +760,14 @@ export default function TestsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setTopicSource("weak")}
+                          onClick={() => {
+                            setTopicSource("weak");
+                            resetCurrentTest();
+                          }}
                           className={`text-[11px] px-3 py-1 rounded-full border ${
                             topicSource === "weak"
                               ? "bg-white text-black border-white"
-                              : "bg-black/40 text-purple-100 border-white/20 hover:bg.white/5"
+                              : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
                           } transition`}
                         >
                           Слабые темы из карты знаний
@@ -489,7 +775,7 @@ export default function TestsPage() {
                       </div>
                     </div>
 
-                    {/* Свой вариант темы */}
+                    {/* Свой вариант */}
                     {topicSource === "custom" && (
                       <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
                         <div className="space-y-1">
@@ -502,6 +788,7 @@ export default function TestsPage() {
                             onChange={(e) => {
                               setSelectedSubject(e.target.value);
                               setSelectedTopicsMulti([]);
+                              resetCurrentTest();
                             }}
                           >
                             {Object.keys(TOPICS).map((subj) => (
@@ -511,7 +798,6 @@ export default function TestsPage() {
                             ))}
                           </select>
                         </div>
-
                         <div className="space-y-1 md:col-span-2">
                           <p className="text-[11px] text-purple-200/90">
                             Тема (напиши сам)
@@ -519,7 +805,7 @@ export default function TestsPage() {
                           <input
                             type="text"
                             className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
-                            placeholder="Например: «Интегралы», «Сложное предложение», «Второе условие Ньютона»"
+                            placeholder='Например: «Интегралы», «Сложное предложение», «Второй закон Ньютона»'
                             value={customTopicTitle}
                             onChange={(e) =>
                               setCustomTopicTitle(e.target.value)
@@ -529,7 +815,7 @@ export default function TestsPage() {
                       </div>
                     )}
 
-                    {/* Выбор по слабым темам */}
+                    {/* Слабые темы */}
                     {topicSource === "weak" && (
                       <div className="space-y-2 text-xs md:text-sm mt-2">
                         <p className="text-[11px] text-purple-200/90">
@@ -580,7 +866,7 @@ export default function TestsPage() {
                       </div>
                     )}
 
-                    {/* Кол-во вопросов и пояснение */}
+                    {/* Кол-во вопросов */}
                     <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
                       <div className="space-y-1">
                         <p className="text-[11px] text-purple-200/90">
@@ -597,13 +883,12 @@ export default function TestsPage() {
                           <option value={10}>10 вопросов</option>
                         </select>
                       </div>
-
                       <div className="space-y-1 md:col-span-2 text-[11px] text-purple-200/90">
                         <p>Что будет дальше?</p>
                         <p>
-                          В ближайших версиях NOOLIX будет генерировать для тебя
-                          вопросы по выбранным темам и анализировать ответы, чтобы
-                          обновлять твою карту знаний.
+                          NOOLIX сгенерирует для тебя тест из вопросов с выбором
+                          ответа, а после выполнения обновит карту знаний по
+                          темам, которые были в тесте.
                         </p>
                       </div>
                     </div>
@@ -612,16 +897,17 @@ export default function TestsPage() {
                     <div className="flex items-center justify-between pt-2">
                       <div className="text-[11px] text-purple-200/80">
                         <p>
-                          Тест обновит уровень темы в{" "}
+                          После завершения теста статус тем обновится в{" "}
                           <span className="font-semibold">“Карте знаний”</span>.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={handleStartTest}
-                        className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                        disabled={isGenerating}
+                        className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
-                        Начать тест
+                        {isGenerating ? "Генерируем тест…" : "Начать тест"}
                       </button>
                     </div>
 
@@ -636,6 +922,102 @@ export default function TestsPage() {
                       </p>
                     )}
                   </section>
+
+                  {/* Сам тест */}
+                  {currentTest && currentQuestion && !testFinished && (
+                    <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between text-[11px] text-purple-200/90">
+                        <span>
+                          Вопрос {currentQuestionIndex + 1} из{" "}
+                          {currentTest.questions.length}
+                        </span>
+                        <span>
+                          Тема: {currentQuestion.topicTitle} •{" "}
+                          <span className="capitalize">
+                            {currentQuestion.difficulty}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="text-xs md:text-sm font-semibold">
+                        {currentQuestion.question}
+                      </div>
+                      <div className="space-y-2 text-xs md:text-sm">
+                        {currentQuestion.options.map((opt, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setSelectedOptionIndex(idx)}
+                            className={`w-full text-left px-3 py-2 rounded-xl border transition ${
+                              selectedOptionIndex === idx
+                                ? "bg-purple-500/80 border-purple-300 text-white"
+                                : "bg-black/50 border-white/15 hover:bg-white/5"
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleAnswerAndNext}
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                        >
+                          {currentQuestionIndex ===
+                          currentTest.questions.length - 1
+                            ? "Завершить тест"
+                            : "Ответить и дальше"}
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Результат теста */}
+                  {testFinished && testSummary && (
+                    <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                        Результат теста
+                      </p>
+                      <p className="text-xs md:text-sm text-purple-50">
+                        Ты ответил правильно на{" "}
+                        <span className="font-semibold">
+                          {testSummary.correctCount} из {testSummary.total}
+                        </span>{" "}
+                        вопросов. Карта знаний по этим темам обновлена.
+                      </p>
+                      <div className="space-y-1 text-[11px] text-purple-200/90">
+                        {Object.entries(testSummary.perTopic).map(
+                          ([topicId, stat]) => {
+                            if (topicId === "custom") return null;
+                            const accuracy =
+                              stat.total > 0
+                                ? Math.round(
+                                    (stat.correct / stat.total) * 100
+                                  )
+                                : 0;
+                            return (
+                              <div
+                                key={topicId}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <span>{stat.title}</span>
+                                <span>{accuracy}% верных ответов</span>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={resetCurrentTest}
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                        >
+                          Пройти ещё один тест
+                        </button>
+                      </div>
+                    </section>
+                  )}
                 </div>
               )}
             </section>
