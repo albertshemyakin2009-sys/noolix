@@ -14,7 +14,7 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Тот же набор тем, что и в progress.js (можно потом вынести в общий модуль)
+// Набор тем (тот же, что и в progress.js)
 const TOPICS = {
   "Математика": [
     { id: "math_quadratic", title: "Квадратные уравнения", area: "Алгебра", levelHint: "8–9 класс" },
@@ -67,8 +67,11 @@ export default function TestsPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedMode, setSelectedMode] = useState("topic_quick"); // пока один режим
+  const [topicSource, setTopicSource] = useState("manual"); // "manual" | "weak"
+
   const [selectedSubject, setSelectedSubject] = useState("Математика");
   const [selectedTopicId, setSelectedTopicId] = useState("");
+  const [selectedTopicsMulti, setSelectedTopicsMulti] = useState([]);
   const [questionCount, setQuestionCount] = useState(5);
 
   const [testHistory, setTestHistory] = useState([]);
@@ -130,7 +133,7 @@ export default function TestsPage() {
     return subjectEntry[topicId];
   };
 
-  // Рекомендации: берём слабые темы текущего предмета
+  // Рекомендации: слабые темы по текущему предмету из context.subject
   const recommendedTopics = (() => {
     const currentSubjectTopics = TOPICS[context.subject] || [];
     const withState = currentSubjectTopics.map((t) => ({
@@ -138,46 +141,84 @@ export default function TestsPage() {
       state: getTopicState(context.subject, t.id),
     }));
     const weakOrMedium = withState.filter((t) => t.state.score < 0.8);
-    // ограничим до 3 штук
     return weakOrMedium.slice(0, 3);
   })();
+
+  // "Слабые темы" для выбранного в параметрах предмета (для мультивыбора)
+  const weakTopicsForSubject = (() => {
+    const all = TOPICS[selectedSubject] || [];
+    return all
+      .map((t) => ({ ...t, state: getTopicState(selectedSubject, t.id) }))
+      .filter((t) => t.state.score < 0.8);
+  })();
+
+  const toggleWeakTopic = (topicId) => {
+    setSelectedTopicsMulti((prev) =>
+      prev.includes(topicId)
+        ? prev.filter((id) => id !== topicId)
+        : [...prev, topicId]
+    );
+  };
 
   const handleStartTest = () => {
     setUiError("");
     setFeedback("");
 
-    if (!selectedTopicId) {
-      setUiError("Выбери тему, по которой хочешь пройти тест.");
-      return;
-    }
+    let topicsForTest = [];
 
-    const topic = subjectTopics.find((t) => t.id === selectedTopicId);
-    if (!topic) {
-      setUiError("Выбранная тема не найдена. Попробуй выбрать другую.");
-      return;
+    if (topicSource === "manual") {
+      if (!selectedTopicId) {
+        setUiError("Выбери тему, по которой хочешь пройти тест.");
+        return;
+      }
+      const topic = subjectTopics.find((t) => t.id === selectedTopicId);
+      if (!topic) {
+        setUiError("Выбранная тема не найдена. Попробуй выбрать другую.");
+        return;
+      }
+      topicsForTest = [topic];
+    } else {
+      // topicSource === "weak"
+      if (weakTopicsForSubject.length === 0) {
+        setUiError(
+          "По выбранному предмету нет слабых тем. Отметь свои слабые темы в карте знаний."
+        );
+        return;
+      }
+      const selected = weakTopicsForSubject.filter((t) =>
+        selectedTopicsMulti.includes(t.id)
+      );
+      if (selected.length === 0) {
+        setUiError("Выбери хотя бы одну слабую тему из списка.");
+        return;
+      }
+      topicsForTest = selected;
     }
 
     const entry = {
       id: Date.now(),
       subject: selectedSubject,
-      topicId: selectedTopicId,
-      topicTitle: topic.title,
       mode: selectedMode,
+      topicSource,
+      topicIds: topicsForTest.map((t) => t.id),
+      topicTitles: topicsForTest.map((t) => t.title),
       questionCount,
-      // Пока результатов нет — это MVP-заготовка
-      correctCount: null,
+      correctCount: null, // потом сюда положим результат реального теста
       createdAt: new Date().toISOString(),
     };
 
     setTestHistory((prev) => [entry, ...prev].slice(0, 20));
+
     setFeedback(
       "Тестовый режим пока в разработке: мы сохранили эту попытку как план. Скоро здесь появятся реальные вопросы и проверка ответов."
     );
   };
 
   const handleQuickStartRecommendation = (topic) => {
+    setTopicSource("manual");
     setSelectedSubject(context.subject);
     setSelectedTopicId(topic.id);
+    setSelectedTopicsMulti([]);
     setFeedback("");
     setUiError("");
   };
@@ -224,7 +265,7 @@ export default function TestsPage() {
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
         <div className="mb-3">
-          <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to.white text-transparent bg-clip-text">
+          <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
             NOOLIX
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
@@ -340,24 +381,36 @@ export default function TestsPage() {
                     Последние попытки
                   </p>
                   <div className="space-y-1 max-h-40 overflow-y-auto text-[11px] text-purple-100">
-                    {testHistory.slice(0, 5).map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {t.topicTitle || "Тема"}
-                          </p>
-                          <p className="text-[10px] text-purple-200/80">
-                            {t.subject} • {t.questionCount} вопросов
-                          </p>
+                    {testHistory.slice(0, 5).map((t) => {
+                      const topics = t.topicTitles || [];
+                      const topicsLabel =
+                        topics.length === 0
+                          ? "Тема не указана"
+                          : topics.length === 1
+                          ? topics[0]
+                          : `${topics[0]} + ещё ${topics.length - 1}`;
+                      const sourceLabel =
+                        t.topicSource === "weak"
+                          ? "слабые темы"
+                          : "ручной выбор";
+                      return (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
+                        >
+                          <div>
+                            <p className="font-medium">{topicsLabel}</p>
+                            <p className="text-[10px] text-purple-200/80">
+                              {t.subject} • {t.questionCount} вопросов •{" "}
+                              {sourceLabel}
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-purple-200/70">
+                            {new Date(t.createdAt).toLocaleDateString("ru-RU")}
+                          </span>
                         </div>
-                        <span className="text-[10px] text-purple-200/70">
-                          {new Date(t.createdAt).toLocaleDateString("ru-RU")}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               )}
@@ -371,7 +424,7 @@ export default function TestsPage() {
                     Тесты и тренировки по предмету
                   </h1>
                   <p className="text-[11px] text-purple-200 mt-1">
-                    Выбери режим и тему — NOOLIX подготовит для тебя вопросы и
+                    Выбери режим и темы — NOOLIX подготовит для тебя вопросы и
                     поможет оценить, насколько ты уверен в материале.
                   </p>
                 </div>
@@ -397,7 +450,6 @@ export default function TestsPage() {
                 </div>
               </header>
 
-              {/* Блок настроек для быстрого теста по теме */}
               {selectedMode === "topic_quick" && (
                 <div className="space-y-4">
                   <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
@@ -405,54 +457,143 @@ export default function TestsPage() {
                       Параметры теста
                     </p>
 
-                    <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm">
-                      <div className="space-y-1">
-                        <p className="text-[11px] text-purple-200/90">
-                          Предмет
-                        </p>
-                        <select
-                          className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                          value={selectedSubject}
-                          onChange={(e) => {
-                            setSelectedSubject(e.target.value);
-                            setSelectedTopicId("");
-                          }}
+                    {/* Источник тем */}
+                    <div className="space-y-2 text-xs md:text-sm">
+                      <p className="text-[11px] text-purple-200/90">
+                        Источник тем
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTopicSource("manual")}
+                          className={`text-[11px] px-3 py-1 rounded-full border ${
+                            topicSource === "manual"
+                              ? "bg-white text-black border-white"
+                              : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+                          } transition`}
                         >
-                          {Object.keys(TOPICS).map((subj) => (
-                            <option key={subj} value={subj}>
-                              {subj}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1 md:col-span-2">
-                        <p className="text-[11px] text-purple-200/90">
-                          Тема
-                        </p>
-                        <select
-                          className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                          value={selectedTopicId}
-                          onChange={(e) => setSelectedTopicId(e.target.value)}
+                          Выбрать вручную
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTopicSource("weak")}
+                          className={`text-[11px] px-3 py-1 rounded-full border ${
+                            topicSource === "weak"
+                              ? "bg-white text-black border-white"
+                              : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+                          } transition`}
                         >
-                          <option value="">Выбери тему…</option>
-                          {subjectTopics.map((topic) => {
-                            const state = getTopicState(
-                              selectedSubject,
-                              topic.id
-                            );
-                            return (
-                              <option key={topic.id} value={topic.id}>
-                                {topic.title} • {topic.levelHint} (
-                                {state.label})
-                              </option>
-                            );
-                          })}
-                        </select>
+                          Слабые темы из карты знаний
+                        </button>
                       </div>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm">
+                    {/* Ручной выбор темы */}
+                    {topicSource === "manual" && (
+                      <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-purple-200/90">
+                            Предмет
+                          </p>
+                          <select
+                            className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                            value={selectedSubject}
+                            onChange={(e) => {
+                              setSelectedSubject(e.target.value);
+                              setSelectedTopicId("");
+                              setSelectedTopicsMulti([]);
+                            }}
+                          >
+                            {Object.keys(TOPICS).map((subj) => (
+                              <option key={subj} value={subj}>
+                                {subj}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <p className="text-[11px] text-purple-200/90">
+                            Тема
+                          </p>
+                          <select
+                            className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                            value={selectedTopicId}
+                            onChange={(e) => setSelectedTopicId(e.target.value)}
+                          >
+                            <option value="">Выбери тему…</option>
+                            {subjectTopics.map((topic) => {
+                              const state = getTopicState(
+                                selectedSubject,
+                                topic.id
+                              );
+                              return (
+                                <option key={topic.id} value={topic.id}>
+                                  {topic.title} • {topic.levelHint} (
+                                  {state.label})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Выбор по слабым темам */}
+                    {topicSource === "weak" && (
+                      <div className="space-y-2 text-xs md:text-sm mt-2">
+                        <p className="text-[11px] text-purple-200/90">
+                          Слабые и средние темы по предмету{" "}
+                          <span className="font-semibold">
+                            {selectedSubject}
+                          </span>
+                        </p>
+                        {weakTopicsForSubject.length === 0 ? (
+                          <p className="text-[11px] text-purple-200/80">
+                            По этому предмету нет слабых тем. Отметь темы как
+                            слабые в разделе “Прогресс”, и они появятся здесь.
+                          </p>
+                        ) : (
+                          <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                            {weakTopicsForSubject.map((topic) => (
+                              <label
+                                key={topic.id}
+                                className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedTopicsMulti.includes(
+                                      topic.id
+                                    )}
+                                    onChange={() =>
+                                      toggleWeakTopic(topic.id)
+                                    }
+                                    className="h-3 w-3 rounded border border-white/40 bg-black/60"
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-semibold">
+                                      {topic.title}
+                                    </span>
+                                    <span className="text-[10px] text-purple-200/80">
+                                      {topic.area} • {topic.levelHint}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span
+                                  className={`inline-block h-2.5 w-10 rounded-full ${scoreToColor(
+                                    topic.state.score
+                                  )}`}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Кол-во вопросов и пояснение */}
+                    <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
                       <div className="space-y-1">
                         <p className="text-[11px] text-purple-200/90">
                           Количество вопросов
@@ -473,12 +614,13 @@ export default function TestsPage() {
                         <p>Что будет дальше?</p>
                         <p>
                           В ближайших версиях NOOLIX будет генерировать для тебя
-                          вопросы по выбранной теме и анализировать ответы, чтобы
+                          вопросы по выбранным темам и анализировать ответы, чтобы
                           обновлять твою карту знаний.
                         </p>
                       </div>
                     </div>
 
+                    {/* Кнопка запуска */}
                     <div className="flex items-center justify-between pt-2">
                       <div className="text-[11px] text-purple-200/80">
                         <p>
