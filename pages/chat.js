@@ -56,15 +56,17 @@ export default function ChatPage() {
   // Инициализация: подтягиваем контекст и историю
   useEffect(() => {
     try {
-      // контекст (предмет, уровень)
       const rawContext = window.localStorage.getItem("noolixContext");
-      let ctx = { subject: "Математика", level: "10–11 класс", mode: "exam_prep" };
+      let ctx = {
+        subject: "Математика",
+        level: "10–11 класс",
+        mode: "exam_prep",
+      };
       if (rawContext) {
         const parsed = JSON.parse(rawContext);
         ctx = { ...ctx, ...parsed };
       }
 
-      // история чата
       const rawHistory = window.localStorage.getItem("noolixChatHistory");
       let initialMessages = [];
       if (rawHistory) {
@@ -114,7 +116,10 @@ export default function ChatPage() {
   useEffect(() => {
     try {
       if (messages.length > 0) {
-        window.localStorage.setItem("noolixChatHistory", JSON.stringify(messages));
+        window.localStorage.setItem(
+          "noolixChatHistory",
+          JSON.stringify(messages)
+        );
       }
     } catch (e) {
       console.warn("Failed to save chat history", e);
@@ -137,7 +142,10 @@ export default function ChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: userMessages.map(({ role, content }) => ({ role, content })),
+          messages: userMessages.map(({ role, content }) => ({
+            role,
+            content,
+          })),
           context: { ...context, currentTopic },
         }),
       });
@@ -146,14 +154,12 @@ export default function ChatPage() {
         let data = {};
         try {
           data = await res.json();
-        } catch (e) {
+        } catch (_) {
           data = {};
         }
         console.error("API /api/chat error:", data);
         throw new Error(
-          data.error ||
-            data.details ||
-            "Ошибка при обращении к серверу"
+          data.error || data.details || "Ошибка при обращении к серверу"
         );
       }
 
@@ -238,7 +244,9 @@ export default function ChatPage() {
         <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent animate-pulse tracking-wide">
           NOOLIX
         </h1>
-        <p className="text-xs text-purple-100/80">Загружаем контекст диалога…</p>
+        <p className="text-xs text-purple-100/80">
+          Загружаем контекст диалога…
+        </p>
         <div className="flex gap-1 text-sm text-purple-100">
           <span className="animate-pulse">•</span>
           <span className="animate-pulse opacity-70">•</span>
@@ -249,7 +257,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient.to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -289,7 +297,7 @@ export default function ChatPage() {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient.to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
@@ -311,7 +319,7 @@ export default function ChatPage() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient.to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -323,15 +331,17 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-              <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/5 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/5 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            {/* Левая колонка — контекст сессии */}
             <aside className="space-y-4">
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Текущая сессия
                 </p>
                 <h2 className="text-sm font-semibold mb-1">Контекст</h2>
                 <p className="text-xs text-purple-100">
-                  Предмет: <span className="font-semibold">{context.subject}</span>
+                  Предмет:{" "}
+                  <span className="font-semibold">{context.subject}</span>
                 </p>
                 <p className="text-xs text-purple-100">
                   Уровень: <span className="font-semibold">{context.level}</span>
@@ -347,16 +357,17 @@ export default function ChatPage() {
                 )}
               </section>
 
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Цель сессии
                 </p>
                 <p className="text-xs text-purple-100">
-                  Мини-цель: разобраться в одной теме и решить хотя бы 2–3 задачи без подсказок.
+                  Мини-цель: разобраться в одной теме и решить хотя бы 2–3
+                  задачи без подсказок.
                 </p>
               </section>
 
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Быстрые запросы
                 </p>
@@ -381,10 +392,13 @@ export default function ChatPage() {
               )}
             </aside>
 
+            {/* Правая колонка — сам чат */}
             <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <h1 className="text-sm md:text-base font-semibold">Диалог с NOOLIX</h1>
+                  <h1 className="text-sm md:text-base font-semibold">
+                    Диалог с NOOLIX
+                  </h1>
                   <p className="text-[11px] text-purple-200">
                     {context.subject} • {context.level}
                     {currentTopic && <> • Тема: {currentTopic}</>}
@@ -392,7 +406,9 @@ export default function ChatPage() {
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
-                  <span>{thinking ? "Обрабатываю вопрос…" : "Готов к диалогу"}</span>
+                  <span>
+                    {thinking ? "Обрабатываю вопрос…" : "Готов к диалогу"}
+                  </span>
                 </div>
               </header>
 
@@ -408,20 +424,18 @@ export default function ChatPage() {
                       className={`flex flex-col max-w-[80%] ${
                         m.role === "user" ? "items-end" : "items-start"
                       }`}
-
-  <div
-  className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
-    ${
-      m.role === "user"
-        ? "bg-purple-500/80 text-white rounded-br-sm"
-        : "bg-black/80 text-purple-50 rounded-bl-sm"
-    }
-  `}
->
-  {m.content}
-</div>
-
-
+                    >
+                      <div
+                        className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
+                          ${
+                            m.role === "user"
+                              ? "bg-purple-500/80 text-white rounded-br-sm"
+                              : "bg-black/80 text-purple-50 rounded-bl-sm"
+                          }
+                        `}
+                      >
+                        {m.content}
+                      </div>
                       <span className="mt-1 text-[10px] text-purple-300/80">
                         {formatTime(m.createdAt)}
                       </span>
@@ -430,7 +444,7 @@ export default function ChatPage() {
                 ))}
                 {thinking && (
                   <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-1 rounded-2xl px-3 py-2 bg-white/5 border border-white/10 text-[11px] text-purple-100">
+                    <div className="inline-flex items-center gap-1 rounded-2xl px-3 py-2 bg-black/80 border border-white/10 text-[11px] text-purple-100">
                       <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
                       <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
                       <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
@@ -450,26 +464,28 @@ export default function ChatPage() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Спроси про любую задачу или тему. Например: «Объясни, как решать квадратные уравнения»."
-                  className="flex-1 resize-none bg-black/40 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/60"
+                  className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/60"
                 />
                 <button
                   type="submit"
                   disabled={thinking || !input.trim()}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg.white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   ➤
                 </button>
               </form>
 
               <p className="px-4 pb-3 text-[10px] text-purple-300/80">
-                NOOLIX сейчас в режиме прототипа. Ответы могут быть неточными, проверяй важные моменты.
+                NOOLIX сейчас в режиме прототипа. Ответы могут быть неточными,
+                проверяй важные моменты.
               </p>
             </section>
           </div>
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь: support@noolix.ai
+          © 2025 NOOLIX — образовательная платформа будущего. Связь:
+          support@noolix.ai
         </footer>
       </div>
     </div>
