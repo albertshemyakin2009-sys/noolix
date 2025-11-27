@@ -474,7 +474,7 @@ export default function TestsPage() {
 
   const finishTest = (test, results) => {
     const questions = test.questions || [];
-    the total = questions.length;
+    const total = questions.length;
     const correctCount = results.filter((r) => r && r.isCorrect).length;
 
     const perTopic = {};
