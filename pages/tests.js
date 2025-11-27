@@ -474,7 +474,7 @@ export default function TestsPage() {
 
   const finishTest = (test, results) => {
     const questions = test.questions || [];
-    const total = questions.length;
+    the total = questions.length;
     const correctCount = results.filter((r) => r && r.isCorrect).length;
 
     const perTopic = {};
@@ -659,9 +659,9 @@ export default function TestsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex.items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from.white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -683,7 +683,7 @@ export default function TestsPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to.black text-white flex relative">
+    <div className="min-h-screen.bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -719,7 +719,7 @@ export default function TestsPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl.transition
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
                   ${item.key === "tests" ? "bg-white/15" : "hover:bg-white/5"}
                 `}
               >
@@ -759,11 +759,11 @@ export default function TestsPage() {
       {/* Контент */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Левая колонка */}
             <aside className="space-y-4">
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+                <p className="text-[11px].uppercase tracking-wide text-purple-300/80 mb-1">
                   Тесты и тренировки
                 </p>
                 <h2 className="text-sm font-semibold mb-1">
@@ -780,7 +780,7 @@ export default function TestsPage() {
               </section>
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-                <div className="flex.items-center justify-between">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-xs shadow-md bg-gradient-to-br from-purple-100 to-white">
                       ✨
@@ -813,7 +813,7 @@ export default function TestsPage() {
                         <button
                           type="button"
                           onClick={() => handleQuickStartRecommendation(t)}
-                          className="text-[10px] px-3 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100 transition"
+                          className="text-[10px] px-3 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100 transition text-center leading-tight w-[150px]"
                         >
                           Усвоить материал по этой теме
                         </button>
@@ -824,7 +824,7 @@ export default function TestsPage() {
               </section>
 
               {testHistory.length > 0 && (
-                <section className="bg-black/30 border border.white/10 rounded-2xl p-4 space-y-2">
+                <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                     Последние тесты
                   </p>
@@ -849,7 +849,7 @@ export default function TestsPage() {
                       return (
                         <div
                           key={t.id}
-                          className="flex.items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
+                          className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
                         >
                           <div>
                             <p className="font-medium">{topicsLabel}</p>
@@ -936,7 +936,7 @@ export default function TestsPage() {
                             setTopicSource("weak");
                             resetCurrentTest();
                           }}
-                          className={`text-[11px] px-3 py-1 rounded-full border ${
+                          className={`text-[11px] px-3.py-1 rounded-full border ${
                             topicSource === "weak"
                               ? "bg-white text-black border-white"
                               : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
@@ -1123,9 +1123,7 @@ export default function TestsPage() {
                           {explainLoading ? (
                             <>Объясняем тему…</>
                           ) : (
-                            <>
-                              <span>Объяснить тему перед тестом</span>
-                            </>
+                            <>Объяснить тему перед тестом</>
                           )}
                         </button>
                       </div>
@@ -1266,7 +1264,7 @@ export default function TestsPage() {
                         <button
                           type="button"
                           onClick={resetCurrentTest}
-                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100.transition"
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold.shadow-md hover:bg-purple-100 transition"
                         >
                           Пройти ещё один тест
                         </button>
