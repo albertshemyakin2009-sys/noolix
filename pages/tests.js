@@ -176,6 +176,15 @@ export default function TestsPage() {
   const [questionResults, setQuestionResults] = useState([]);
   const [testFinished, setTestFinished] = useState(false);
   const [testSummary, setTestSummary] = useState(null);
+  const [lastResults, setLastResults] = useState([]);
+
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewError, setReviewError] = useState("");
+
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainText, setExplainText] = useState("");
+  const [explainError, setExplainError] = useState("");
 
   // Инициализация из localStorage
   useEffect(() => {
@@ -274,6 +283,9 @@ export default function TestsPage() {
     setQuestionResults([]);
     setTestFinished(false);
     setTestSummary(null);
+    setLastResults([]);
+    setReviewText("");
+    setReviewError("");
   };
 
   const updateKnowledgeAfterTest = (subject, topics, questions, results) => {
@@ -332,6 +344,8 @@ export default function TestsPage() {
   const handleStartTest = async () => {
     setUiError("");
     setFeedback("");
+    setReviewText("");
+    setReviewError("");
     resetCurrentTest();
 
     let topicsForTest = [];
@@ -487,6 +501,7 @@ export default function TestsPage() {
       perTopic,
     });
     setTestFinished(true);
+    setLastResults(results);
 
     updateKnowledgeAfterTest(test.subject, test.topics, questions, results);
 
@@ -520,9 +535,131 @@ export default function TestsPage() {
     resetCurrentTest();
   };
 
+  const handleReviewErrors = async () => {
+    setReviewError("");
+    setReviewText("");
+
+    if (!currentTest || !currentTest.questions || lastResults.length === 0) {
+      setReviewError("Сначала пройди тест, чтобы были ошибки для разбора.");
+      return;
+    }
+
+    setReviewLoading(true);
+    try {
+      const res = await fetch("/api/review-test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: currentTest.subject,
+          topic: currentTest.topics.map((t) => t.title),
+          questions: currentTest.questions,
+          userAnswers: lastResults.map((r) =>
+            r ? r.selectedIndex : null
+          ),
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        throw new Error(
+          data.error ||
+            data.details ||
+            "Не удалось получить разбор ошибок. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      setReviewText(data.analysis || "Разбор получен, но текст пустой.");
+    } catch (error) {
+      console.error(error);
+      setReviewError(
+        error?.message ||
+          "Произошла ошибка при разборе ошибок. Попробуй ещё раз."
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const handleExplainTopic = async () => {
+    setExplainError("");
+    setExplainText("");
+
+    let topicTitle = "";
+
+    if (topicSource === "custom") {
+      topicTitle = customTopicTitle.trim();
+    } else {
+      const selected = weakTopicsForSubject.filter((t) =>
+        selectedTopicsMulti.includes(t.id)
+      );
+      if (selected.length > 0) {
+        topicTitle = selected.map((t) => t.title).join(", ");
+      } else if (weakTopicsForSubject.length > 0) {
+        topicTitle = weakTopicsForSubject[0].title;
+      }
+    }
+
+    if (!topicTitle) {
+      setExplainError(
+        "Чтобы объяснить тему, сначала укажи тему вручную или выбери слабые темы."
+      );
+      return;
+    }
+
+    setExplainLoading(true);
+    try {
+      const res = await fetch("/api/explain-topic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: selectedSubject,
+          topic: topicTitle,
+          level: context.level || "старшеклассник",
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        throw new Error(
+          data.error ||
+            data.details ||
+            "Не удалось получить объяснение темы. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      setExplainText(
+        data.explanation || "Объяснение получено, но текст пустой."
+      );
+    } catch (error) {
+      console.error(error);
+      setExplainError(
+        error?.message ||
+          "Произошла ошибка при объяснении темы. Попробуй ещё раз."
+      );
+    } finally {
+      setExplainLoading(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex.items-center justify-center">
         <div className="flex flex-col items-center gap-2">
           <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
@@ -533,7 +670,7 @@ export default function TestsPage() {
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
-            <span className="animate-pulse.opacity-40">•</span>
+            <span className="animate-pulse opacity-40">•</span>
           </div>
         </div>
       </div>
@@ -546,7 +683,7 @@ export default function TestsPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to.black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -555,7 +692,7 @@ export default function TestsPage() {
       )}
 
       <button
-        className="absolute.top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
@@ -582,7 +719,7 @@ export default function TestsPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl.transition
                   ${item.key === "tests" ? "bg-white/15" : "hover:bg-white/5"}
                 `}
               >
@@ -642,10 +779,17 @@ export default function TestsPage() {
                 </p>
               </section>
 
-              <section className="bg-black/30 border border-white/10.rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Рекомендации NOOLIX
-                </p>
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex.items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-xs shadow-md bg-gradient-to-br from-purple-100 to-white">
+                      ✨
+                    </span>
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                      Рекомендации NOOLIX
+                    </p>
+                  </div>
+                </div>
                 {recommendedTopics.length === 0 ? (
                   <p className="text-[11px] text-purple-100">
                     По текущему предмету нет явных слабых тем. Позже ты увидишь
@@ -656,7 +800,7 @@ export default function TestsPage() {
                     {recommendedTopics.map((t) => (
                       <div
                         key={t.id}
-                        className="flex.items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                        className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                       >
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold">
@@ -680,7 +824,7 @@ export default function TestsPage() {
               </section>
 
               {testHistory.length > 0 && (
-                <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+                <section className="bg-black/30 border border.white/10 rounded-2xl p-4 space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                     Последние тесты
                   </p>
@@ -705,7 +849,7 @@ export default function TestsPage() {
                       return (
                         <div
                           key={t.id}
-                          className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
+                          className="flex.items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
                         >
                           <div>
                             <p className="font-medium">{topicsLabel}</p>
@@ -901,7 +1045,7 @@ export default function TestsPage() {
                           Количество вопросов
                         </p>
                         <select
-                          className="w-full px-2.py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                          className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                           value={questionCount}
                           onChange={(e) =>
                             setQuestionCount(Number(e.target.value))
@@ -963,13 +1107,27 @@ export default function TestsPage() {
                       </div>
                     </div>
 
-                    {/* Кнопка запуска */}
+                    {/* Кнопки: объяснить тему + начать тест */}
                     <div className="flex items-center justify-between pt-2">
-                      <div className="text-[11px] text-purple-200/80">
+                      <div className="flex flex-col gap-2 text-[11px] text-purple-200/80">
                         <p>
                           После завершения теста статус тем обновится в{" "}
                           <span className="font-semibold">“Карте знаний”</span>.
                         </p>
+                        <button
+                          type="button"
+                          onClick={handleExplainTopic}
+                          disabled={explainLoading}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-white/30 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {explainLoading ? (
+                            <>Объясняем тему…</>
+                          ) : (
+                            <>
+                              <span>Объяснить тему перед тестом</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                       <button
                         type="button"
@@ -991,12 +1149,29 @@ export default function TestsPage() {
                         {feedback}
                       </p>
                     )}
+                    {explainError && (
+                      <p className="text-[11px] text-red-300 mt-1">
+                        {explainError}
+                      </p>
+                    )}
                   </section>
+
+                  {/* Объяснение темы */}
+                  {explainText && (
+                    <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                        Объяснение темы
+                      </p>
+                      <div className="text-xs md:text-sm whitespace-pre-wrap text-purple-50">
+                        {explainText}
+                      </div>
+                    </section>
+                  )}
 
                   {/* Сам тест */}
                   {currentTest && currentQuestion && !testFinished && (
                     <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between text-[11px].text-purple-200/90">
+                      <div className="flex items-center justify-between text-[11px] text-purple-200/90">
                         <span>
                           Вопрос {currentQuestionIndex + 1} из{" "}
                           {currentTest.questions.length}
@@ -1042,7 +1217,7 @@ export default function TestsPage() {
                     </section>
                   )}
 
-                  {/* Результат теста */}
+                  {/* Результат теста + разбор ошибок */}
                   {testFinished && testSummary && (
                     <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                       <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -1077,15 +1252,40 @@ export default function TestsPage() {
                           }
                         )}
                       </div>
-                      <div className="flex justify-end">
+                      <div className="flex flex-wrap justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={handleReviewErrors}
+                          disabled={reviewLoading}
+                          className="px-4 py-2 rounded-full border border-white/40 text-xs text-purple-100 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {reviewLoading
+                            ? "Разбираем ошибки…"
+                            : "Разбор ошибок"}
+                        </button>
                         <button
                           type="button"
                           onClick={resetCurrentTest}
-                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100.transition"
                         >
                           Пройти ещё один тест
                         </button>
                       </div>
+                      {reviewError && (
+                        <p className="text-[11px] text-red-300 mt-1">
+                          {reviewError}
+                        </p>
+                      )}
+                      {reviewText && (
+                        <div className="mt-3 border-t border-white/10 pt-3">
+                          <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+                            Разбор ошибок
+                          </p>
+                          <div className="text-xs md:text-sm whitespace-pre-wrap text-purple-50">
+                            {reviewText}
+                          </div>
+                        </div>
+                      )}
                     </section>
                   )}
                 </div>
