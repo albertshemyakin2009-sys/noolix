@@ -1,5 +1,132 @@
 // pages/api/generate-test.js
 
+async function callOpenAI(apiKey, systemPrompt, userPrompt) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.5,
+    }),
+  });
+
+  if (!response.ok) {
+    let errText = "";
+    try {
+      errText = await response.text();
+    } catch (_) {}
+    throw new Error(
+      `OpenAI error ${response.status}: ${errText || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content || typeof content !== "string") {
+    throw new Error("Пустой ответ от OpenAI при генерации теста");
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    throw new Error(
+      "Не удалось распарсить JSON от OpenAI при генерации теста"
+    );
+  }
+
+  const questions = parsed?.questions;
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new Error("OpenAI вернул некорректную структуру вопросов (questions)");
+  }
+
+  return questions;
+}
+
+function isNNTopicTitle(title) {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return (
+    t.includes("н и нн") ||
+    t.includes("н/нн") ||
+    t.includes("н и н н") ||
+    t.includes("нн и н")
+  );
+}
+
+function isQuestionValid(rawQ, topicsMap, isNNTest) {
+  if (!rawQ) return false;
+
+  const qText = (rawQ.question || "").toString().trim();
+  if (!qText || qText.length < 5) return false;
+
+  if (!Array.isArray(rawQ.options) || rawQ.options.length !== 4) return false;
+
+  const options = rawQ.options.map((o) => (o || "").toString().trim());
+  if (options.some((o) => !o)) return false;
+
+  // Варианты не должны быть все одинаковые
+  const uniqueOpts = new Set(options);
+  if (uniqueOpts.size < 2) return false;
+
+  const ci = rawQ.correctIndex;
+  if (typeof ci !== "number" || ci < 0 || ci > 3) return false;
+
+  // Убедимся, что правильный вариант входит в массив
+  if (!options[ci]) return false;
+
+  // Привязка к теме
+  const topicId = rawQ.topicId;
+  if (!topicId || !topicsMap[topicId]) {
+    return false;
+  }
+
+  // Дополнительная проверка для темы Н/НН
+  if (isNNTest) {
+    // Очень грубый, но полезный фильтр:
+    // — Вопрос должен содержать либо Н/н, либо подчёркивания "__"
+    const hasN = /н/iu.test(qText);
+    const hasGap = qText.includes("__") || qText.includes("_");
+    if (!hasN && !hasGap) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function normalizeQuestion(rawQ, index, defaultTopic, diff) {
+  const topicId = rawQ.topicId || defaultTopic.id;
+  const topicTitle = rawQ.topicTitle || defaultTopic.title;
+
+  return {
+    id: rawQ.id ?? index + 1,
+    question: String(rawQ.question || "").trim(),
+    options: Array.isArray(rawQ.options)
+      ? rawQ.options.map((o) => String(o || ""))
+      : [],
+    correctIndex:
+      typeof rawQ.correctIndex === "number" &&
+      rawQ.correctIndex >= 0 &&
+      rawQ.correctIndex <= 3
+        ? rawQ.correctIndex
+        : 0,
+    topicId,
+    topicTitle,
+    difficulty: rawQ.difficulty || diff,
+    explanation: rawQ.explanation
+      ? String(rawQ.explanation)
+      : "Правильный ответ основан на определении или базовом свойстве темы.",
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -13,7 +140,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { subject, topics, questionCount, difficulty } = req.body || {};
+    const {
+      subject,
+      topics,
+      questionCount,
+      difficulty,
+      previousQuestions,
+    } = req.body || {};
     const count = Number(questionCount) || 5;
 
     const diff = ["easy", "medium", "hard"].includes(difficulty)
@@ -25,6 +158,16 @@ export default async function handler(req, res) {
         error: "Нужны subject и хотя бы одна тема в массиве topics",
       });
     }
+
+    const topicsMap = {};
+    topics.forEach((t) => {
+      if (t && t.id) topicsMap[t.id] = t;
+    });
+
+    const isNNTest = topics.some((t) => isNNTopicTitle(t.title));
+    const bannedQuestions = Array.isArray(previousQuestions)
+      ? previousQuestions.map((q) => (q || "").toString().trim())
+      : [];
 
     const topicsForPrompt = topics
       .map((t) => `- ID: ${t.id}, название: "${t.title}"`)
@@ -55,10 +198,31 @@ export default async function handler(req, res) {
       diff === "easy"
         ? "Уровень сложности: лёгкий. Делай вопросы базового уровня, одношаговые, без сложных комбинаций и длинных вычислений."
         : diff === "hard"
-        ? "Уровень сложности: сложный. Используй задания повышенной сложности, допускаются элементы олимпиадного уровня, но оставайся в рамках школьной программы."
+        ? "Уровень сложности: сложный. Используй задания повышенной сложности, допускаются элементы олимпиадного уровня, но оставайся в рамках школьной программы. Вопросы могут требовать 2–4 шага рассуждения."
         : "Уровень сложности: средний. Стандартный школьный/ЕГЭ уровень: вопросы с 2–3 шагами рассуждения, но без экстремальной сверхсложности.";
 
-    const userPrompt = [
+    const nnText = isNNTest
+      ? [
+          "",
+          "Дополнительные жёсткие требования:",
+          '— Темы связаны с правописанием Н и НН. ВСЕ вопросы должны проверять именно Н/НН в прилагательных, причастиях и отглагольных прилагательных.',
+          "— НЕЛЬЗЯ смешивать сюда другие орфограммы (пропущенные гласные, согласные и т.п.).",
+          '— НЕЛЬЗЯ давать слово целиком в правильном написании внутри формулировки. Используй пропуски или подчёркивания: например, "деревя__ый дом", "глиня__ая посуда".',
+        ].join("\n")
+      : "";
+
+    const avoidText =
+      bannedQuestions.length > 0
+        ? [
+            "",
+            "Избегай формулировок, слишком похожих на эти вопросы (не копируй их дословно):",
+            bannedQuestions
+              .map((q, i) => `${i + 1}) ${q}`)
+              .join("\n"),
+          ].join("\n")
+        : "";
+
+    const baseUserPrompt = [
       `Предмет: ${subject}.`,
       `Нужно сгенерировать ${count} вопросов с вариантами ответов (4 варианта, один правильный).`,
       difficultyText,
@@ -78,97 +242,74 @@ export default async function handler(req, res) {
       '   - НЕ пиши слово целиком как "глиняный", если вопрос про Н/НН в этом слове.',
       "",
       "3) Тематическая чистота:",
-      '   - Если тема связана с правописанием Н и НН (например, содержит слова "Н и НН" или близкую формулировку), ВСЕ вопросы должны проверять именно Н/НН.',
-      "   - Не смешивай в таких тестах другие орфограммы (пропущенные согласные, гласные и т.п.).",
-      "",
+      "   - Строго придерживайся тем из списка.",
       "4) Структура вопросов:",
       "   - Формулировки должны быть чёткими и однозначными.",
       "   - Вопрос не должен допускать два правильных ответа.",
       "",
       "5) Объяснение:",
       "   - explanation должно кратко объяснять, ПОЧЕМУ выбранный вариант правильный и чем неправильные отличаются.",
+      nnText,
+      avoidText,
       "",
       "Сгенерируй массив questions, соблюдая эту спецификацию.",
     ].join("\n");
 
-    const openaiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.5,
-        }),
-      }
-    );
+    const collected = [];
+    const seenQuestions = new Set(bannedQuestions);
 
-    if (!openaiResponse.ok) {
-      let errText = "";
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (collected.length >= count) break;
+
+      let rawQuestions;
       try {
-        errText = await openaiResponse.text();
-      } catch (_) {}
-      console.error(
-        "OpenAI generate-test error:",
-        openaiResponse.status,
-        errText
-      );
+        rawQuestions = await callOpenAI(apiKey, systemPrompt, baseUserPrompt);
+      } catch (err) {
+        // Если это первая попытка — выкинем ошибку дальше,
+        // если нет — попробуем ещё раз
+        if (attempt === maxAttempts - 1) {
+          throw err;
+        } else {
+          continue;
+        }
+      }
+
+      for (const rawQ of rawQuestions) {
+        if (collected.length >= count) break;
+
+        const defaultTopic = topics[0];
+        const normQuestion = normalizeQuestion(
+          rawQ,
+          collected.length,
+          defaultTopic,
+          diff
+        );
+
+        const qText = normQuestion.question.trim();
+        if (!qText || seenQuestions.has(qText)) {
+          continue;
+        }
+
+        if (!isQuestionValid(normQuestion, topicsMap, isNNTest)) {
+          continue;
+        }
+
+        collected.push(normQuestion);
+        seenQuestions.add(qText);
+      }
+    }
+
+    if (collected.length === 0) {
       return res.status(500).json({
-        error: "Ошибка при обращении к OpenAI (генерация теста)",
-        details: errText || openaiResponse.statusText,
+        error:
+          "Не удалось собрать корректные вопросы для теста. Попробуй ещё раз или сократи количество вопросов.",
       });
     }
 
-    const data = await openaiResponse.json();
-    const content = data?.choices?.[0]?.message?.content;
+    const finalQuestions = collected.slice(0, count);
 
-    if (!content || typeof content !== "string") {
-      return res.status(500).json({
-        error: "Пустой ответ от OpenAI при генерации теста",
-      });
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch (e) {
-      console.error("JSON parse error in generate-test:", e, content);
-      return res.status(500).json({
-        error: "Не удалось распарсить JSON от OpenAI",
-        details:
-          "Попробуй ещё раз. Если ошибка повторяется — чуть измени параметры теста.",
-      });
-    }
-
-    const questions = parsed?.questions;
-    if (!Array.isArray(questions) || questions.length === 0) {
-      return res.status(500).json({
-        error: "OpenAI вернул некорректную структуру вопросов",
-      });
-    }
-
-    const normalized = questions.map((q, index) => ({
-      id: q.id ?? index + 1,
-      question: String(q.question || "").trim(),
-      options: Array.isArray(q.options) ? q.options.map(String) : [],
-      correctIndex:
-        typeof q.correctIndex === "number" ? q.correctIndex : 0,
-      topicId: q.topicId || topics[0].id,
-      topicTitle: q.topicTitle || topics[0].title,
-      difficulty: q.difficulty || diff,
-      explanation: q.explanation
-        ? String(q.explanation)
-        : "Правильный ответ основан на определении или базовом свойстве темы.",
-    }));
-
-    return res.status(200).json({ questions: normalized });
+    return res.status(200).json({ questions: finalQuestions });
   } catch (error) {
     console.error("generate-test API error:", error);
     return res.status(500).json({
