@@ -10,6 +10,12 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
+    "dependencies": {
+  "next": "latest",
+  "react": "latest",
+  "react-dom": "latest",
+  "openai": "^4.0.0"
+}
   },
   "devDependencies": {
     "tailwindcss": "^3.0.0",
