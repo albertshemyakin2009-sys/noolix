@@ -1,17 +1,16 @@
 {
-  "name": "noolix-full-project-v10",
+  "name": "noolix",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-  "next": "latest",
-  "react": "latest",
-  "react-dom": "latest",
-  "openai": "^4.0.0"
-},
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
   },
   "devDependencies": {
     "tailwindcss": "^3.0.0",
