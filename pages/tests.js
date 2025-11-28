@@ -14,7 +14,6 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Темы (можно расширять дальше)
 const TOPICS = {
   "Математика": [
     {
@@ -156,13 +155,13 @@ export default function TestsPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedMode, setSelectedMode] = useState("topic_quick");
-  const [topicSource, setTopicSource] = useState("custom"); // "custom" | "weak"
+  const [topicSource, setTopicSource] = useState("custom");
 
   const [selectedSubject, setSelectedSubject] = useState("Математика");
   const [customTopicTitle, setCustomTopicTitle] = useState("");
   const [selectedTopicsMulti, setSelectedTopicsMulti] = useState([]);
   const [questionCount, setQuestionCount] = useState(5);
-  const [difficulty, setDifficulty] = useState("medium"); // "easy" | "medium" | "hard"
+  const [difficulty, setDifficulty] = useState("medium");
 
   const [testHistory, setTestHistory] = useState([]);
 
@@ -170,7 +169,7 @@ export default function TestsPage() {
   const [feedback, setFeedback] = useState("");
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [currentTest, setCurrentTest] = useState(null); // {id, subject, topics, questions}
+  const [currentTest, setCurrentTest] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(null);
   const [questionResults, setQuestionResults] = useState([]);
@@ -186,7 +185,7 @@ export default function TestsPage() {
   const [explainText, setExplainText] = useState("");
   const [explainError, setExplainError] = useState("");
 
-  // ---- Инициализация из localStorage ----
+  // --- Инициализация ---
   useEffect(() => {
     try {
       const rawContext = window.localStorage.getItem("noolixContext");
@@ -218,13 +217,12 @@ export default function TestsPage() {
         }
       }
     } catch (e) {
-      console.warn("Failed to load tests context/knowledge/history", e);
+      console.warn("Failed to load context/knowledge/history", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // ---- Сохранение карты знаний ----
   useEffect(() => {
     try {
       window.localStorage.setItem(
@@ -236,7 +234,6 @@ export default function TestsPage() {
     }
   }, [knowledgeMap]);
 
-  // ---- Сохранение истории тестов ----
   useEffect(() => {
     try {
       window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(testHistory));
@@ -245,7 +242,7 @@ export default function TestsPage() {
     }
   }, [testHistory]);
 
-  // ---- Хелперы ----
+  // --- Хелперы ---
   const getTopicState = (subject, topicId) => {
     const subjectEntry = knowledgeMap[subject];
     if (!subjectEntry || !subjectEntry[topicId]) return defaultTopicState;
@@ -287,6 +284,8 @@ export default function TestsPage() {
     setLastResults([]);
     setReviewText("");
     setReviewError("");
+    setFeedback("");
+    setUiError("");
   };
 
   const updateKnowledgeAfterTest = (subject, topics, questions, results) => {
@@ -294,12 +293,14 @@ export default function TestsPage() {
 
     questions.forEach((q, index) => {
       const topicId = q.topicId || "custom";
+      const topicTitle = q.topicTitle || "Тема";
       if (topicId === "custom") return;
+
       if (!statsByTopic[topicId]) {
         statsByTopic[topicId] = {
+          title: topicTitle,
           correct: 0,
           total: 0,
-          title: q.topicTitle,
         };
       }
       statsByTopic[topicId].total += 1;
@@ -342,7 +343,7 @@ export default function TestsPage() {
     });
   };
 
-  // ---- Старт теста ----
+  // --- Старт теста ---
   const handleStartTest = async () => {
     setUiError("");
     setFeedback("");
@@ -362,7 +363,7 @@ export default function TestsPage() {
     } else {
       if (weakTopicsForSubject.length === 0) {
         setUiError(
-          "По выбранному предмету нет слабых тем. Отметь свои слабые темы в карте знаний."
+          "По выбранному предмету нет слабых тем. Отметь слабые темы в карте знаний."
         );
         return;
       }
@@ -395,7 +396,7 @@ export default function TestsPage() {
         let data = {};
         try {
           data = await res.json();
-        } catch (_) {
+        } catch {
           data = {};
         }
         throw new Error(
@@ -439,7 +440,7 @@ export default function TestsPage() {
     }
   };
 
-  // ---- Ответ и переход дальше ----
+  // --- Ответ и переход ---
   const handleAnswerAndNext = () => {
     if (!currentTest || !currentTest.questions) return;
     const questions = currentTest.questions;
@@ -475,7 +476,6 @@ export default function TestsPage() {
     }
   };
 
-  // ---- Завершение теста ----
   const finishTest = (test, results) => {
     const questions = test.questions || [];
     const total = questions.length;
@@ -525,7 +525,7 @@ export default function TestsPage() {
     });
 
     setFeedback(
-      `Тест завершён: ${correctCount} из ${total} верно. Карта знаний обновлена по темам, которые были в тесте.`
+      `Тест завершён: ${correctCount} из ${total} верно. Карта знаний обновлена по темам теста.`
     );
   };
 
@@ -539,7 +539,6 @@ export default function TestsPage() {
     resetCurrentTest();
   };
 
-  // ---- Разбор ошибок ----
   const handleReviewErrors = async () => {
     setReviewError("");
     setReviewText("");
@@ -570,7 +569,7 @@ export default function TestsPage() {
         let data = {};
         try {
           data = await res.json();
-        } catch (_) {
+        } catch {
           data = {};
         }
         throw new Error(
@@ -593,7 +592,6 @@ export default function TestsPage() {
     }
   };
 
-  // ---- Объяснение темы ----
   const handleExplainTopic = async () => {
     setExplainError("");
     setExplainText("");
@@ -638,7 +636,7 @@ export default function TestsPage() {
         let data = {};
         try {
           data = await res.json();
-        } catch (_) {
+        } catch {
           data = {};
         }
         throw new Error(
@@ -665,9 +663,9 @@ export default function TestsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to.black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from.white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -690,7 +688,7 @@ export default function TestsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* Оверлей для мобильного меню */}
+      {/* Оверлей для мобилки */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -713,7 +711,7 @@ export default function TestsPage() {
         bg-gradient-to-b from-black/50 via-[#2E003E]/85 to-black/80 border-r border-white/10`}
       >
         <div className="mb-3">
-          <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
+          <div className="text-3xl font-extrabold tracking-tight bg-gradient.to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
             NOOLIX
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
@@ -768,17 +766,16 @@ export default function TestsPage() {
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div
-  className="
-    w-full max-w-5xl
-    grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]
-    bg-black/35 bg-clip-padding backdrop-blur-sm
-    border border-white/10
-    rounded-3xl
-    p-4 md:p-6
-    shadow-[0_18px_45px_rgba(0,0,0,0.55)]
-  "
->
-
+            className="
+              w-full max-w-5xl
+              grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]
+              bg-black/35 bg-clip-padding backdrop-blur-sm
+              border border-white/10
+              rounded-3xl
+              p-4 md:p-6
+              shadow-[0_18px_45px_rgba(0,0,0,0.55)]
+            "
+          >
             {/* Левая колонка */}
             <aside className="space-y-4">
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
@@ -793,7 +790,7 @@ export default function TestsPage() {
                   <span className="font-semibold">{context.level}</span>
                 </p>
                 <p className="text-[11px] text-purple-300/80 mt-1">
-                  Тесты помогают обновлять твою карту знаний и подготовиться к
+                  Тесты помогают обновлять твою карту знаний и готовиться к
                   экзаменам.
                 </p>
               </section>
@@ -811,15 +808,15 @@ export default function TestsPage() {
                 </div>
                 {recommendedTopics.length === 0 ? (
                   <p className="text-[11px] text-purple-100">
-                    По текущему предмету нет явных слабых тем. Позже ты увидишь
-                    здесь предложения, основанные на карте знаний.
+                    По текущему предмету нет явных слабых тем. Позже здесь
+                    появятся предложения на основе карты знаний.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {recommendedTopics.map((t) => (
                       <div
                         key={t.id}
-                        className="flex items-center justify-between gap-2 bg-black/50 border border-white/10 rounded-xl px-3 py-2"
+                        className="flex items-center justify-between gap-2 bg-black/50 border border.white/10 rounded-xl px-3 py-2"
                       >
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold">
@@ -831,8 +828,10 @@ export default function TestsPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleQuickStartRecommendation(t)}
-                          className="text-[10px] px-2.5 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100 transition text-center leading-tight w-[135px]"
+                          onClick={() =>
+                            handleQuickStartRecommendation(t)
+                          }
+                          className="text-[10px] px-2.5 py-1 rounded-full bg-white text-black font-semibold hover:bg-purple-100.transition text-center leading-tight w-[135px]"
                         >
                           Усвоить материал
                         </button>
@@ -843,7 +842,7 @@ export default function TestsPage() {
               </section>
 
               {testHistory.length > 0 && (
-                <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <section className="bg-black/40 border border.white/10 rounded-2xl p-4 space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                     Последние тесты
                   </p>
@@ -868,7 +867,7 @@ export default function TestsPage() {
                       return (
                         <div
                           key={t.id}
-                          className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-b-0"
+                          className="flex items-center justify-between.gap-2.py-1 border-b border-white/5 last:border-b-0"
                         >
                           <div>
                             <p className="font-medium">{topicsLabel}</p>
@@ -878,7 +877,9 @@ export default function TestsPage() {
                             </p>
                           </div>
                           <span className="text-[10px] text-purple-200/70">
-                            {new Date(t.createdAt).toLocaleDateString("ru-RU")}
+                            {new Date(
+                              t.createdAt
+                            ).toLocaleDateString("ru-RU")}
                           </span>
                         </div>
                       );
@@ -897,14 +898,15 @@ export default function TestsPage() {
                   </h1>
                   <p className="text-[11px] text-purple-200 mt-1">
                     Выбери, как собирать тест, уровень сложности и темы. После
-                    завершения NOOLIX обновит твою карту знаний.
+                    теста NOOLIX обновит карту знаний по тем темам, которые были
+                    в вопросах.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedMode("topic_quick")}
+                   .onClick={() => setSelectedMode("topic_quick")}
                     className={`text-[11px] px-3 py-1 rounded-full border ${
                       selectedMode === "topic_quick"
                         ? "bg-white text-black border-white"
@@ -915,7 +917,7 @@ export default function TestsPage() {
                   </button>
                   <button
                     type="button"
-                    className="text-[11px] px-3 py-1 rounded-full border bg-black/40 border-white/15 text-purple-300/70 cursor-not-allowed"
+                    className="text-[11px] px-3 py-1 rounded-full border bg-black/40 border-white/15 text-purple-300/70.cursor-not-allowed"
                   >
                     Смешанный тест по предмету (скоро)
                   </button>
@@ -968,76 +970,26 @@ export default function TestsPage() {
 
                     {/* Свой вариант */}
                     {topicSource === "custom" && (
-                     <div className="grid gap-3 md:grid-cols-4 text-xs md:text-sm mt-2">
-  {/* Количество вопросов */}
-  <div className="space-y-1">
-    <p className="text-[11px] text-purple-200/90">
-      Количество вопросов
-    </p>
-    <select
-      className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
-      value={questionCount}
-      onChange={(e) => setQuestionCount(Number(e.target.value))}
-    >
-      <option value={5}>5 вопросов</option>
-      <option value={10}>10 вопросов</option>
-    </select>
-  </div>
-
-  {/* Сложность */}
-  <div className="space-y-1">
-    <p className="text-[11px] text-purple-200/90">
-      Сложность
-    </p>
-    <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={() => setDifficulty("easy")}
-        className={`text-[11px] px-3 py-1 rounded-full border ${
-          difficulty === "easy"
-            ? "bg-white text-black border-white"
-            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
-        } transition`}
-      >
-        Лёгкий
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setDifficulty("medium")}
-        className={`text-[11px] px-3 py-1 rounded-full border ${
-          difficulty === "medium"
-            ? "bg-white text-black border-white"
-            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
-        } transition`}
-      >
-        Средний
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setDifficulty("hard")}
-        className={`text-[11px] px-3 py-1 rounded-full border ${
-          difficulty === "hard"
-            ? "bg-white text-black border-white"
-            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
-        } transition`}
-      >
-        Сложный
-      </button>
-    </div>
-  </div>
-
-  {/* Пояснение справа */}
-  <div className="space-y-1 md:col-span-2 text-[11px] text-purple-200/90">
-    <p>Что будет дальше?</p>
-    <p>
-      NOOLIX сгенерирует тест на выбранном уровне сложности и после выполнения
-      обновит карту знаний по тем темам, которые были в тесте.
-    </p>
-  </div>
-</div>
-
+                      <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-purple-200/90">
+                            Предмет
+                          </p>
+                          <select
+                            className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                            value={selectedSubject}
+                            onChange={(e) => {
+                              setSelectedSubject(e.target.value);
+                              setSelectedTopicsMulti([]);
+                              resetCurrentTest();
+                            }}
+                          >
+                            {Object.keys(TOPICS).map((subj) => (
+                              <option key={subj} value={subj}>
+                                {subj}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="space-y-1 md:col-span-2">
                           <p className="text-[11px] text-purple-200/90">
@@ -1045,7 +997,7 @@ export default function TestsPage() {
                           </p>
                           <input
                             type="text"
-                            className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
+                            className="w-full px-3 py-2 rounded-xl bg-black/60 border.border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
                             placeholder='Например: «Интегралы», «Сложное предложение», «Второй закон Ньютона»'
                             value={customTopicTitle}
                             onChange={(e) =>
@@ -1075,7 +1027,7 @@ export default function TestsPage() {
                             {weakTopicsForSubject.map((topic) => (
                               <label
                                 key={topic.id}
-                                className="flex items-center justify-between gap-2 bg-black/50 border border-white/10 rounded-xl px-3 py-2 cursor-pointer"
+                                className="flex items-center justify-between gap-2 bg-black/50 border border-white/10 rounded-xl px-3 py-2.cursor-pointer"
                               >
                                 <div className="flex items-center gap-2">
                                   <input
@@ -1083,7 +1035,9 @@ export default function TestsPage() {
                                     checked={selectedTopicsMulti.includes(
                                       topic.id
                                     )}
-                                    onChange={() => toggleWeakTopic(topic.id)}
+                                    onChange={() =>
+                                      toggleWeakTopic(topic.id)
+                                    }
                                     className="h-3 w-3 rounded border border-white/40 bg-black/60"
                                   />
                                   <div className="flex flex-col">
@@ -1107,8 +1061,9 @@ export default function TestsPage() {
                       </div>
                     )}
 
-                    {/* Количество вопросов + сложность */}
+                    {/* Количество вопросов + сложность + пояснение */}
                     <div className="grid gap-3 md:grid-cols-4 text-xs md:text-sm mt-2">
+                      {/* Количество вопросов */}
                       <div className="space-y-1">
                         <p className="text-[11px] text-purple-200/90">
                           Количество вопросов
@@ -1125,7 +1080,8 @@ export default function TestsPage() {
                         </select>
                       </div>
 
-                      <div className="space-y-1 md:col-span-1">
+                      {/* Сложность */}
+                      <div className="space-y-1">
                         <p className="text-[11px] text-purple-200/90">
                           Сложность
                         </p>
@@ -1147,7 +1103,7 @@ export default function TestsPage() {
                             className={`text-[11px] px-3 py-1 rounded-full border ${
                               difficulty === "medium"
                                 ? "bg-white text-black border-white"
-                                : "bg-black/40 text-purple-100 border-white/20 hover:bg.white/5"
+                                : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
                             } transition`}
                           >
                             Средний
@@ -1155,27 +1111,18 @@ export default function TestsPage() {
                           <button
                             type="button"
                             onClick={() => setDifficulty("hard")}
-                            className={`text-[11px] px-3.py-1 rounded-full border ${
+                            className={`text-[11px] px-3 py-1 rounded-full border ${
                               difficulty === "hard"
                                 ? "bg-white text-black border-white"
-                                : "bg-black/40 text-purple-100 border-white/20 hover:bg.white/5"
-                            } transition`}
+                                : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+                            }.transition`}
                           >
-                            <button
-  type="button"
-  onClick={() => setDifficulty("hard")}
-  className={`text-[11px] px-3 py-1 rounded-full border ${
-    difficulty === "hard"
-      ? "bg-white text-black border-white"
-      : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
-  } transition`}
->
-  Сложный
-</button>
-
+                            Сложный
+                          </button>
                         </div>
                       </div>
 
+                      {/* Пояснение */}
                       <div className="space-y-1 md:col-span-2 text-[11px] text-purple-200/90">
                         <p>Что будет дальше?</p>
                         <p>
@@ -1191,26 +1138,27 @@ export default function TestsPage() {
                       <div className="flex flex-col gap-2 text-[11px] text-purple-200/80">
                         <p>
                           После завершения теста статус тем обновится в{" "}
-                          <span className="font-semibold">“Карте знаний”</span>.
+                          <span className="font-semibold">
+                            “Карте знаний”
+                          </span>
+                          .
                         </p>
                         <button
                           type="button"
                           onClick={handleExplainTopic}
                           disabled={explainLoading}
-                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-white/30 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-white/30 hover:bg-white/5.disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {explainLoading ? (
-                            <>Объясняем тему…</>
-                          ) : (
-                            <>Объяснить тему перед тестом</>
-                          )}
+                          {explainLoading
+                            ? "Объясняем тему…"
+                            : "Объяснить тему перед тестом"}
                         </button>
                       </div>
                       <button
                         type="button"
                         onClick={handleStartTest}
                         disabled={isGenerating}
-                        className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold.shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
                         {isGenerating ? "Генерируем тест…" : "Начать тест"}
                       </button>
@@ -1269,7 +1217,7 @@ export default function TestsPage() {
                             key={idx}
                             type="button"
                             onClick={() => setSelectedOptionIndex(idx)}
-                            className={`w-full text-left px-3 py-2 rounded-xl border transition ${
+                            className={`w-full text-left px-3 py-2 rounded-xl border.transiton ${
                               selectedOptionIndex === idx
                                 ? "bg-purple-500/80 border-purple-300 text-white"
                                 : "bg-black/60 border-white/15 hover:bg-white/5"
@@ -1283,7 +1231,7 @@ export default function TestsPage() {
                         <button
                           type="button"
                           onClick={handleAnswerAndNext}
-                          className="px-4 py-2 rounded-full bg.white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
                         >
                           {currentQuestionIndex ===
                           currentTest.questions.length - 1
@@ -1296,7 +1244,7 @@ export default function TestsPage() {
 
                   {/* Результат теста + разбор ошибок */}
                   {testFinished && testSummary && (
-                    <section className="bg-black/45 border border-white/10 rounded-2xl p-4 space-y-3">
+                    <section className="bg-black/45 border.border-white/10 rounded-2xl p-4 space-y-3">
                       <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                         Результат теста
                       </p>
@@ -1320,7 +1268,7 @@ export default function TestsPage() {
                             return (
                               <div
                                 key={topicId}
-                                className="flex items-center justify-between gap-2"
+                                className="flex.items-center justify-between.gap-2"
                               >
                                 <span>{stat.title}</span>
                                 <span>{accuracy}% верных ответов</span>
@@ -1334,7 +1282,7 @@ export default function TestsPage() {
                           type="button"
                           onClick={handleReviewErrors}
                           disabled={reviewLoading}
-                          className="px-4 py-2 rounded-full border border-white/40 text-xs text-purple-100 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 rounded-full border border-white/40 text-xs text-purple-100 hover:bg-white/5.disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {reviewLoading
                             ? "Разбираем ошибки…"
@@ -1343,7 +1291,7 @@ export default function TestsPage() {
                         <button
                           type="button"
                           onClick={resetCurrentTest}
-                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                          className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100.transition"
                         >
                           Пройти ещё один тест
                         </button>
