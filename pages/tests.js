@@ -1110,8 +1110,18 @@ export default function TestsPage() {
                                 : "bg-black/40 text-purple-100 border-white/20 hover:bg.white/5"
                             } transition`}
                           >
-                            Сложный
-                          </button>
+                            <button
+  type="button"
+  onClick={() => setDifficulty("hard")}
+  className={`text-[11px] px-3 py-1 rounded-full border ${
+    difficulty === "hard"
+      ? "bg-white text-black border-white"
+      : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+  } transition`}
+>
+  Сложный
+</button>
+
                         </div>
                       </div>
 
