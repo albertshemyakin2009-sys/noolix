@@ -1061,7 +1061,7 @@ export default function TestsPage() {
                       </div>
                     )}
 
-                    {/* Количество вопросов + сложность + пояснение */}
+                                        {/* Количество вопросов + сложность + пояснение */}
                     <div className="grid gap-3 md:grid-cols-4 text-xs md:text-sm mt-2">
                       {/* Количество вопросов */}
                       <div className="space-y-1">
@@ -1097,6 +1097,7 @@ export default function TestsPage() {
                           >
                             Лёгкий
                           </button>
+
                           <button
                             type="button"
                             onClick={() => setDifficulty("medium")}
@@ -1108,6 +1109,7 @@ export default function TestsPage() {
                           >
                             Средний
                           </button>
+
                           <button
                             type="button"
                             onClick={() => setDifficulty("hard")}
@@ -1115,14 +1117,14 @@ export default function TestsPage() {
                               difficulty === "hard"
                                 ? "bg-white text-black border-white"
                                 : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
-                            }.transition`}
+                            } transition`}
                           >
                             Сложный
                           </button>
                         </div>
                       </div>
 
-                      {/* Пояснение */}
+                      {/* Пояснение справа */}
                       <div className="space-y-1 md:col-span-2 text-[11px] text-purple-200/90">
                         <p>Что будет дальше?</p>
                         <p>
@@ -1132,6 +1134,7 @@ export default function TestsPage() {
                         </p>
                       </div>
                     </div>
+
 
                     {/* Кнопки: объяснить тему + начать тест */}
                     <div className="flex items-center justify-between pt-2">
