@@ -1134,8 +1134,6 @@ export default function TestsPage() {
                         </p>
                       </div>
                     </div>
-
-
                     {/* Кнопки: объяснить тему + начать тест */}
                     <div className="flex items-center justify-between pt-2">
                       <div className="flex flex-col gap-2 text-[11px] text-purple-200/80">
