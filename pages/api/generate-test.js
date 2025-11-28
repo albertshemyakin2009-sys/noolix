@@ -1,13 +1,18 @@
 // pages/api/generate-test.js
-import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Метод не разрешён. Используй POST." });
+    return res
+      .status(405)
+      .json({ error: "Метод не разрешён. Используй POST." });
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({
+      error:
+        "Отсутствует OPENAI_API_KEY на сервере. Добавь его в переменные окружения Vercel.",
+    });
   }
 
   try {
@@ -26,7 +31,9 @@ export default async function handler(req, res) {
     }
 
     const safeQuestionCount =
-      typeof questionCount === "number" && questionCount > 0 && questionCount <= 20
+      typeof questionCount === "number" &&
+      questionCount > 0 &&
+      questionCount <= 20
         ? questionCount
         : 5;
 
@@ -101,21 +108,45 @@ ${topicsListForPrompt}
 Только один корректный JSON-объект.
 `;
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: difficultyToken === "hard" ? 0.5 : 0.3,
-      max_tokens: 1200,
-    });
+    // Вызов OpenAI через fetch, без пакета "openai"
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: difficultyToken === "hard" ? 0.5 : 0.3,
+          max_tokens: 1200,
+        }),
+      }
+    );
 
-    const raw = completion.choices?.[0]?.message?.content;
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      console.error("OpenAI API error:", openaiResponse.status, errorBody);
+      return res.status(500).json({
+        error: "Ошибка при обращении к OpenAI API",
+        details: errorBody,
+      });
+    }
+
+    const completion = await openaiResponse.json();
+    const raw =
+      completion.choices?.[0]?.message?.content &&
+      String(completion.choices[0].message.content).trim();
+
     if (!raw) {
-      return res
-        .status(500)
-        .json({ error: "Модель не вернула контент при генерации теста." });
+      return res.status(500).json({
+        error: "Модель не вернула контент при генерации теста.",
+      });
     }
 
     let parsed;
@@ -154,7 +185,7 @@ ${topicsListForPrompt}
             ? q.topicId.trim()
             : topics[0]?.id || "custom";
 
-        let normalizedDifficulty = difficultyToken;
+        let normalizedDifficulty = q.difficulty;
         if (!["easy", "medium", "hard"].includes(normalizedDifficulty)) {
           normalizedDifficulty = difficultyToken;
         }
