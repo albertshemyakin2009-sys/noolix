@@ -968,26 +968,76 @@ export default function TestsPage() {
 
                     {/* Свой вариант */}
                     {topicSource === "custom" && (
-                      <div className="grid gap-3 md:grid-cols-3 text-xs md:text-sm mt-2">
-                        <div className="space-y-1">
-                          <p className="text-[11px] text-purple-200/90">
-                            Предмет
-                          </p>
-                          <select
-                            className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                            value={selectedSubject}
-                            onChange={(e) => {
-                              setSelectedSubject(e.target.value);
-                              setSelectedTopicsMulti([]);
-                              resetCurrentTest();
-                            }}
-                          >
-                            {Object.keys(TOPICS).map((subj) => (
-                              <option key={subj} value={subj}>
-                                {subj}
-                              </option>
-                            ))}
-                          </select>
+                     <div className="grid gap-3 md:grid-cols-4 text-xs md:text-sm mt-2">
+  {/* Количество вопросов */}
+  <div className="space-y-1">
+    <p className="text-[11px] text-purple-200/90">
+      Количество вопросов
+    </p>
+    <select
+      className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
+      value={questionCount}
+      onChange={(e) => setQuestionCount(Number(e.target.value))}
+    >
+      <option value={5}>5 вопросов</option>
+      <option value={10}>10 вопросов</option>
+    </select>
+  </div>
+
+  {/* Сложность */}
+  <div className="space-y-1">
+    <p className="text-[11px] text-purple-200/90">
+      Сложность
+    </p>
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => setDifficulty("easy")}
+        className={`text-[11px] px-3 py-1 rounded-full border ${
+          difficulty === "easy"
+            ? "bg-white text-black border-white"
+            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+        } transition`}
+      >
+        Лёгкий
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setDifficulty("medium")}
+        className={`text-[11px] px-3 py-1 rounded-full border ${
+          difficulty === "medium"
+            ? "bg-white text-black border-white"
+            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+        } transition`}
+      >
+        Средний
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setDifficulty("hard")}
+        className={`text-[11px] px-3 py-1 rounded-full border ${
+          difficulty === "hard"
+            ? "bg-white text-black border-white"
+            : "bg-black/40 text-purple-100 border-white/20 hover:bg-white/5"
+        } transition`}
+      >
+        Сложный
+      </button>
+    </div>
+  </div>
+
+  {/* Пояснение справа */}
+  <div className="space-y-1 md:col-span-2 text-[11px] text-purple-200/90">
+    <p>Что будет дальше?</p>
+    <p>
+      NOOLIX сгенерирует тест на выбранном уровне сложности и после выполнения
+      обновит карту знаний по тем темам, которые были в тесте.
+    </p>
+  </div>
+</div>
+
                         </div>
                         <div className="space-y-1 md:col-span-2">
                           <p className="text-[11px] text-purple-200/90">
