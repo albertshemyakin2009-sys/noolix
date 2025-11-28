@@ -1006,7 +1006,6 @@ export default function TestsPage() {
                           />
                         </div>
                       </div>
-                    )}
 
                     {/* Слабые темы */}
                     {topicSource === "weak" && (
