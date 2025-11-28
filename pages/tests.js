@@ -759,7 +759,18 @@ export default function TestsPage() {
       {/* Контент */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+         <div
+  className="
+    w-full max-w-5xl
+    grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]
+    bg-gradient-to-br from-black/70 via-[#1A0024]/95 to-black/80
+    border border-white/5
+    rounded-3xl
+    p-4 md:p-6
+    shadow-[0_20px_60px_rgba(0,0,0,0.85)]
+  "
+>
+
             {/* Левая колонка */}
             <aside className="space-y-4">
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
