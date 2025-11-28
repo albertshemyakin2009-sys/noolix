@@ -108,7 +108,6 @@ ${topicsListForPrompt}
 Только один корректный JSON-объект.
 `;
 
-    // Вызов OpenAI через fetch, без пакета "openai"
     const openaiResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
