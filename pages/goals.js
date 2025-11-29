@@ -59,24 +59,20 @@ export default function GoalsPage() {
   const [newWeeklyHours, setNewWeeklyHours] = useState("");
 
   const [error, setError] = useState("");
-
   const [stepInputs, setStepInputs] = useState({});
 
-  const [contextSubject, setContextSubject] = useState("Математика");
   const [knowledgeMap, setKnowledgeMap] = useState({});
 
-  // ---- Загрузка контекста и целей ----
+  // ---- Загрузка контекста, карты знаний и целей ----
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
 
-      // контекст (предмет и т.п.)
       const rawContext = window.localStorage.getItem("noolixContext");
       if (rawContext) {
         try {
           const ctx = JSON.parse(rawContext);
-          if (ctx && ctx.subject) {
-            setContextSubject(ctx.subject);
+          if (ctx && ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
             setNewSubject(ctx.subject);
           }
         } catch (e) {
@@ -84,7 +80,6 @@ export default function GoalsPage() {
         }
       }
 
-      // карта знаний
       const rawKnowledge = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
       if (rawKnowledge) {
         try {
@@ -97,7 +92,6 @@ export default function GoalsPage() {
         }
       }
 
-      // цели
       const rawGoals = window.localStorage.getItem(GOALS_STORAGE_KEY);
       if (rawGoals) {
         const parsed = JSON.parse(rawGoals);
@@ -185,7 +179,7 @@ export default function GoalsPage() {
     setGoals((prev) =>
       prev.map((g) => {
         if (g.id !== goalId) return g;
-        const steps = Array.isArray(g.steps) ? g.steps.slice() : [];
+        const steps = Array.isArray(g.steps) ? [...g.steps] : [];
         steps.push({
           id: Date.now(),
           text,
@@ -223,7 +217,7 @@ export default function GoalsPage() {
     );
   };
 
-  // ---- Разделение: активные / завершённые ----
+  // ---- Активные / завершённые ----
   const activeGoals = goals.filter((g) => computeProgress(g) < 1);
   const completedGoals = goals.filter((g) => computeProgress(g) >= 1);
 
@@ -255,7 +249,7 @@ export default function GoalsPage() {
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
-            <span className="animate-pulse.opacity-40">•</span>
+            <span className="animate-pulse opacity-40">•</span>
           </div>
         </div>
       </div>
@@ -274,7 +268,7 @@ export default function GoalsPage() {
 
       {/* Кнопка меню на мобилке */}
       <button
-        className="absolute.top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
@@ -301,28 +295,12 @@ export default function GoalsPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${
-                    item.key === "goals"
-                      ? "bg-white/10"
-                      : "hover:bg-white/5"
-                  }
-                `}
+                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === "goals" ? "ring-2 ring-purple-200" : ""}
-                  `}
-                >
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
-                <span
-                  className={
-                    item.key === "goals" ? "font-semibold" : ""
-                  }
-                >
-                  {item.label}
-                </span>
+                <span>{item.label}</span>
               </a>
             ))}
           </div>
@@ -334,17 +312,19 @@ export default function GoalsPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex.items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition ${
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition ${
                   item.key === "goals" ? "bg-white/10" : ""
                 }`}
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm.shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white ${
+                    item.key === "goals" ? "ring-2 ring-purple-200" : ""
+                  }`}
+                >
                   {item.icon}
                 </span>
                 <span
-                  className={
-                    item.key === "goals" ? "font-semibold" : ""
-                  }
+                  className={item.key === "goals" ? "font-semibold" : ""}
                 >
                   {item.label}
                 </span>
@@ -371,7 +351,7 @@ export default function GoalsPage() {
             {/* Левая колонка: фокус + создание цели */}
             <aside className="space-y-4">
               {/* Фокус на сегодня */}
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Фокус на сегодня
                 </p>
@@ -385,7 +365,7 @@ export default function GoalsPage() {
                     {todayFocusSteps.map((item) => (
                       <li
                         key={item.stepId}
-                        className="bg-black/60 border border-white/10 rounded-xl px-3 py-2"
+                        className="bg-black/50 border border-white/10 rounded-xl px-3 py-2"
                       >
                         <p className="font-semibold">{item.text}</p>
                         <p className="text-[10px] text-purple-200/80">
@@ -413,7 +393,7 @@ export default function GoalsPage() {
               </section>
 
               {/* Создание цели */}
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                   Новая цель
                 </p>
@@ -425,7 +405,7 @@ export default function GoalsPage() {
                     </p>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
+                      className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
                       placeholder='Например: «Сдать профильную математику на 80+»'
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
@@ -438,7 +418,7 @@ export default function GoalsPage() {
                         Предмет
                       </p>
                       <select
-                        className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
                         value={newSubject}
                         onChange={(e) => setNewSubject(e.target.value)}
                       >
@@ -455,7 +435,7 @@ export default function GoalsPage() {
                         Тип цели
                       </p>
                       <select
-                        className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
                         value={newType}
                         onChange={(e) => setNewType(e.target.value)}
                       >
@@ -478,7 +458,7 @@ export default function GoalsPage() {
                       </p>
                       <input
                         type="date"
-                        className="w-full px-2 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
+                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
                         value={newDeadline || ""}
                         onChange={(e) => setNewDeadline(e.target.value)}
                       />
@@ -494,12 +474,10 @@ export default function GoalsPage() {
                       <input
                         type="number"
                         min="0"
-                        className="w-full px-2 py-2.rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
+                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
                         placeholder="Например: 5"
                         value={newWeeklyHours}
-                        onChange={(e) =>
-                          setNewWeeklyHours(e.target.value)
-                        }
+                        onChange={(e) => setNewWeeklyHours(e.target.value)}
                       />
                     </div>
                   </div>
@@ -510,7 +488,7 @@ export default function GoalsPage() {
                     </p>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
+                      className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
                       placeholder='Например: «решаю 80% задач ЕГЭ уровня C», «стабильная 4+ по четверти»'
                       value={newMetric}
                       onChange={(e) => setNewMetric(e.target.value)}
@@ -567,7 +545,7 @@ export default function GoalsPage() {
                       return (
                         <div
                           key={goal.id}
-                          className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3"
+                          className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -590,8 +568,8 @@ export default function GoalsPage() {
                               )}
                               {weakCount !== null && (
                                 <p className="text-[10px] text-purple-200/75 mt-0.5">
-                                  Слабых тем по {goal.subject.toLowerCase()}:
-                                  {" "}{weakCount}
+                                  Слабых тем по{" "}
+                                  {goal.subject.toLowerCase()}: {weakCount}
                                 </p>
                               )}
                             </div>
@@ -639,10 +617,7 @@ export default function GoalsPage() {
                                         type="checkbox"
                                         checked={step.done}
                                         onChange={() =>
-                                          handleToggleStep(
-                                            goal.id,
-                                            step.id
-                                          )
+                                          handleToggleStep(goal.id, step.id)
                                         }
                                         className="h-3 w-3 rounded border border-white/40 bg-black/60"
                                       />
@@ -657,13 +632,14 @@ export default function GoalsPage() {
                                       </span>
                                     </label>
                                     <button
-  type="button"
-  onClick={() => handleDeleteStep(goal.id, step.id)}
-  className="text-[10px] text-purple-200/70 hover:text-red-300"
->
-  ×
-</button>
-
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteStep(goal.id, step.id)
+                                      }
+                                      className="text-[10px] text-purple-200/70 hover:text-red-300"
+                                    >
+                                      ×
+                                    </button>
                                   </li>
                                 ))}
                               </ul>
@@ -672,7 +648,7 @@ export default function GoalsPage() {
                             <div className="flex items-center gap-2 mt-1">
                               <input
                                 type="text"
-                                className="flex-1 px-2.py-1.5 rounded-xl bg-black/60 border border-white/20 focus:outline-none focus:ring-1 focus:ring-purple-300 text-[11px]"
+                                className="flex-1 px-2 py-1.5 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-1 focus:ring-purple-300 text-[11px]"
                                 placeholder="Добавить шаг (например: «пройти 1 вариант ЕГЭ»)"
                                 value={stepInputs[goal.id] || ""}
                                 onChange={(e) =>
@@ -719,7 +695,7 @@ export default function GoalsPage() {
                     {completedGoals.map((goal) => (
                       <div
                         key={goal.id}
-                        className="bg-black/30 border border-white/10 rounded-2xl px-3 py-2 flex items-center justify-between text-[11px] md:text-xs text-purple-100"
+                        className="bg-black/25 border border-white/10 rounded-2xl px-3 py-2 flex items-center justify-between text-[11px] md:text-xs text-purple-100"
                       >
                         <div>
                           <p className="font-semibold">{goal.title}</p>
