@@ -45,6 +45,88 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("ru-RU");
 }
 
+// Шаблонные шаги для разных типов целей
+function getDefaultStepsForGoal(subject, type) {
+  if (type === "Экзамен / тест") {
+    switch (subject) {
+      case "Математика":
+        return [
+          "Пройти 1 диагностический вариант по математике",
+          "Повторить формулы по алгебре и тригонометрии",
+          "Разобрать 5 сложных задач из прошлых вариантов",
+        ];
+      case "Физика":
+        return [
+          "Пройти 1 вариант по механике",
+          "Повторить формулы по кинематике и динамике",
+          "Решить 10 задач на законы Ньютона и законы сохранения",
+        ];
+      case "Русский язык":
+        return [
+          "Пройти тест по орфографии (Н/НН, приставки, корни)",
+          "Разобрать 10 предложений с причастными и деепричастными оборотами",
+          "Написать и разобрать 1 полноценное сочинение",
+        ];
+      case "Английский язык":
+        return [
+          "Пройти тест по временам (Present/Past/Future)",
+          "Выучить и повторить 30 новых слов по экзаменационной лексике",
+          "Написать 1 эссе и разобрать ошибки",
+        ];
+      default:
+        return [];
+    }
+  }
+
+  if (type === "Подтянуть оценку") {
+    return [
+      "Разобрать последние контрольные работы и выписать слабые темы",
+      "Договориться с учителем о дополнительных вопросах/консультации",
+      "Сделать мини-план: что повторять каждую неделю",
+    ];
+  }
+
+  if (type === "Привычка") {
+    return [
+      "Выбрать удобное время для учёбы каждый день",
+      "Заниматься минимум 20 минут по предмету 5 дней подряд",
+      "Отметить в календаре, в какие дни получилось соблюдать режим",
+    ];
+  }
+
+  if (type === "Проект") {
+    return [
+      "Сформулировать тему и цель проекта",
+      "Разбить проект на этапы и сроки",
+      "Сделать первый черновой результат и показать наставнику/учителю",
+    ];
+  }
+
+  return [];
+}
+
+// Простой индикатор потенциальной перегрузки / выгорания
+function isBurnoutRisk(goal) {
+  if (!goal.weeklyHours || !goal.deadline) return false;
+  const stepsCount = goal.steps ? goal.steps.length : 0;
+  if (stepsCount <= 3) return false;
+
+  const deadline = new Date(goal.deadline);
+  if (Number.isNaN(deadline.getTime())) return false;
+
+  const now = new Date();
+  const diffMs = deadline.getTime() - now.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (diffDays <= 0) return false;
+
+  // Очень грубая эвристика: много шагов, мало часов, мало времени
+  if (diffDays < 30 && stepsCount >= 8 && goal.weeklyHours < 5) {
+    return true;
+  }
+  return false;
+}
+
 export default function GoalsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -115,7 +197,7 @@ export default function GoalsPage() {
     }
   }, [goals]);
 
-  // --- слабые темы по предмету из карты знаний (для связи с прогрессом) ---
+  // --- слабые темы по предмету из карты знаний ---
   const getWeakTopicsCount = (subject) => {
     const subjEntry = knowledgeMap[subject];
     if (!subjEntry) return null;
@@ -140,6 +222,13 @@ export default function GoalsPage() {
       return;
     }
 
+    const defaultStepsTexts = getDefaultStepsForGoal(newSubject, newType);
+    const steps = defaultStepsTexts.map((text) => ({
+      id: Date.now() + Math.random(),
+      text,
+      done: false,
+    }));
+
     const goal = {
       id: Date.now(),
       title,
@@ -149,7 +238,7 @@ export default function GoalsPage() {
       metric: metric || null,
       weeklyHours: newWeeklyHours ? Number(newWeeklyHours) : null,
       createdAt: new Date().toISOString(),
-      steps: [],
+      steps,
     };
 
     setGoals((prev) => [goal, ...prev]);
@@ -217,6 +306,26 @@ export default function GoalsPage() {
     );
   };
 
+  // ---- Связка: цель → диалог ----
+  const handleFocusGoalInChat = (goal) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "noolixCurrentGoal",
+        JSON.stringify({
+          id: goal.id,
+          title: goal.title,
+          subject: goal.subject,
+          type: goal.type,
+          metric: goal.metric,
+        })
+      );
+    } catch (e) {
+      console.warn("Failed to save noolixCurrentGoal", e);
+    }
+    window.location.href = "/chat";
+  };
+
   // ---- Активные / завершённые ----
   const activeGoals = goals.filter((g) => computeProgress(g) < 1);
   const completedGoals = goals.filter((g) => computeProgress(g) >= 1);
@@ -243,9 +352,7 @@ export default function GoalsPage() {
           <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
-          <p className="text-xs text-purple-100/80">
-            Загружаем твои цели…
-          </p>
+          <p className="text-xs text-purple-100/80">Загружаем твои цели…</p>
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
@@ -351,8 +458,8 @@ export default function GoalsPage() {
             {/* Левая колонка: фокус + создание цели */}
             <aside className="space-y-4">
               {/* Фокус на сегодня */}
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px].uppercase tracking-wide text-purple-300/80 mb-1">
                   Фокус на сегодня
                 </p>
                 {todayFocusSteps.length === 0 ? (
@@ -365,7 +472,7 @@ export default function GoalsPage() {
                     {todayFocusSteps.map((item) => (
                       <li
                         key={item.stepId}
-                        className="bg-black/50 border border-white/10 rounded-xl px-3 py-2"
+                        className="bg-black/60 border border-white/10 rounded-xl px-3 py-2"
                       >
                         <p className="font-semibold">{item.text}</p>
                         <p className="text-[10px] text-purple-200/80">
@@ -393,7 +500,7 @@ export default function GoalsPage() {
               </section>
 
               {/* Создание цели */}
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                   Новая цель
                 </p>
@@ -541,11 +648,12 @@ export default function GoalsPage() {
                       const progress = computeProgress(goal);
                       const percent = Math.round(progress * 100);
                       const weakCount = getWeakTopicsCount(goal.subject);
+                      const burnout = isBurnoutRisk(goal);
 
                       return (
                         <div
                           key={goal.id}
-                          className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3"
+                          className="bg-black/35 border border-white/10 rounded-2xl p-4 space-y-3"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -569,17 +677,46 @@ export default function GoalsPage() {
                               {weakCount !== null && (
                                 <p className="text-[10px] text-purple-200/75 mt-0.5">
                                   Слабых тем по{" "}
-                                  {goal.subject.toLowerCase()}: {weakCount}
+                                  {goal.subject.toLowerCase()}: {weakCount}{" "}
+                                  (
+                                  <a
+                                    href="/progress"
+                                    className="underline underline-offset-2"
+                                  >
+                                    смотреть в карте знаний
+                                  </a>
+                                  )
+                                </p>
+                              )}
+                              {burnout && (
+                                <p className="text-[10px] text-orange-300 mt-1">
+                                  Нагрузка выглядит высокой: много шагов,
+                                  мало времени и часов в неделю. Подумай,
+                                  не стоит ли уменьшить нагрузку или
+                                  сдвинуть дедлайн.
                                 </p>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteGoal(goal.id)}
-                              className="text-[10px] text-purple-200/70 hover:text-red-300"
-                            >
-                              Удалить
-                            </button>
+                            <div className="flex flex-col gap-1 items-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleFocusGoalInChat(goal)
+                                }
+                                className="text-[10px] px-3 py-1 rounded-full bg-white text-black font-semibold shadow-md hover:bg-purple-100 transition"
+                              >
+                                Учиться по цели в диалоге
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteGoal(goal.id)
+                                }
+                                className="text-[10px] text-purple-200/70 hover:text-red-300"
+                              >
+                                Удалить
+                              </button>
+                            </div>
                           </div>
 
                           <div className="space-y-1">
@@ -617,7 +754,10 @@ export default function GoalsPage() {
                                         type="checkbox"
                                         checked={step.done}
                                         onChange={() =>
-                                          handleToggleStep(goal.id, step.id)
+                                          handleToggleStep(
+                                            goal.id,
+                                            step.id
+                                          )
                                         }
                                         className="h-3 w-3 rounded border border-white/40 bg-black/60"
                                       />
@@ -634,7 +774,10 @@ export default function GoalsPage() {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        handleDeleteStep(goal.id, step.id)
+                                        handleDeleteStep(
+                                          goal.id,
+                                          step.id
+                                        )
                                       }
                                       className="text-[10px] text-purple-200/70 hover:text-red-300"
                                     >
@@ -695,7 +838,7 @@ export default function GoalsPage() {
                     {completedGoals.map((goal) => (
                       <div
                         key={goal.id}
-                        className="bg-black/25 border border-white/10 rounded-2xl px-3 py-2 flex items-center justify-between text-[11px] md:text-xs text-purple-100"
+                        className="bg-black/30 border border-white/10 rounded-2xl px-3 py-2 flex.items-center justify-between text-[11px] md:text-xs text-purple-100"
                       >
                         <div>
                           <p className="font-semibold">{goal.title}</p>
