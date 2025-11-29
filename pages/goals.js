@@ -657,17 +657,13 @@ export default function GoalsPage() {
                                       </span>
                                     </label>
                                     <button
-                                      type="button"
-                                      onClick={() =>
-                                       .handleDeleteStep(
-                                          goal.id,
-                                          step.id
-                                        )
-                                      }
-                                      className="text-[10px] text-purple-200/70 hover:text-red-300"
-                                    >
-                                      ×
-                                    </button>
+  type="button"
+  onClick={() => handleDeleteStep(goal.id, step.id)}
+  className="text-[10px] text-purple-200/70 hover:text-red-300"
+>
+  ×
+</button>
+
                                   </li>
                                 ))}
                               </ul>
