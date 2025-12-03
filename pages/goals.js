@@ -442,7 +442,7 @@ export default function GoalsPage() {
       </aside>
 
       {/* Контент */}
-      <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div
             className="
@@ -450,11 +450,10 @@ export default function GoalsPage() {
               grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]
               bg-black/40 bg-clip-padding backdrop-blur-sm
               border border-white/10
-              rounded-3xl
-              p-4 md:p-6
-              shadow-[0_18px_45px_rgba(0,0,0,0.55)]
+              rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]
             "
           >
+
             {/* Левая колонка: фокус + создание цели */}
             <aside className="space-y-4">
               {/* Фокус на сегодня */}
