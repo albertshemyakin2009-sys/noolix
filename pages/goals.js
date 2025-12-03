@@ -448,7 +448,7 @@ export default function GoalsPage() {
             className="
               w-full max-w-5xl
               grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]
-              bg-black/35 bg-clip-padding backdrop-blur-sm
+              bg-black/40 bg-clip-padding backdrop-blur-sm
               border border-white/10
               rounded-3xl
               p-4 md:p-6
