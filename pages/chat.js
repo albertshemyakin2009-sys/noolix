@@ -14,9 +14,9 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-function formatTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
+function formatTime(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
@@ -38,6 +38,13 @@ function getSubjectPrepositional(subject) {
   }
 }
 
+const MAX_HISTORY = 40;
+
+const clampHistory = (list) => {
+  if (!Array.isArray(list)) return [];
+  return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
+};
+
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState({
@@ -51,10 +58,13 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
+  const [currentGoal, setCurrentGoal] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // Инициализация: подтягиваем контекст и историю
+  // Инициализация: подтягиваем контекст, текущую цель и историю
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     try {
       const rawContext = window.localStorage.getItem("noolixContext");
       let ctx = {
@@ -67,29 +77,51 @@ export default function ChatPage() {
         ctx = { ...ctx, ...parsed };
       }
 
+      let goalFromStorage = null;
+      try {
+        const rawGoal = window.localStorage.getItem("noolixCurrentGoal");
+        if (rawGoal) {
+          const parsedGoal = JSON.parse(rawGoal);
+          if (parsedGoal && typeof parsedGoal === "object") {
+            goalFromStorage = parsedGoal;
+            if (parsedGoal.subject) {
+              ctx = { ...ctx, subject: parsedGoal.subject };
+            }
+          }
+        }
+      } catch (eGoal) {
+        console.warn("Failed to read noolixCurrentGoal", eGoal);
+      }
+
       const rawHistory = window.localStorage.getItem("noolixChatHistory");
       let initialMessages = [];
       if (rawHistory) {
-        const arr = JSON.parse(rawHistory);
-        if (Array.isArray(arr) && arr.length > 0) {
-          initialMessages = arr;
+        try {
+          const arr = JSON.parse(rawHistory);
+          if (Array.isArray(arr) && arr.length > 0) {
+            initialMessages = clampHistory(arr);
+          }
+        } catch (eHistory) {
+          console.warn("Failed to parse noolixChatHistory", eHistory);
         }
       }
 
       setContext(ctx);
+      if (goalFromStorage) {
+        setCurrentGoal(goalFromStorage);
+      }
 
       if (initialMessages.length > 0) {
         setMessages(initialMessages);
       } else {
-        initialMessages = [
-          {
-            id: Date.now(),
-            role: "assistant",
-            content: `Привет! Я NOOLIX. Давай разберёмся с предметом «${ctx.subject}» на уровне «${ctx.level}». Расскажи, что именно тебе сейчас сложно или что хочешь повторить?`,
-            createdAt: new Date().toISOString(),
-          },
-        ];
-        setMessages(initialMessages);
+        const starter = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages([starter]);
       }
     } catch (e) {
       console.warn("Failed to init chat context/history", e);
@@ -112,14 +144,18 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Сохраняем историю в localStorage
+  // Сохраняем историю в localStorage (обрезаем до MAX_HISTORY)
   useEffect(() => {
     try {
+      if (typeof window === "undefined") return;
       if (messages.length > 0) {
+        const compact = clampHistory(messages);
         window.localStorage.setItem(
           "noolixChatHistory",
-          JSON.stringify(messages)
+          JSON.stringify(compact)
         );
+      } else {
+        window.localStorage.removeItem("noolixChatHistory");
       }
     } catch (e) {
       console.warn("Failed to save chat history", e);
@@ -159,7 +195,9 @@ export default function ChatPage() {
         }
         console.error("API /api/chat error:", data);
         throw new Error(
-          data.error || data.details || "Ошибка при обращении к серверу"
+          data?.error?.message ||
+            data?.message ||
+            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
         );
       }
 
@@ -176,7 +214,7 @@ export default function ChatPage() {
         createdAt: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => clampHistory([...prev, assistantMessage]));
     } catch (err) {
       console.error(err);
       setError(
@@ -199,7 +237,7 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
     };
 
-    const newMessages = [...messages, userMessage];
+    const newMessages = clampHistory([...messages, userMessage]);
     setMessages(newMessages);
     setInput("");
     setThinking(true);
@@ -228,29 +266,42 @@ export default function ChatPage() {
   const handleQuickAction = (key) => {
     const subjPrep = getSubjectPrepositional(context.subject);
     let text = "";
-    if (key === "explain") {
-      text = `Объясни тему по ${subjPrep}: `;
-    } else if (key === "steps") {
-      text = `Разбери по шагам задачу по ${subjPrep}: `;
-    } else if (key === "test") {
-      text = `Сделай мини-тест по ${subjPrep}: `;
+
+    switch (key) {
+      case "explain":
+        text = `Объясни, пожалуйста, тему по ${subjPrep}, которая мне сейчас сложна.`;
+        break;
+      case "steps":
+        text =
+          "Разбери, пожалуйста, задачу по шагам: напиши условие, потом вместе разберём решение.";
+        break;
+      case "test":
+        text = `Сделай, пожалуйста, мини-тест по ${subjPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        break;
+      default:
+        break;
     }
-    setInput(text);
+
+    if (text) {
+      setInput(text);
+    }
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white gap-3">
-        <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent animate-pulse tracking-wide">
-          NOOLIX
-        </h1>
-        <p className="text-xs text-purple-100/80">
-          Загружаем контекст диалога…
-        </p>
-        <div className="flex gap-1 text-sm text-purple-100">
-          <span className="animate-pulse">•</span>
-          <span className="animate-pulse opacity-70">•</span>
-          <span className="animate-pulse opacity-40">•</span>
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+            NOOLIX
+          </div>
+          <p className="text-xs text-purple-100/80">
+            Загружаем твою последнюю сессию…
+          </p>
+          <div className="flex gap-1 text-sm text-purple-100">
+            <span className="animate-pulse">•</span>
+            <span className="animate-pulse opacity-70">•</span>
+            <span className="animate-pulse opacity-40">•</span>
+          </div>
         </div>
       </div>
     );
@@ -258,6 +309,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+      {/* Оверлей при открытом меню на мобильных */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -265,6 +317,7 @@ export default function ChatPage() {
         />
       )}
 
+      {/* Кнопка меню для мобильных */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -272,59 +325,83 @@ export default function ChatPage() {
         ☰ Меню
       </button>
 
+      {/* Сайдбар */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
+        transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
-        bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
+        bg-gradient-to-b from-black/50 via-[#2E003E]/85 to-black/80 border-r border-white/10`}
       >
         <div className="mb-3">
-          <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
-            NOOLIX
+          <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 border border-white/15 shadow-lg backdrop-blur">
+            <span className="text-lg">🚀</span>
+            <span className="text-xs font-semibold tracking-wide text-purple-50">
+              NOOLIX • тьютор с ИИ
+            </span>
           </div>
-          <p className="text-xs text-purple-200 mt-1 opacity-80">
-            AI-платформа для учёбы
-          </p>
         </div>
 
-        <nav className="space-y-3 text-sm md:text-base">
-          <div className="space-y-2">
-            {primaryMenuItems.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === "chat" ? "bg-white/15" : "hover:bg-white/5"}
-                `}
-              >
-                <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
+        <nav className="space-y-6 text-sm">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-2">
+              Основное
+            </p>
+            <div className="space-y-1">
+              {primaryMenuItems.map((item) => (
+                <a
+                  key={item.key}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                    ${
+                      item.key === "chat"
+                        ? "bg-white/15"
+                        : "hover:bg-white/5 text-purple-100/90"
+                    }
                   `}
                 >
-                  {item.icon}
-                </span>
-                <span className={item.key === "chat" ? "font-semibold" : ""}>
-                  {item.label}
-                </span>
-              </a>
-            ))}
+                  <span
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md
+                      bg-gradient-to-br from-purple-100 to-white
+                      ${
+                        item.key === "chat" ? "ring-2 ring-purple-200" : ""
+                      }
+                    `}
+                  >
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </div>
           </div>
 
-          <div className="h-px bg-white/10 my-2" />
-
-          <div className="space-y-2">
-            {secondaryMenuItems.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
-              >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </a>
-            ))}
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-2">
+              Остальное
+            </p>
+            <div className="space-y-1">
+              {secondaryMenuItems.map((item) => (
+                <a
+                  key={item.key}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                    hover:bg-white/5 text-purple-100/90
+                  `}
+                >
+                  <span
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md
+                      bg-gradient-to-br from-purple-100 to-white
+                      ${
+                        item.key === "chat" ? "ring-2 ring-purple-200" : ""
+                      }
+                    `}
+                  >
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </div>
           </div>
         </nav>
       </aside>
@@ -346,6 +423,12 @@ export default function ChatPage() {
                 <p className="text-xs text-purple-100">
                   Уровень: <span className="font-semibold">{context.level}</span>
                 </p>
+                {currentGoal && (
+                  <p className="text-xs text-purple-100">
+                    Цель:{" "}
+                    <span className="font-semibold">{currentGoal.title}</span>
+                  </p>
+                )}
                 <p className="text-[11px] text-purple-300/80 mt-1">
                   Режим: подготовка к экзамену
                 </p>
@@ -365,11 +448,15 @@ export default function ChatPage() {
                   Мини-цель: разобраться в одной теме и решить хотя бы 2–3
                   задачи без подсказок.
                 </p>
+                <p className="text-[11px] text-purple-300/80">
+                  Старайся формулировать вопросы максимально конкретно — так
+                  тьютор подстроится под твой уровень и пробелы.
+                </p>
               </section>
 
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
-                  Быстрые запросы
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-2">
+                  Быстрые действия
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {quickActions.map((action) => (
@@ -377,19 +464,13 @@ export default function ChatPage() {
                       key={action.key}
                       type="button"
                       onClick={() => handleQuickAction(action.key)}
-                      className="text-[11px] px-3 py-1 rounded-full bg-white/5 border border-white/15 hover:bg-white/10 transition"
+                      className="px-3 py-1.5 rounded-full text-[11px] bg-white/10 hover:bg-white/15 border border-white/15 transition"
                     >
                       {action.label}
                     </button>
                   ))}
                 </div>
               </section>
-
-              {error && (
-                <section className="bg-red-900/40 border border-red-500/60 rounded-2xl p-3">
-                  <p className="text-[11px] text-red-100">{error}</p>
-                </section>
-              )}
             </aside>
 
             {/* Правая колонка — сам чат */}
@@ -403,6 +484,11 @@ export default function ChatPage() {
                     {context.subject} • {context.level}
                     {currentTopic && <> • Тема: {currentTopic}</>}
                   </p>
+                  {currentGoal && (
+                    <p className="text-[10px] text-purple-300 mt-0.5">
+                      Текущая цель: {currentGoal.title}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
@@ -421,72 +507,64 @@ export default function ChatPage() {
                     }`}
                   >
                     <div
-                      className={`flex flex-col max-w-[80%] ${
-                        m.role === "user" ? "items-end" : "items-start"
-                      }`}
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
+                        ${
+                          m.role === "user"
+                            ? "bg-purple-500/80 text-white border-purple-300/60"
+                            : "bg-black/60 text-purple-50 border-white/10"
+                        }
+                      `}
                     >
-                      <div
-                        className={`rounded-2xl px-3 py-2 text-xs md:text-sm whitespace-pre-wrap
-                          ${
-                            m.role === "user"
-                              ? "bg-purple-500/80 text-white rounded-br-sm"
-                              : "bg-black/80 text-purple-50 rounded-bl-sm"
-                          }
-                        `}
-                      >
+                      <div className="whitespace-pre-wrap leading-snug">
                         {m.content}
                       </div>
-                      <span className="mt-1 text-[10px] text-purple-300/80">
-                        {formatTime(m.createdAt)}
-                      </span>
+                      <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
+                        <span>{m.role === "user" ? "Ты" : "NOOLIX"}</span>
+                        <span>•</span>
+                        <span>{formatTime(m.createdAt)}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
                 {thinking && (
                   <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-1 rounded-2xl px-3 py-2 bg-black/80 border border-white/10 text-[11px] text-purple-100">
-                      <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-pulse" />
+                    <div className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 bg-black/60 border border-white/10 text-[11px] text-purple-100">
+                      <span className="h-2 w-2 rounded-full bg-purple-300 animate-pulse" />
+                      <span>Думаю над ответом…</span>
                     </div>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
-              <form
-                onSubmit={handleSubmit}
-                className="border-t border-white/10 px-3 py-3 flex items-center gap-2"
-              >
-                <textarea
-                  rows={1}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Спроси про любую задачу или тему. Например: «Объясни, как решать квадратные уравнения»."
-                  className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/60"
-                />
-                <button
-                  type="submit"
-                  disabled={thinking || !input.trim()}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-full bg.white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              <footer className="border-t border-white/10 px-3 py-2">
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex items-end gap-2 md:gap-3"
                 >
-                  ➤
-                </button>
-              </form>
-
-              <p className="px-4 pb-3 text-[10px] text-purple-300/80">
-                NOOLIX сейчас в режиме прототипа. Ответы могут быть неточными,
-                проверяй важные моменты.
-              </p>
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    rows={2}
+                    placeholder="Сформулируй вопрос или попроси объяснить тему…"
+                    className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/60 focus:border-transparent placeholder:text-purple-300/60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || thinking}
+                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {thinking ? "…" : "Отправить"}
+                  </button>
+                </form>
+                {error && (
+                  <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
+                )}
+              </footer>
             </section>
           </div>
         </main>
-
-        <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь:
-          support@noolix.ai
-        </footer>
       </div>
     </div>
   );
