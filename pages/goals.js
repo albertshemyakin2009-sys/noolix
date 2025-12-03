@@ -382,10 +382,11 @@ export default function GoalsPage() {
       </button>
 
       {/* Левое меню */}
-      <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
-        bg-gradient-to-b from-black/50 via-[#2E003E]/85 to-black/80 border-r border-white/10`}
+             <aside
+         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
+         transform transition-transform duration-300 z-40
+         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+        bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
         <div className="mb-3">
           <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
