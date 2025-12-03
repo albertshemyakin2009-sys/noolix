@@ -444,7 +444,7 @@ export default function GoalsPage() {
       {/* Контент */}
             <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          447           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/5 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+              <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-black/40 bg-clip-padding backdrop-blur-sm border border-white/5 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
 
             {/* Левая колонка: фокус + создание цели */}
             <aside className="space-y-4">
