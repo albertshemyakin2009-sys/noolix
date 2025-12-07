@@ -59,6 +59,8 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
   const [currentGoal, setCurrentGoal] = useState(null);
+  const [hasWeakTopics, setHasWeakTopics] = useState(false);
+  const [weakTopicsCount, setWeakTopicsCount] = useState(0);
   const messagesEndRef = useRef(null);
 
   // Инициализация: подтягиваем контекст, текущую цель и историю
@@ -143,6 +145,48 @@ export default function ChatPage() {
       console.warn("Failed to parse topic from URL", e);
     }
   }, []);
+
+  // Смотрим, есть ли слабые темы по текущему предмету в карте знаний
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const rawKnowledge = window.localStorage.getItem("noolixKnowledgeMap");
+      if (!rawKnowledge) {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      const parsed = JSON.parse(rawKnowledge);
+      if (!parsed || typeof parsed !== "object") {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      const subjEntry = parsed[context.subject];
+      if (!subjEntry || typeof subjEntry !== "object") {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      let weakCount = 0;
+      Object.values(subjEntry).forEach((t) => {
+        if (t && typeof t.score === "number" && t.score < 0.8) {
+          weakCount += 1;
+        }
+      });
+
+      setWeakTopicsCount(weakCount);
+      setHasWeakTopics(weakCount > 0);
+    } catch (e) {
+      console.warn("Failed to read noolixKnowledgeMap", e);
+      setHasWeakTopics(false);
+      setWeakTopicsCount(0);
+    }
+  }, [context.subject]);
 
   // Сохраняем историю в localStorage (обрезаем до MAX_HISTORY)
   useEffect(() => {
@@ -258,9 +302,20 @@ export default function ChatPage() {
   };
 
   const quickActions = [
-    { key: "explain", label: "Объясни тему" },
+    {
+      key: "explain",
+      label: currentTopic
+        ? `Объяснить «${currentTopic}»`
+        : "Объясни тему",
+    },
     { key: "steps", label: "Разбери задачу по шагам" },
-    { key: "test", label: "Сделай мини-тест" },
+    {
+      key: "test",
+      label: currentGoal ? "Мини-тест по цели" : "Сделай мини-тест",
+    },
+    ...(hasWeakTopics
+      ? [{ key: "weak", label: "Потренироваться по слабым темам" }]
+      : []),
   ];
 
   const handleQuickAction = (key) => {
@@ -269,14 +324,27 @@ export default function ChatPage() {
 
     switch (key) {
       case "explain":
-        text = `Объясни, пожалуйста, тему по ${subjPrep}, которая мне сейчас сложна.`;
+        if (currentTopic) {
+          text = `Объясни, пожалуйста, тему «${currentTopic}» по ${subjPrep} простыми словами и приведи 1–2 базовых примера.`;
+        } else if (currentGoal) {
+          text = `Объясни, пожалуйста, одну из ключевых тем по ${subjPrep}, которые важны для цели «${currentGoal.title}». Начни с базовых понятий.`;
+        } else {
+          text = `Объясни, пожалуйста, тему по ${subjPrep}, которая мне сейчас сложна.`;
+        }
         break;
       case "steps":
         text =
           "Разбери, пожалуйста, задачу по шагам: напиши условие, потом вместе разберём решение.";
         break;
       case "test":
-        text = `Сделай, пожалуйста, мини-тест по ${subjPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        if (currentGoal) {
+          text = `Сделай, пожалуйста, мини-тест по ${subjPrep} в рамках моей цели «${currentGoal.title}» на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        } else {
+          text = `Сделай, пожалуйста, мини-тест по ${subjPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        }
+        break;
+      case "weak":
+        text = `Предложи, пожалуйста, небольшую тренировку по типичным сложным темам по ${subjPrep} на моём уровне. Начни с самых базовых вопросов и постепенно усложняй.`;
         break;
       default:
         break;
@@ -284,6 +352,9 @@ export default function ChatPage() {
 
     if (text) {
       setInput(text);
+      setTimeout(() => {
+        sendMessage();
+      }, 0);
     }
   };
 
@@ -291,7 +362,7 @@ export default function ChatPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -317,17 +388,17 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Кнопка меню для мобильных */}
+      {/* Кнопка открытия меню на мобильных */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
       </button>
-  
-      {/* Сайдбар */}
+
+      {/* Левое меню */}
       <aside
-        className={`fixed md:static top-0.left-0 h-full w-60 md:w-64 p-6 space-y-6
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
         transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
@@ -352,8 +423,7 @@ export default function ChatPage() {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md
-                    bg-gradient-to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
@@ -385,11 +455,9 @@ export default function ChatPage() {
         </nav>
       </aside>
 
-
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-            <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-                
+          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Левая колонка — контекст сессии */}
             <aside className="space-y-4">
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
@@ -410,6 +478,15 @@ export default function ChatPage() {
                     <span className="font-semibold">{currentGoal.title}</span>
                   </p>
                 )}
+                {hasWeakTopics && (
+                  <p className="text-[11px] text-purple-200 mt-1">
+                    В карте знаний по этому предмету отмечено{" "}
+                    <span className="font-semibold">
+                      {weakTopicsCount} слабых тем
+                    </span>
+                    . Можно оттолкнуться от них в этой сессии.
+                  </p>
+                )}
                 <p className="text-[11px] text-purple-300/80 mt-1">
                   Режим: подготовка к экзамену
                 </p>
@@ -423,21 +500,11 @@ export default function ChatPage() {
 
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
-                  Цель сессии
+                  Быстрый старт
                 </p>
-                <p className="text-xs text-purple-100">
-                  Мини-цель: разобраться в одной теме и решить хотя бы 2–3
-                  задачи без подсказок.
-                </p>
-                <p className="text-[11px] text-purple-300/80">
-                  Старайся формулировать вопросы максимально конкретно — так
-                  тьютор подстроится под твой уровень и пробелы.
-                </p>
-              </section>
-
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-2">
-                  Быстрые действия
+                <p className="text-[11px] text-purple-100 mb-2">
+                  Можно начать с готовых запросов или написать свой вопрос в
+                  поле справа.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {quickActions.map((action) => (
@@ -445,7 +512,7 @@ export default function ChatPage() {
                       key={action.key}
                       type="button"
                       onClick={() => handleQuickAction(action.key)}
-                      className="px-3 py-1.5 rounded-full text-[11px] bg-white/10 hover:bg-white/15 border border-white/15 transition"
+                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[11px] text-purple-50 transition border border-white/15"
                     >
                       {action.label}
                     </button>
@@ -527,14 +594,14 @@ export default function ChatPage() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    className="flex-1 resize-none rounded-2xl bg-black/60 border border-white/15 px-3 py-2 text-xs md:text-sm text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                     rows={2}
-                    placeholder="Сформулируй вопрос или попроси объяснить тему…"
-                    className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/60 focus:border-transparent placeholder:text-purple-300/60"
+                    placeholder="Напиши, что тебе сейчас сложно или что хочешь повторить…"
                   />
                   <button
                     type="submit"
-                    disabled={!input.trim() || thinking}
-                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={thinking}
+                    className="px-4 py-2 rounded-2xl bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {thinking ? "…" : "Отправить"}
                   </button>
