@@ -206,14 +206,170 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // Автоскролл вниз
+    // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
 
+  // Сохранение объяснения в localStorage → для блока "Сохранённые объяснения" в библиотеке
+  const saveExplanationToLibrary = (message) => {
+    if (typeof window === "undefined" || !message || message.role !== "assistant") return;
+
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+
+      const titleFromTopic = currentTopic && currentTopic.trim();
+      const firstLine = (message.content || "").split("\n")[0].trim();
+      const titleFromText = firstLine.slice(0, 80);
+      const title =
+        titleFromTopic ||
+        (titleFromText ? titleFromText : `Сохранённое объяснение по ${context.subject}`);
+
+      const item = {
+        id: message.id || Date.now(),
+        title,
+        subject: context.subject,
+        level: context.level,
+        from: "из диалога",
+        savedAt: new Date().toISOString(),
+        messageId: message.id || null,
+        preview: (message.content || "").slice(0, 400),
+      };
+
+      const MAX_SAVED = 50;
+      const newList = [item, ...list].slice(0, MAX_SAVED);
+      window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
+    } catch (e) {
+      console.warn("Failed to save explanation to library", e);
+    }
+  };
+
+  // Обновление блока "Продолжить изучение" в библиотеке
+  const touchContinueItem = () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem("noolixLibraryContinue");
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+
+      const titleFromTopic = currentTopic && currentTopic.trim();
+      const title =
+        titleFromTopic || `Диалог по предмету ${context.subject}`;
+
+      const nowIso = new Date().toISOString();
+
+      let found = false;
+      const updated = list.map((item) => {
+        if (
+          item.title === title &&
+          item.subject === context.subject &&
+          item.level === context.level
+        ) {
+          found = true;
+          return { ...item, updatedAt: nowIso };
+        }
+        return item;
+      });
+
+      if (!found) {
+        updated.unshift({
+          id: Date.now(),
+          title,
+          subject: context.subject,
+          level: context.level,
+          type: "Диалог с тьютором",
+          updatedAt: nowIso,
+        });
+      }
+
+      const MAX_CONTINUE = 20;
+      const finalList = updated
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )
+        .slice(0, MAX_CONTINUE);
+
+      window.localStorage.setItem(
+        "noolixLibraryContinue",
+        JSON.stringify(finalList)
+      );
+    } catch (e) {
+      console.warn("Failed to update continue list", e);
+    }
+  };
+
   const callBackend = async (userMessages) => {
+    try {
+      setError("");
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: userMessages.map(({ role, content }) => ({
+            role,
+            content,
+          })),
+          context: { ...context, currentTopic },
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        console.error("API /api/chat error:", data);
+        throw new Error(
+          data?.error?.message ||
+            data?.message ||
+            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      const replyText =
+        typeof data.reply === "string"
+          ? data.reply
+          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: replyText,
+        createdAt: new Date().toISOString(),
+      };
+
+      // фиксируем активность для блока "Продолжить" в библиотеке
+      touchContinueItem();
+
+      setMessages((prev) => clampHistory([...prev, assistantMessage]));
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
+      );
+    } finally {
+      setThinking(false);
+    }
+  };
+
     try {
       setError("");
       const res = await fetch("/api/chat", {
