@@ -122,7 +122,7 @@ export default function Home() {
         ☰ Меню
       </button>
 
-      {/* Левое меню */}
+      {/* Левое меню (стандарт) */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
         transform transition-transform duration-300 z-40
@@ -149,8 +149,7 @@ export default function Home() {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md
-                    bg-gradient-to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === "home" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
@@ -183,9 +182,10 @@ export default function Home() {
       </aside>
 
       {/* Основная зона */}
-      <div className="flex-1 flex flex-col.min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex.justify-center">
-          <div className="w-full max-w-5xl flex flex-col gap-8 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl px-4 py-6 md:px-8 md:py-8 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+      <div className="flex-1 flex flex-col min-h-screen">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+          {/* ключевое: max-w-6xl (шире блока) */}
+          <div className="w-full max-w-6xl flex flex-col gap-8 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl px-4 py-6 md:px-8 md:py-8 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Hero-блок */}
             <section className="space-y-4">
               <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
@@ -212,7 +212,7 @@ export default function Home() {
                     </a>
                     <a
                       href="/progress"
-                      className="inline-flex items-center justify-center px-5 py-2.5 rounded-full border border-white/40 text-xs md:text-sm text-purple-100 hover:bg-white/10 transition cursor-pointer"
+                      className="inline-flex.items-center justify-center px-5 py-2.5 rounded-full border border-white/40 text-xs md:text-sm text-purple-100 hover:bg-white/10 transition cursor-pointer"
                     >
                       Открыть карту знаний
                     </a>
@@ -298,7 +298,7 @@ export default function Home() {
                 </div>
                 <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
                   <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
+                    <span className="inline-flex h-5 w-5.items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
                       2
                     </span>
                     Задай вопрос в диалоге
@@ -309,7 +309,7 @@ export default function Home() {
                   </p>
                   <a
                     href="/chat"
-                    className="inline-flex mt-1 text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
+                    className="inline-flex mt-1.text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
                   >
                     Открыть диалог →
                   </a>
@@ -343,10 +343,10 @@ export default function Home() {
               </div>
             </section>
 
-            {/* Блок: быстрые действия */}
+            {/* Быстрые действия */}
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7.items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
                   ⚡
                 </span>
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -356,9 +356,9 @@ export default function Home() {
               <div className="grid md:grid-cols-3 gap-3 text-xs md:text-sm">
                 <a
                   href="/chat"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200 shadow-md"
+                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between.relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200 shadow-md"
                 >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to.white text-black text-sm shadow-md">
+                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
                     💬
                   </div>
                   <div>
@@ -380,9 +380,9 @@ export default function Home() {
 
                 <a
                   href="/goals"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex.flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all.duration-200 shadow-md"
+                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200 shadow-md"
                 >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7.items-center justify-center rounded-full bg-gradient-to-br.from-purple-100 to-white text-black text-sm shadow-md">
+                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
                     🎯
                   </div>
                   <div>
@@ -394,7 +394,7 @@ export default function Home() {
                       или экзамену.
                     </p>
                   </div>
-                  <div className="flex items-center.justify-between text-xs text-purple-200">
+                  <div className="flex items-center justify-between text-xs text-purple-200">
                     <span className="font-semibold">К целям →</span>
                     <span className="opacity-80">Шаги и прогресс</span>
                   </div>
@@ -402,9 +402,9 @@ export default function Home() {
 
                 <a
                   href="/progress"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4.flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200.shadow-md"
+                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all.duration-200 shadow-md"
                 >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7.items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
+                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
                     📈
                   </div>
                   <div>
@@ -416,7 +416,7 @@ export default function Home() {
                       роста.
                     </p>
                   </div>
-                  <div className="flex items-center.justify-between text-xs text-purple-200">
+                  <div className="flex items-center justify-between text-xs text-purple-200">
                     <span className="font-semibold">К прогрессу →</span>
                     <span className="opacity-80">Карта знаний</span>
                   </div>
@@ -426,8 +426,8 @@ export default function Home() {
 
             {/* Новости */}
             <section className="bg-black/25 border border-white/10 rounded-2xl p-5 md:p-6 space-y-3">
-              <div className="flex items-center.gap-2">
-                <span className="inline-flex h-7 w-7 items-center.justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
                   🔔
                 </span>
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
