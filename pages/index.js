@@ -296,24 +296,25 @@ export default function Home() {
                     “Математика, 10–11 класс”.
                   </p>
                 </div>
-                <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
-                  <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
-                    <span className="inline-flex h-5 w-5.items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
-                      2
-                    </span>
-                    Задай вопрос в диалоге
-                  </p>
-                  <p className="text-[11px] text-purple-200/90">
-                    Перейди в диалог и расскажи, что тебе сейчас сложно —
-                    тему, задачу или экзамен.
-                  </p>
-                  <a
-                    href="/chat"
-                    className="inline-flex mt-1.text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-                  >
-                    Открыть диалог →
-                  </a>
-                </div>
+               <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
+  <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
+      2
+    </span>
+    Задай вопрос в диалоге
+  </p>
+  <p className="text-[11px] text-purple-200/90">
+    Перейди в диалог и расскажи, что тебе сейчас сложно —
+    тему, задачу или экзамен.
+  </p>
+  <a
+    href="/chat"
+    className="inline-flex mt-1 text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
+  >
+    Открыть диалог →
+  </a>
+</div>
+
                 <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
                   <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
