@@ -12,12 +12,7 @@ const SUBJECT_OPTIONS = [
   "Английский язык",
 ];
 
-const GOAL_TYPES = [
-  "Экзамен / тест",
-  "Подтянуть оценку",
-  "Привычка",
-  "Проект",
-];
+const TYPE_OPTIONS = ["Экзамен / тест", "Домашка", "Проект", "Свой вариант"];
 
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
@@ -32,85 +27,21 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-function computeProgress(goal) {
-  if (!goal.steps || goal.steps.length === 0) return 0;
-  const doneCount = goal.steps.filter((s) => s.done).length;
-  return doneCount / goal.steps.length;
-}
-
 function formatDate(dateStr) {
-  if (!dateStr) return "Без дедлайна";
+  if (!dateStr) return "без дедлайна";
   const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return "Без дедлайна";
-  return d.toLocaleDateString("ru-RU");
+  if (Number.isNaN(d.getTime())) return "без дедлайна";
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
-// Шаблонные шаги для разных типов целей
-function getDefaultStepsForGoal(subject, type) {
-  if (type === "Экзамен / тест") {
-    switch (subject) {
-      case "Математика":
-        return [
-          "Пройти 1 диагностический вариант по математике",
-          "Повторить формулы по алгебре и тригонометрии",
-          "Разобрать 5 сложных задач из прошлых вариантов",
-        ];
-      case "Физика":
-        return [
-          "Пройти 1 вариант по механике",
-          "Повторить формулы по кинематике и динамике",
-          "Решить 10 задач на законы Ньютона и законы сохранения",
-        ];
-      case "Русский язык":
-        return [
-          "Пройти тест по орфографии (Н/НН, приставки, корни)",
-          "Разобрать 10 предложений с причастными и деепричастными оборотами",
-          "Написать и разобрать 1 полноценное сочинение",
-        ];
-      case "Английский язык":
-        return [
-          "Пройти тест по временам (Present/Past/Future)",
-          "Выучить и повторить 30 новых слов по экзаменационной лексике",
-          "Написать 1 эссе и разобрать ошибки",
-        ];
-      default:
-        return [];
-    }
-  }
-
-  if (type === "Подтянуть оценку") {
-    return [
-      "Разобрать последние контрольные работы и выписать слабые темы",
-      "Договориться с учителем о дополнительных вопросах/консультации",
-      "Сделать мини-план: что повторять каждую неделю",
-    ];
-  }
-
-  if (type === "Привычка") {
-    return [
-      "Выбрать удобное время для учёбы каждый день",
-      "Заниматься минимум 20 минут по предмету 5 дней подряд",
-      "Отметить в календаре, в какие дни получилось соблюдать режим",
-    ];
-  }
-
-  if (type === "Проект") {
-    return [
-      "Сформулировать тему и цель проекта",
-      "Разбить проект на этапы и сроки",
-      "Сделать первый черновой результат и показать наставнику/учителю",
-    ];
-  }
-
-  return [];
-}
-
-// Простой индикатор потенциальной перегрузки / выгорания
+// Очень грубая эвристика: риск перегруза
 function isBurnoutRisk(goal) {
-  if (!goal.weeklyHours || !goal.deadline) return false;
-  const stepsCount = goal.steps ? goal.steps.length : 0;
-  if (stepsCount <= 3) return false;
-
+  if (!goal.deadline || !goal.weeklyHours || !goal.steps) return false;
+  const stepsCount = goal.steps.length;
   const deadline = new Date(goal.deadline);
   if (Number.isNaN(deadline.getTime())) return false;
 
@@ -120,11 +51,51 @@ function isBurnoutRisk(goal) {
 
   if (diffDays <= 0) return false;
 
-  // Очень грубая эвристика: много шагов, мало часов, мало времени
+  // Очень грубо: много шагов, мало часов, мало времени
   if (diffDays < 30 && stepsCount >= 8 && goal.weeklyHours < 5) {
     return true;
   }
   return false;
+}
+
+// Простая генерация шагов по типу цели
+function getDefaultStepsForGoal(subject, type) {
+  const subj = subject || "предмет";
+  if (type === "Экзамен / тест") {
+    return [
+      `Составить список тем по ${subj}, которые войдут в экзамен`,
+      `Отметить слабые темы в карте знаний по ${subj}`,
+      `Решать задачи по слабым темам 3 раза в неделю`,
+      `Раз в неделю проходить мини-проверку по ключевым темам`,
+    ];
+  }
+  if (type === "Домашка") {
+    return [
+      `Разобрать теорию по теме из домашки по ${subj}`,
+      `Решить 3–5 похожих задач`,
+      `Проверить себя: смогу ли объяснить решение другу`,
+    ];
+  }
+  if (type === "Проект") {
+    return [
+      `Определить тему и цель проекта по ${subj}`,
+      `Собрать материалы и источники`,
+      `Сделать черновой план проекта`,
+      `Показать план учителю или другу и получить фидбек`,
+    ];
+  }
+  return [
+    `Сформулировать, что значит успех по ${subj}`,
+    `Выделить 2–3 ключевые навыка, которые нужно прокачать`,
+    `Раз в неделю подводить итоги: что сделал(а) по цели`,
+  ];
+}
+
+// Подсчёт прогресса по цели (по шагам)
+function computeProgress(goal) {
+  if (!goal.steps || goal.steps.length === 0) return 0;
+  const doneCount = goal.steps.filter((s) => s.done).length;
+  return doneCount / goal.steps.length;
 }
 
 export default function GoalsPage() {
@@ -210,17 +181,18 @@ export default function GoalsPage() {
     return weakCount;
   };
 
-  // ---- Работа с целями ----
-  const handleAddGoal = () => {
+  // ---- Создание цели ----
+  const handleCreateGoal = (e) => {
+    e.preventDefault();
     setError("");
 
     const title = newTitle.trim();
-    const metric = newMetric.trim();
-
     if (!title) {
-      setError("Дай цели понятное название.");
+      setError("Напиши формулировку цели — хотя бы в черновом виде.");
       return;
     }
+
+    const metric = newMetric.trim();
 
     const defaultStepsTexts = getDefaultStepsForGoal(newSubject, newType);
     const steps = defaultStepsTexts.map((text) => ({
@@ -373,7 +345,7 @@ export default function GoalsPage() {
         />
       )}
 
-      {/* Кнопка меню на мобилке */}
+      {/* Кнопка открытия меню на мобильных */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -382,10 +354,10 @@ export default function GoalsPage() {
       </button>
 
       {/* Левое меню */}
-             <aside
-         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
-         transform transition-transform duration-300 z-40
-         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+      <aside
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
+        transform transition-transform.duration-300 z-40
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
         <div className="mb-3">
@@ -393,13 +365,38 @@ export default function GoalsPage() {
             NOOLIX
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
-            Цели, фокус и долгий прогресс
+            Твои учебные цели в одном месте
           </p>
         </div>
 
         <nav className="space-y-3 text-sm md:text-base">
           <div className="space-y-2">
             {primaryMenuItems.map((item) => (
+              <a
+                key={item.key}
+                href={item.href}
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                  ${item.key === "goals" ? "bg-white/15" : "hover:bg-white/5"}
+                `}
+              >
+                <span
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
+                    ${item.key === "goals" ? "ring-2 ring-purple-200" : ""}
+                  `}
+                >
+                  {item.icon}
+                </span>
+                <span className={item.key === "goals" ? "font-semibold" : ""}>
+                  {item.label}
+                </span>
+              </a>
+            ))}
+          </div>
+
+          <div className="h-px bg-white/10 my-2" />
+
+          <div className="space-y-2">
+            {secondaryMenuItems.map((item) => (
               <a
                 key={item.key}
                 href={item.href}
@@ -412,115 +409,78 @@ export default function GoalsPage() {
               </a>
             ))}
           </div>
-
-          <div className="h-px bg-white/10 my-2" />
-
-          <div className="space-y-2">
-            {secondaryMenuItems.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition ${
-                  item.key === "goals" ? "bg-white/10" : ""
-                }`}
-              >
-                <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white ${
-                    item.key === "goals" ? "ring-2 ring-purple-200" : ""
-                  }`}
-                >
-                  {item.icon}
-                </span>
-                <span
-                  className={item.key === "goals" ? "font-semibold" : ""}
-                >
-                  {item.label}
-                </span>
-              </a>
-            ))}
-          </div>
         </nav>
       </aside>
 
       {/* Контент */}
-            <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-              <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-
-
+          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Левая колонка: фокус + создание цели */}
             <aside className="space-y-4">
-              {/* Фокус на сегодня */}
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px].uppercase tracking-wide text-purple-300/80 mb-1">
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Фокус на сегодня
                 </p>
                 {todayFocusSteps.length === 0 ? (
                   <p className="text-xs text-purple-100/80">
-                    Пока нет конкретных шагов на сегодня. Добавь шаги к
-                    целям или поставь новую цель — и здесь появятся задачи.
+                    Пока нет конкретных шагов на сегодня. Отметь шаги в целях,
+                    и мы подскажем, с чего начать.
                   </p>
                 ) : (
-                  <ul className="space-y-2 text-xs text-purple-50">
+                  <ul className="space-y-2 text-xs text-purple-100">
                     {todayFocusSteps.map((item) => (
                       <li
                         key={item.stepId}
-                        className="bg-black/60 border border-white/10 rounded-xl px-3 py-2"
+                        className="flex items-start gap-2 bg-black/40 border border-white/10 rounded-2xl p-2"
                       >
-                        <p className="font-semibold">{item.text}</p>
-                        <p className="text-[10px] text-purple-200/80">
-                          Цель: {item.goalTitle}
-                        </p>
+                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-purple-300" />
+                        <div>
+                          <p className="font-semibold mb-0.5">
+                            {item.goalTitle}
+                          </p>
+                          <p className="text-[11px] text-purple-200/90">
+                            {item.text}
+                          </p>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 )}
-                <div className="flex gap-2 pt-2 text-[11px] text-purple-200/80">
-                  <a
-                    href="/progress"
-                    className="underline-offset-2 hover:underline"
-                  >
-                    Открыть прогресс
-                  </a>
-                  <span>·</span>
-                  <a
-                    href="/tests"
-                    className="underline-offset-2 hover:underline"
-                  >
-                    Перейти к тестам
-                  </a>
-                </div>
               </section>
 
-              {/* Создание цели */}
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Новая цель
                 </p>
+                <p className="text-[11px] text-purple-100">
+                  Сформулируй одну конкретную цель — NOOLIX поможет связать её с
+                  картой знаний и диалогом.
+                </p>
 
-                <div className="space-y-2 text-xs md:text-sm">
+                <form className="space-y-2 mt-2" onSubmit={handleCreateGoal}>
                   <div className="space-y-1">
-                    <p className="text-[11px] text-purple-200/90">
-                      Название цели
-                    </p>
+                    <label className="text-[11px] text-purple-200">
+                      Как звучит цель?
+                    </label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
-                      placeholder='Например: «Сдать профильную математику на 80+»'
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="Например: Подготовиться к пробнику по математике на 80+"
+                      className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                     />
                   </div>
 
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200/90">
+                      <label className="text-[11px] text-purple-200">
                         Предмет
-                      </p>
+                      </label>
                       <select
-                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
                         value={newSubject}
                         onChange={(e) => setNewSubject(e.target.value)}
+                        className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                       >
                         {SUBJECT_OPTIONS.map((s) => (
                           <option key={s} value={s}>
@@ -529,17 +489,16 @@ export default function GoalsPage() {
                         ))}
                       </select>
                     </div>
-
                     <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200/90">
-                        Тип цели
-                      </p>
+                      <label className="text-[11px] text-purple-200">
+                        Тип
+                      </label>
                       <select
-                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
                         value={newType}
                         onChange={(e) => setNewType(e.target.value)}
+                        className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                       >
-                        {GOAL_TYPES.map((t) => (
+                        {TYPE_OPTIONS.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
@@ -548,82 +507,62 @@ export default function GoalsPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200/90">
+                      <label className="text-[11px] text-purple-200">
                         Дедлайн
-                      </p>
-                      <p className="text-[10px] text-purple-200/70">
-                        (по желанию)
-                      </p>
+                      </label>
                       <input
                         type="date"
-                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
-                        value={newDeadline || ""}
+                        value={newDeadline}
                         onChange={(e) => setNewDeadline(e.target.value)}
+                        className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                       />
                     </div>
-
                     <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200/90">
+                      <label className="text-[11px] text-purple-200">
                         Часов в неделю
-                      </p>
-                      <p className="text-[10px] text-purple-200/70">
-                        (по желанию)
-                      </p>
+                      </label>
                       <input
                         type="number"
                         min="0"
-                        className="w-full px-2 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs"
-                        placeholder="Например: 5"
                         value={newWeeklyHours}
                         onChange={(e) => setNewWeeklyHours(e.target.value)}
+                        placeholder="Напр. 4"
+                        className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-[11px] text-purple-200/90">
-                      Критерий успеха
-                    </p>
+                    <label className="text-[11px] text-purple-200">
+                      Как поймём, что цель достигнута?
+                    </label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-300 text-xs md:text-sm"
-                      placeholder='Например: «решаю 80% задач ЕГЭ уровня C», «стабильная 4+ по четверти»'
                       value={newMetric}
                       onChange={(e) => setNewMetric(e.target.value)}
+                      placeholder="Например: написать пробник на 80+ или закрыть все красные темы"
+                      className="w-full rounded-2xl bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
                     />
                   </div>
-                </div>
 
-                {error && (
-                  <p className="text-[11px] text-red-300 mt-1">{error}</p>
-                )}
+                  {error && (
+                    <p className="text-[11px] text-red-300/90">{error}</p>
+                  )}
 
-                <div className="flex justify-end">
                   <button
-                    type="button"
-                    onClick={handleAddGoal}
-                    className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                    type="submit"
+                    className="w-full mt-1 rounded-2xl bg-white text-black text-xs font-semibold py-1.5 shadow-md hover:bg-purple-100 transition"
                   >
-                    Добавить цель
+                    Сохранить цель
                   </button>
-                </div>
+                </form>
               </section>
             </aside>
 
-            {/* Правая колонка: список целей */}
-            <section className="space-y-4">
-              <header className="border-b border-white/10 pb-3 space-y-1">
-                <h1 className="text-sm md:text-base font-semibold">
-                  Учебные цели
-                </h1>
-                <p className="text-[11px] md:text-xs text-purple-200/90">
-                  Разбей крупные задачи на маленькие шаги — NOOLIX поможет
-                  держать фокус и постепенно закрывать каждую цель.
-                </p>
-              </header>
-
+            {/* Правая колонка — список целей */}
+            <section className="flex flex-col gap-4">
               {/* Активные цели */}
               <section className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -705,21 +644,21 @@ export default function GoalsPage() {
                                 onClick={() =>
                                   handleDeleteGoal(goal.id)
                                 }
-                                className="text-[10px] text-purple-200/70 hover:text-red-300"
+                                className="text-[10px] px-3 py-1 rounded-full bg-black/60 border border-white/20 text-purple-100 hover:bg-black/80 transition"
                               >
-                                Удалить
+                                Удалить цель
                               </button>
                             </div>
                           </div>
 
                           <div className="space-y-1">
-                            <div className="flex items-center justify-between text-[11px] text-purple-200/90">
-                              <span>Прогресс</span>
+                            <div className="flex items-center justify-between text-[11px] text-purple-200/80">
+                              <span>Прогресс по шагам</span>
                               <span>{percent}%</span>
                             </div>
-                            <div className="h-2 w-full rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                            <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-purple-300 to-purple-500"
+                                className="h-full rounded-full bg-gradient-to-r from-purple-300 via-purple-400 to-purple-500"
                                 style={{ width: `${percent}%` }}
                               />
                             </div>
@@ -727,65 +666,56 @@ export default function GoalsPage() {
 
                           <div className="space-y-2">
                             <p className="text-[11px] text-purple-200/90">
-                              Шаги к цели
+                              Шаги по цели
                             </p>
-                            {(!goal.steps || goal.steps.length === 0) && (
-                              <p className="text-[11px] text-purple-200/80">
-                                Пока нет шагов. Добавь первый шаг — и цель
-                                станет более конкретной.
-                              </p>
-                            )}
-                            {goal.steps && goal.steps.length > 0 && (
-                              <ul className="space-y-1 text-xs">
-                                {goal.steps.map((step) => (
-                                  <li
-                                    key={step.id}
-                                    className="flex items-center justify-between gap-2 text-purple-50"
+                            <div className="space-y-1.5">
+                              {(goal.steps || []).map((step) => (
+                                <div
+                                  key={step.id}
+                                  className="flex items-start gap-2 text-[11px]"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleToggleStep(goal.id, step.id)
+                                    }
+                                    className={`mt-0.5 h-4 w-4 rounded border flex items-center justify-center ${
+                                      step.done
+                                        ? "bg-purple-400 border-purple-200"
+                                        : "bg-black/60 border-white/30"
+                                    }`}
                                   >
-                                    <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={step.done}
-                                        onChange={() =>
-                                          handleToggleStep(
-                                            goal.id,
-                                            step.id
-                                          )
-                                        }
-                                        className="h-3 w-3 rounded border border-white/40 bg-black/60"
-                                      />
-                                      <span
-                                        className={
-                                          step.done
-                                            ? "line-through opacity-60"
-                                            : ""
-                                        }
-                                      >
-                                        {step.text}
+                                    {step.done && (
+                                      <span className="text-[10px] text-black">
+                                        ✓
                                       </span>
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleDeleteStep(
-                                          goal.id,
-                                          step.id
-                                        )
-                                      }
-                                      className="text-[10px] text-purple-200/70 hover:text-red-300"
-                                    >
-                                      ×
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                                    )}
+                                  </button>
+                                  <span
+                                    className={`flex-1 ${
+                                      step.done
+                                        ? "line-through text-purple-300/80"
+                                        : "text-purple-100"
+                                    }`}
+                                  >
+                                    {step.text}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteStep(goal.id, step.id)
+                                    }
+                                    className="text-[10px] text-purple-200/70 hover:text-red-300"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
 
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-1 mt-1">
                               <input
                                 type="text"
-                                className="flex-1 px-2 py-1.5 rounded-xl bg-black/50 border border-white/20 focus:outline-none focus:ring-1 focus:ring-purple-300 text-[11px]"
-                                placeholder="Добавить шаг (например: «пройти 1 вариант ЕГЭ»)"
                                 value={stepInputs[goal.id] || ""}
                                 onChange={(e) =>
                                   handleChangeStepInput(
@@ -793,17 +723,13 @@ export default function GoalsPage() {
                                     e.target.value
                                   )
                                 }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleAddStep(goal.id);
-                                  }
-                                }}
+                                placeholder="Добавить свой шаг…"
+                                className="flex-1 rounded-2xl bg-black/60 border border-white/15 px-3 py-1 text-[11px] text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-1 focus:ring-purple-300/70"
                               />
                               <button
                                 type="button"
                                 onClick={() => handleAddStep(goal.id)}
-                                className="px-3 py-1 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                className="text-[11px] px-3 py-1 rounded-2xl bg-white text-black font-semibold shadow hover:bg-purple-100 transition"
                               >
                                 +
                               </button>
@@ -823,25 +749,32 @@ export default function GoalsPage() {
                 </p>
                 {completedGoals.length === 0 ? (
                   <p className="text-xs text-purple-100/80">
-                    Когда ты полностью закроешь цель (выполнишь все шаги),
-                    она появится здесь.
+                    Как только ты отметишь все шаги по цели, она появится здесь.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {completedGoals.map((goal) => (
                       <div
                         key={goal.id}
-                        className="bg-black/30 border border-white/10 rounded-2xl px-3 py-2 flex.items-center justify-between text-[11px] md:text-xs text-purple-100"
+                        className="bg-black/30 border border-white/10 rounded-2xl p-3 space-y-1"
                       >
-                        <div>
-                          <p className="font-semibold">{goal.title}</p>
-                          <p className="text-[10px] text-purple-200/80">
-                            {goal.subject} • {goal.type} • завершено
-                          </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold">
+                              {goal.title}
+                            </p>
+                            <p className="text-[10px] text-purple-200/80">
+                              {goal.subject} • {goal.type}
+                            </p>
+                          </div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/80 text-[10px] text-white">
+                            Выполнено
+                          </span>
                         </div>
-                        <span className="text-[10px] text-green-300">
-                          100%
-                        </span>
+                        <p className="text-[10px] text-purple-200/80">
+                          Дедлайн: {formatDate(goal.deadline)} • Шагов:{" "}
+                          {(goal.steps || []).length}
+                        </p>
                       </div>
                     ))}
                   </div>
