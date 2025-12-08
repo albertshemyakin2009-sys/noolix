@@ -206,17 +206,115 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // Автоскролл вниз
+    // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
 
+  // Сохранение ответа ассистента в библиотеку
+  const saveExplanationToLibrary = (message) => {
+    if (typeof window === "undefined") return;
+    if (!message || message.role !== "assistant") return;
+
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+
+      const titleFromTopic = currentTopic && currentTopic.trim();
+      const firstLine = (message.content || "").split("\n")[0].trim();
+      const titleFromText = firstLine.slice(0, 80);
+      const title =
+        titleFromTopic ||
+        (titleFromText || `Сохранённое объяснение по ${context.subject}`);
+
+      const now = new Date();
+      const savedAtLabel = now.toLocaleDateString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+
+      const item = {
+        id: message.id || now.getTime(),
+        title,
+        subject: context.subject,
+        level: context.level,
+        from: "из диалога",
+        savedAt: savedAtLabel,
+        preview: (message.content || "").slice(0, 400),
+      };
+
+      const MAX_SAVED = 50;
+      const newList = [item, ...list].slice(0, MAX_SAVED);
+      window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
+    } catch (e) {
+      console.warn("Failed to save explanation to library", e);
+    }
+  };
+
   const callBackend = async (userMessages) => {
     try {
       setError("");
       const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: userMessages.map(({ role, content }) => ({
+            role,
+            content,
+          })),
+          context: { ...context, currentTopic },
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        console.error("API /api/chat error:", data);
+        throw new Error(
+          data?.error?.message ||
+            data?.message ||
+            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      const replyText =
+        typeof data.reply === "string"
+          ? data.reply
+          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: replyText,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => clampHistory([...prev, assistantMessage]));
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
+      );
+    } finally {
+      setThinking(false);
+    }
+  };
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -545,7 +643,6 @@ export default function ChatPage() {
                   </span>
                 </div>
               </header>
-
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
                 {messages.map((m) => (
                   <div
@@ -571,10 +668,23 @@ export default function ChatPage() {
                         <span>•</span>
                         <span>{formatTime(m.createdAt)}</span>
                       </div>
+                      {m.role === "assistant" && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => saveExplanationToLibrary(m)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-black text-[10px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            <span>⭐</span>
+                            <span>Сохранить в библиотеку</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
                 {thinking && (
+
                   <div className="flex justify-start">
                     <div className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 bg-black/60 border border-white/10 text-[11px] text-purple-100">
                       <span className="h-2 w-2 rounded-full bg-purple-300 animate-pulse" />
