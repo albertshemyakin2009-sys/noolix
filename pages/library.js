@@ -164,7 +164,7 @@ export default function LibraryPage() {
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
-            <span className="animate-pulse.opacity-40">•</span>
+            <span className="animate-pulse opacity-40">•</span>
           </div>
         </div>
       </div>
@@ -212,7 +212,7 @@ export default function LibraryPage() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center.justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -236,7 +236,7 @@ export default function LibraryPage() {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center.justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === "library" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
@@ -255,8 +255,8 @@ export default function LibraryPage() {
 
       {/* Основная зона */}
       <div className="flex-1 flex flex-col min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex.justify-center">
-          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding.backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6.shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Хедер библиотеки */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
@@ -345,10 +345,10 @@ export default function LibraryPage() {
                   {filteredContinue.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3.flex flex-col justify-between text-xs text-purple-100"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col justify-between text-xs text-purple-100"
                     >
                       <div>
-                        <p className="font-semibold text-sm.mb-1">
+                        <p className="font-semibold text-sm mb-1">
                           {item.title}
                         </p>
                         <p className="text-[11px] text-purple-200/80">
@@ -358,7 +358,7 @@ export default function LibraryPage() {
                           Формат: {item.type}
                         </p>
                       </div>
-                      <div className="flex items-center.justify-between mt-2 text-[11px] text-purple-200/80">
+                      <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
                         <span>Обновлено: {item.updatedAt}</span>
                         <a
                           href="/chat"
@@ -388,10 +388,10 @@ export default function LibraryPage() {
                   {filteredSaved.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex.flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
                     >
                       <div>
-                        <p className="font-semibold text-sm.mb-0.5">
+                        <p className="font-semibold text-sm mb-0.5">
                           {item.title}
                         </p>
                         <p className="text-[11px] text-purple-200/80">
@@ -433,7 +433,7 @@ export default function LibraryPage() {
                   {filteredCollections.map((c) => (
                     <div
                       key={c.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3.flex flex-col.justify-between text-xs text-purple-100"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col justify-between text-xs text-purple-100"
                     >
                       <div>
                         <p className="font-semibold text-sm mb-0.5">
@@ -446,7 +446,7 @@ export default function LibraryPage() {
                           Тем в подборке: {c.topics} • {c.tag}
                         </p>
                       </div>
-                      <div className="flex items-center.justify-between mt-2 text-[11px] text-purple-200/80">
+                      <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
                         <a
                           href="/chat"
                           className="underline underline-offset-2 hover:text-white"
