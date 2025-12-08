@@ -59,9 +59,11 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
   const [currentGoal, setCurrentGoal] = useState(null);
-  const [hasWeakTopics, setHasWeakTopics] = useState(false);
+    const [hasWeakTopics, setHasWeakTopics] = useState(false);
   const [weakTopicsCount, setWeakTopicsCount] = useState(0);
+  const [savedMessageIds, setSavedMessageIds] = useState([]);
   const messagesEndRef = useRef(null);
+
 
   // --- Инициализация: контекст, текущая цель, история чата ---
   useEffect(() => {
@@ -246,13 +248,21 @@ export default function ChatPage() {
         preview: (message.content || "").slice(0, 400),
       };
 
-      const MAX_SAVED = 50;
+            const MAX_SAVED = 50;
       const newList = [item, ...list].slice(0, MAX_SAVED);
       window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
+
+      // помечаем это сообщение как сохранённое
+      if (message.id) {
+        setSavedMessageIds((prev) =>
+          prev.includes(message.id) ? prev : [...prev, message.id]
+        );
+      }
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
   };
+
 
   // --- Обновление блока "Продолжить изучение" в библиотеке ---
   const touchContinueItem = () => {
@@ -500,9 +510,10 @@ export default function ChatPage() {
       {/* Левое меню */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
-        bg-gradient-to-b from-black/60 via-[#2E003E]/90 to-black/60`}
+                ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+        bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
+
         <div className="mb-4">
           <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
             NOOLIX
@@ -680,16 +691,24 @@ export default function ChatPage() {
                         </div>
                       </div>
 
-                      {m.role === "assistant" && (
-                        <button
-                          type="button"
-                          onClick={() => saveExplanationToLibrary(m)}
-                          className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/40 border border-white/15 text-purple-100 hover:bg-white/5 transition"
-                        >
-                          <span>⭐</span>
-                          <span>Сохранить в библиотеку</span>
-                        </button>
+                                            {m.role === "assistant" && (
+                        savedMessageIds.includes(m.id) ? (
+                          <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200">
+                            <span>✅</span>
+                            <span>Сохранено</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => saveExplanationToLibrary(m)}
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/40 border border-white/15 text-purple-100 hover:bg-white/5 transition"
+                          >
+                            <span>⭐</span>
+                            <span>Сохранить в библиотеку</span>
+                          </button>
+                        )
                       )}
+
                     </div>
                   </div>
                 ))}
