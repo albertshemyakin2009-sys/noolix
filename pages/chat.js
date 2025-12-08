@@ -49,33 +49,123 @@ function getModeLabel(mode) {
   }
 }
 
+const CONTEXT_STORAGE_KEY = "noolixContext";
+const CHAT_HISTORY_KEY = "noolixChatHistory";
+const CURRENT_GOAL_KEY = "noolixCurrentGoal";
+const MAX_HISTORY = 80;
+
+function clampHistory(messages) {
+  if (!Array.isArray(messages)) return [];
+  if (messages.length <= MAX_HISTORY) return messages;
+  return messages.slice(messages.length - MAX_HISTORY);
+}
+
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [subject, setSubject] = useState("Математика");
-  const [level, setLevel] = useState("10–11 класс");
-  const [mode, setMode] = useState("exam_prep");
-  const [currentTopic, setCurrentTopic] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      role: "assistant",
-      content:
-        "Привет! Я NOOLIX. Расскажи, что тебе сейчас нужно: объяснить тему, разобрать задачу или подготовиться к экзамену?",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [context, setContext] = useState({
+    subject: "Математика",
+    level: "10–11 класс",
+    mode: "exam_prep",
+  });
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+  const [currentTopic, setCurrentTopic] = useState("");
+  const [currentGoal, setCurrentGoal] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // Автоскролл вниз при новых сообщениях или думании
+  // Инициализация: подтягиваем контекст, историю, текущую цель
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      // контекст
+      const rawContext = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
+      if (rawContext) {
+        const parsed = JSON.parse(rawContext);
+        setContext((prev) => ({
+          ...prev,
+          ...parsed,
+        }));
+      }
+
+      // текущая цель, если есть
+      const rawGoal = window.localStorage.getItem(CURRENT_GOAL_KEY);
+      if (rawGoal) {
+        try {
+          const goal = JSON.parse(rawGoal);
+          if (goal && goal.title) {
+            setCurrentGoal(goal);
+          }
+        } catch (e) {
+          console.warn("Failed to parse current goal in chat", e);
+        }
+      }
+
+      // история чата
+      const rawHistory = window.localStorage.getItem(CHAT_HISTORY_KEY);
+      if (rawHistory) {
+        try {
+          const parsed = JSON.parse(rawHistory);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+          } else {
+            const starter = {
+              id: Date.now(),
+              role: "assistant",
+              content:
+                "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+              createdAt: new Date().toISOString(),
+            };
+            setMessages([starter]);
+          }
+        } catch (e) {
+          console.warn("Failed to parse chat history", e);
+          const starter = {
+            id: Date.now(),
+            role: "assistant",
+            content:
+              "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+            createdAt: new Date().toISOString(),
+          };
+          setMessages([starter]);
+        }
+      } else {
+        const starter = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages([starter]);
+      }
+    } catch (e) {
+      console.warn("Failed to init chat context/history", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
+
+  // Сохраняем историю в localStorage (обрезаем до MAX_HISTORY)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const trimmed = clampHistory(messages);
+      window.localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn("Failed to save chat history", e);
+    }
+  }, [messages]);
 
   const callBackend = async (userMessages) => {
     try {
@@ -91,10 +181,11 @@ export default function ChatPage() {
             content,
           })),
           context: {
-            subject,
-            level,
-            mode,
+            subject: context.subject,
+            level: context.level,
+            mode: context.mode,
             currentTopic: currentTopic || null,
+            currentGoal: currentGoal || null,
           },
         }),
       });
@@ -151,7 +242,7 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
     };
 
-    const newMessages = [...messages, userMessage];
+    const newMessages = clampHistory([...messages, userMessage]);
     setMessages(newMessages);
     setInput("");
     setThinking(true);
@@ -170,8 +261,28 @@ export default function ChatPage() {
     }
   };
 
-  const subjectPrep = getSubjectPrepositional(subject);
-  const modeLabel = getModeLabel(mode);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+            NOOLIX
+          </div>
+          <p className="text-xs text-purple-100/80">
+            Загружаем твой диалог…
+          </p>
+          <div className="flex gap-1 text-sm text-purple-100">
+            <span className="animate-pulse">•</span>
+            <span className="animate-pulse opacity-70">•</span>
+            <span className="animate-pulse opacity-40">•</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const subjectPrep = getSubjectPrepositional(context.subject);
+  const modeLabel = getModeLabel(context.mode);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -274,6 +385,14 @@ export default function ChatPage() {
                   Режим: {modeLabel}. Можешь просить объяснить темы, разбирать
                   задачи, делать мини-тесты или строить план подготовки.
                 </p>
+                {currentGoal && (
+                  <p className="text-[11px] text-purple-200/90">
+                    Цель:{" "}
+                    <span className="font-semibold">
+                      {currentGoal.title}
+                    </span>
+                  </p>
+                )}
                 {currentTopic && (
                   <p className="text-[11px] text-purple-200/90">
                     Текущая тема:{" "}
@@ -287,13 +406,22 @@ export default function ChatPage() {
                   Контекст
                 </p>
                 <p>
-                  Предмет: <span className="font-semibold">{subject}</span>
+                  Предмет:{" "}
+                  <span className="font-semibold">
+                    {context.subject}
+                  </span>
                 </p>
                 <p>
-                  Уровень: <span className="font-semibold">{level}</span>
+                  Уровень:{" "}
+                  <span className="font-semibold">{context.level}</span>
                 </p>
                 <p>
-                  Режим: <span className="font-semibold">{modeLabel}</span>
+                  Режим:{" "}
+                  <span className="font-semibold">{modeLabel}</span>
+                </p>
+                <p className="text-[10px] text-purple-200/70">
+                  NOOLIX использует этот контекст в ответах, целях, прогрессе и
+                  библиотеке.
                 </p>
               </div>
             </header>
