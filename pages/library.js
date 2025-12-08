@@ -99,11 +99,13 @@ const mockCollections = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 
 export default function LibraryPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState("Все предметы");
   const [levelFilter, setLevelFilter] = useState("Все уровни");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [savedFromStorage, setSavedFromStorage] = useState(null);
+
 
   // Подтягиваем предмет/уровень из контекста, чтобы фильтры были "в теме"
   useEffect(() => {
@@ -121,6 +123,27 @@ export default function LibraryPage() {
       setLoading(false);
     }
   }, []);
+    // Читаем сохранённые объяснения из localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      if (!raw) {
+        setSavedFromStorage(null);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedFromStorage(parsed);
+      } else {
+        setSavedFromStorage(null);
+      }
+    } catch (e) {
+      console.warn("Failed to read noolixLibrarySaved", e);
+      setSavedFromStorage(null);
+    }
+  }, []);
+
 
   const normalize = (s) => (s || "").toLowerCase();
 
@@ -143,8 +166,15 @@ export default function LibraryPage() {
   };
 
   const filteredContinue = mockContinue.filter(matchesFilters);
-  const filteredSaved = mockSaved.filter(matchesFilters);
+
+  const baseSaved =
+    savedFromStorage && Array.isArray(savedFromStorage) && savedFromStorage.length > 0
+      ? savedFromStorage
+      : mockSaved;
+  const filteredSaved = baseSaved.filter(matchesFilters);
+
   const filteredCollections = mockCollections.filter(matchesFilters);
+
 
   const nothingFound =
     filteredContinue.length === 0 &&
