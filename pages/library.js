@@ -14,7 +14,7 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Моки для MVP — потом можно будет связать с реальными данными
+// Моки для MVP — fallback, если ещё нет данных из localStorage
 const mockContinue = [
   {
     id: 1,
@@ -99,13 +99,14 @@ const mockCollections = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 
 export default function LibraryPage() {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState("Все предметы");
   const [levelFilter, setLevelFilter] = useState("Все уровни");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [savedFromStorage, setSavedFromStorage] = useState(null);
 
+  const [savedFromStorage, setSavedFromStorage] = useState(null);
+  const [continueFromStorage, setContinueFromStorage] = useState(null);
 
   // Подтягиваем предмет/уровень из контекста, чтобы фильтры были "в теме"
   useEffect(() => {
@@ -123,7 +124,8 @@ export default function LibraryPage() {
       setLoading(false);
     }
   }, []);
-    // Читаем сохранённые объяснения из localStorage
+
+  // Читаем сохранённые объяснения из localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -144,6 +146,26 @@ export default function LibraryPage() {
     }
   }, []);
 
+  // Читаем "Продолжить" из localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibraryContinue");
+      if (!raw) {
+        setContinueFromStorage(null);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setContinueFromStorage(parsed);
+      } else {
+        setContinueFromStorage(null);
+      }
+    } catch (e) {
+      console.warn("Failed to read noolixLibraryContinue", e);
+      setContinueFromStorage(null);
+    }
+  }, []);
 
   const normalize = (s) => (s || "").toLowerCase();
 
@@ -165,16 +187,25 @@ export default function LibraryPage() {
     return bySubject && byLevel && bySearch;
   };
 
-  const filteredContinue = mockContinue.filter(matchesFilters);
+  // источник для "Продолжить"
+  const baseContinue =
+    continueFromStorage &&
+    Array.isArray(continueFromStorage) &&
+    continueFromStorage.length > 0
+      ? continueFromStorage
+      : mockContinue;
+  const filteredContinue = baseContinue.filter(matchesFilters);
 
+  // источник для "Сохранённые объяснения"
   const baseSaved =
-    savedFromStorage && Array.isArray(savedFromStorage) && savedFromStorage.length > 0
+    savedFromStorage &&
+    Array.isArray(savedFromStorage) &&
+    savedFromStorage.length > 0
       ? savedFromStorage
       : mockSaved;
   const filteredSaved = baseSaved.filter(matchesFilters);
 
   const filteredCollections = mockCollections.filter(matchesFilters);
-
 
   const nothingFound =
     filteredContinue.length === 0 &&
@@ -213,7 +244,7 @@ export default function LibraryPage() {
 
       {/* Кнопка меню на мобилке */}
       <button
-        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        className="absolute top-4.left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
@@ -290,7 +321,7 @@ export default function LibraryPage() {
             {/* Хедер библиотеки */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
+                <div className="inline-flex.items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
                   <span>Твоя учебная библиотека</span>
                 </div>
@@ -384,14 +415,21 @@ export default function LibraryPage() {
                         <p className="text-[11px] text-purple-200/80">
                           {item.subject} • {item.level}
                         </p>
-                        <p className="text-[11px] text-purple-200/80 mt-0.5">
-                          Формат: {item.type}
-                        </p>
+                        {item.type && (
+                          <p className="text-[11px] text-purple-200/80 mt-0.5">
+                            Формат: {item.type}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
-                        <span>Обновлено: {item.updatedAt}</span>
+                        <span>
+                          Обновлено:{" "}
+                          {item.updatedAt || "Недавно"}
+                        </span>
                         <a
-                          href="/chat"
+                          href={`/chat?topic=${encodeURIComponent(
+                            item.title
+                          )}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Открыть в диалоге
@@ -410,8 +448,8 @@ export default function LibraryPage() {
               </p>
               {filteredSaved.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока здесь пусто. Любое объяснение из диалога можно будет
-                  сохранять в библиотеку — как конспект.
+                  Пока здесь пусто. Любое объяснение из диалога можно сохранять
+                  в библиотеку — как конспект.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -436,7 +474,9 @@ export default function LibraryPage() {
                           Сохранено: {item.savedAt}
                         </span>
                         <a
-                          href="/chat"
+                          href={`/chat?topic=${encodeURIComponent(
+                            item.title
+                          )}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
@@ -478,7 +518,7 @@ export default function LibraryPage() {
                       </div>
                       <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
                         <a
-                          href="/chat"
+                          href={`/chat?topic=${encodeURIComponent(c.title)}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Попросить объяснить подборку →
