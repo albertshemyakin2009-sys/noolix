@@ -45,6 +45,7 @@ const clampHistory = (list) => {
   return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
 };
 
+// отдельный ключ истории под каждую пару (предмет + уровень)
 const getHistoryKey = (subject, level) => {
   const safe = (s) =>
     (s || "unknown")
@@ -74,7 +75,7 @@ export default function ChatPage() {
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const messagesEndRef = useRef(null);
 
-  // --- Инициализация: контекст, цель, история чата для конкретного предмета+уровня ---
+  // --- Инициализация: контекст, цель, история чата (по предмету+уровню) ---
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -106,7 +107,7 @@ export default function ChatPage() {
         console.warn("Failed to read noolixCurrentGoal", eGoal);
       }
 
-      // История для конкретного предмета+уровня
+      // история для конкретного предмета+уровня
       const historyKey = getHistoryKey(ctx.subject, ctx.level);
       let initialMessages = [];
       const rawHistory = window.localStorage.getItem(historyKey);
@@ -202,7 +203,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // --- Сохраняем историю конкретного чата (subject+level) ---
+  // --- Сохраняем историю конкретного чата ---
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -309,7 +310,7 @@ export default function ChatPage() {
     }
   };
 
-  // --- Обновление "Твои чаты" (раньше "Продолжить") в библиотеке ---
+  // --- Обновление списка "твои чаты" в библиотеке ---
   const touchContinueItem = () => {
     if (typeof window === "undefined") return;
 
@@ -326,10 +327,7 @@ export default function ChatPage() {
 
       let found = false;
       const updated = list.map((item) => {
-        if (
-          item.subject === context.subject &&
-          item.level === context.level
-        ) {
+        if (item.subject === context.subject && item.level === context.level) {
           found = true;
           return { ...item, title, updatedAt: nowIso };
         }
@@ -410,7 +408,7 @@ export default function ChatPage() {
         createdAt: new Date().toISOString(),
       };
 
-      // Обновляем "твои чаты"
+      // обновляем "твои чаты" в библиотеке
       touchContinueItem();
 
       setMessages((prev) => clampHistory([...prev, assistantMessage]));
@@ -461,9 +459,7 @@ export default function ChatPage() {
   const quickActions = [
     {
       key: "explain",
-      label: currentTopic
-        ? `Объяснить «${currentTopic}»`
-        : "Объясни тему",
+      label: currentTopic ? `Объяснить «${currentTopic}»` : "Объясни тему",
     },
     { key: "steps", label: "Разбери задачу по шагам" },
     {
@@ -515,7 +511,7 @@ export default function ChatPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from.white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -532,7 +528,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to.black text-white flex relative">
+    // ГРАДИЕНТ КАК НА ГЛАВНОЙ: from-[#2E003E] via-[#200026] to-black
+    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {/* Оверлей при открытом меню на мобильных */}
       {sidebarOpen && (
         <div
@@ -549,7 +546,7 @@ export default function ChatPage() {
         ☰ Меню
       </button>
 
-      {/* Левое меню */}
+      {/* Левое меню (градиент как в библиотеке/главной) */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
@@ -676,7 +673,7 @@ export default function ChatPage() {
             </aside>
 
             {/* Правая колонка — чат */}
-            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
+            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border.white/5 rounded-2xl">
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">
@@ -722,6 +719,7 @@ export default function ChatPage() {
                           }
                         `}
                       >
+                        {/* ВАЖНО: break-words, чтобы текст не вылезал за рамку */}
                         <div className="whitespace-pre-wrap break-words leading-snug">
                           {m.content}
                         </div>
@@ -734,7 +732,7 @@ export default function ChatPage() {
 
                       {m.role === "assistant" &&
                         (savedMessageIds.includes(m.id) ? (
-                          <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200">
+                          <div className="inline-flex items-center gap-1 text-[11px] px-2.py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200">
                             <span>✅</span>
                             <span>Сохранено</span>
                           </div>
@@ -742,7 +740,7 @@ export default function ChatPage() {
                           <button
                             type="button"
                             onClick={() => saveExplanationToLibrary(m)}
-                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/40 border border-white/15 text-purple-100 hover:bg.white/5 transition"
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/40 border border-white/15 text-purple-100 hover:bg-white/5 transition"
                           >
                             <span>⭐</span>
                             <span>Сохранить в библиотеку</span>
@@ -774,12 +772,12 @@ export default function ChatPage() {
                     onKeyDown={handleKeyDown}
                     rows={2}
                     placeholder="Сформулируй вопрос или попроси объяснить тему…"
-                    className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3.py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/60 focus:border-transparent placeholder:text-purple-300/60 text-white"
+                    className="flex-1 resize-none bg-black/60 border border-white/15 rounded-2xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/60 focus:border-transparent placeholder:text-purple-300/60 text-white"
                   />
                   <button
                     type="submit"
-                    disabled={!input.trim() || thinking}
-                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled {!input.trim() || thinking}
+                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50.disabled:cursor-not-allowed"
                   >
                     {thinking ? "…" : "Отправить"}
                   </button>
