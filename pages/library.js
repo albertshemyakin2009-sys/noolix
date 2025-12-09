@@ -14,23 +14,15 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Моки для MVP — fallback, если ещё нет данных из localStorage
+// Fallback-моки
 const mockContinue = [
   {
     id: 1,
-    title: "Квадратные уравнения",
+    title: "Диалог: Математика, 8–9 класс",
     subject: "Математика",
     level: "8–9 класс",
-    type: "Теория + задачи",
+    type: "Диалог с тьютором",
     updatedAt: "Вчера",
-  },
-  {
-    id: 2,
-    title: "Второй закон Ньютона",
-    subject: "Физика",
-    level: "10–11 класс",
-    type: "Разбор задач",
-    updatedAt: "Сегодня",
   },
 ];
 
@@ -42,22 +34,6 @@ const mockSaved = [
     level: "10–11 класс",
     from: "из диалога",
     savedAt: "3 дня назад",
-  },
-  {
-    id: 2,
-    title: "Краткий конспект по производной",
-    subject: "Математика",
-    level: "10–11 класс",
-    from: "из диалога",
-    savedAt: "Неделю назад",
-  },
-  {
-    id: 3,
-    title: "Причастные обороты: схема и примеры",
-    subject: "Русский язык",
-    level: "7–9 класс",
-    from: "из диалога",
-    savedAt: "Сегодня",
   },
 ];
 
@@ -107,8 +83,9 @@ export default function LibraryPage() {
 
   const [savedFromStorage, setSavedFromStorage] = useState(null);
   const [continueFromStorage, setContinueFromStorage] = useState(null);
+  const [showSaved, setShowSaved] = useState(false);
 
-  // Подтягиваем предмет/уровень из контекста, чтобы фильтры были "в теме"
+  // Подтягиваем предмет/уровень
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -125,7 +102,7 @@ export default function LibraryPage() {
     }
   }, []);
 
-  // Читаем сохранённые объяснения из localStorage
+  // Читаем сохранённые объяснения
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -146,7 +123,7 @@ export default function LibraryPage() {
     }
   }, []);
 
-  // Читаем "Продолжить" из localStorage
+  // Читаем "твои чаты" (раньше продолжить)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -187,16 +164,26 @@ export default function LibraryPage() {
     return bySubject && byLevel && bySearch;
   };
 
-  // источник для "Продолжить"
-  const baseContinue =
+  // Источник для "Твои чаты"
+  const baseContinueRaw =
     continueFromStorage &&
     Array.isArray(continueFromStorage) &&
     continueFromStorage.length > 0
       ? continueFromStorage
       : mockContinue;
+
+  // Дедуп по (subject, level)
+  const seenChatKeys = new Set();
+  const baseContinue = baseContinueRaw.filter((item) => {
+    const key = `${item.subject}__${item.level}`;
+    if (seenChatKeys.has(key)) return false;
+    seenChatKeys.add(key);
+    return true;
+  });
+
   const filteredContinue = baseContinue.filter(matchesFilters);
 
-  // источник для "Сохранённые объяснения"
+  // Источник для "Сохранённые объяснения"
   const baseSaved =
     savedFromStorage &&
     Array.isArray(savedFromStorage) &&
@@ -204,6 +191,7 @@ export default function LibraryPage() {
       ? savedFromStorage
       : mockSaved;
   const filteredSaved = baseSaved.filter(matchesFilters);
+  const savedCount = baseSaved.length;
 
   const filteredCollections = mockCollections.filter(matchesFilters);
 
@@ -215,8 +203,8 @@ export default function LibraryPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+        <div className="flex flex-col.items-center gap-2">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400.bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -244,7 +232,7 @@ export default function LibraryPage() {
 
       {/* Кнопка меню на мобилке */}
       <button
-        className="absolute top-4.left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded.shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
@@ -252,7 +240,7 @@ export default function LibraryPage() {
 
       {/* Левое меню */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform.transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -271,9 +259,9 @@ export default function LibraryPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
+                className="flex items-center gap-3 px-2.py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -297,7 +285,7 @@ export default function LibraryPage() {
                 `}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
+                  className={`inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
                     ${item.key === "library" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
@@ -316,12 +304,12 @@ export default function LibraryPage() {
 
       {/* Основная зона */}
       <div className="flex-1 flex flex-col min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex.justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Хедер библиотеки */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex.items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
+                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3.py-1 rounded-full shadow-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
                   <span>Твоя учебная библиотека</span>
                 </div>
@@ -330,7 +318,7 @@ export default function LibraryPage() {
                     Библиотека
                   </h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
-                    Здесь собираются сохранённые объяснения из диалога и готовые
+                    Здесь собираются твои чаты, сохранённые объяснения и
                     подборки тем от NOOLIX.
                   </p>
                 </div>
@@ -346,7 +334,7 @@ export default function LibraryPage() {
                 />
                 <div className="flex gap-2">
                   <select
-                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl.bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     value={subjectFilter}
                     onChange={(e) => setSubjectFilter(e.target.value)}
                   >
@@ -370,7 +358,7 @@ export default function LibraryPage() {
               </div>
             </section>
 
-            {/* Если по фильтрам вообще ничего не найдено — общий empty state */}
+            {/* Если по фильтрам вообще ничего не найдено */}
             {nothingFound && (
               <section className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -382,24 +370,24 @@ export default function LibraryPage() {
                 </p>
                 <a
                   href="/chat"
-                  className="inline-flex items-center justify-center mt-1 px-3 py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                  className="inline-flex items-center justify-center mt-1 px-3.py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                 >
                   Спросить в диалоге
                 </a>
               </section>
             )}
 
-            {/* Продолжить изучение */}
+            {/* Твои чаты */}
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Продолжить
+                  Твои чаты
                 </p>
               </div>
               {filteredContinue.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  По текущим фильтрам нет материалов для продолжения. Попробуй
-                  выбрать другой предмет или уровень.
+                  Пока нет активных чатов. Начни с диалога — и здесь появятся
+                  сессии по предметам и уровням.
                 </p>
               ) : (
                 <div className="grid md:grid-cols-2 gap-3">
@@ -423,16 +411,13 @@ export default function LibraryPage() {
                       </div>
                       <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
                         <span>
-                          Обновлено:{" "}
-                          {item.updatedAt || "Недавно"}
+                          Обновлено: {item.updatedAt || "Недавно"}
                         </span>
                         <a
-                          href={`/chat?topic=${encodeURIComponent(
-                            item.title
-                          )}`}
+                          href="/chat"
                           className="underline underline-offset-2 hover:text-white"
                         >
-                          Открыть в диалоге
+                          Открыть чат
                         </a>
                       </div>
                     </div>
@@ -441,22 +426,42 @@ export default function LibraryPage() {
               )}
             </section>
 
-            {/* Сохранённые объяснения */}
+            {/* Сохранённые объяснения (свёрнуты по умолчанию) */}
             <section className="space-y-2">
-              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                Сохранённые объяснения
-              </p>
-              {filteredSaved.length === 0 ? (
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Сохранённые объяснения
+                </p>
+                {savedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSaved((v) => !v)}
+                    className="text-[11px] px-2 py-1 rounded-full bg-black/30 border border-white/15 hover:bg-white/5 transition"
+                  >
+                    {showSaved
+                      ? `Скрыть (${savedCount})`
+                      : `Показать (${savedCount})`}
+                  </button>
+                )}
+              </div>
+
+              {!showSaved ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока здесь пусто. Любое объяснение из диалога можно сохранять
-                  в библиотеку — как конспект.
+                  Здесь будут твои сохранённые объяснения из диалога. Любое
+                  объяснение можно сохранить кнопкой «⭐ Сохранить в библиотеку»
+                  прямо в чате.
+                </p>
+              ) : filteredSaved.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока здесь пусто. Сохрани первое объяснение из диалога —
+                  например, разбор сложной задачи или мини-конспект.
                 </p>
               ) : (
                 <div className="space-y-2">
                   {filteredSaved.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex.flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
                     >
                       <div>
                         <p className="font-semibold text-sm mb-0.5">
