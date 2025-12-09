@@ -64,7 +64,7 @@ export default function ChatPage() {
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const messagesEndRef = useRef(null);
 
-  // --- Инициализация: контекст, текущая цель, история чата ---
+  // --- Инициализация: контекст, цель, история ---
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -133,7 +133,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // --- Смотрим слабые темы по предмету в карте знаний ---
+  // --- Слабые темы из карты знаний ---
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -175,7 +175,7 @@ export default function ChatPage() {
     }
   }, [context.subject]);
 
-  // --- Читаем тему из URL (?topic=...) ---
+  // --- Тема из URL (?topic=...) ---
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -189,7 +189,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // --- Сохраняем историю в localStorage ---
+  // --- Сохраняем историю ---
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -233,7 +233,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // --- Автоскролл вниз ---
+  // --- Автоскролл ---
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -255,7 +255,7 @@ export default function ChatPage() {
 
       const msgId = message.id || null;
 
-      // Если это сообщение уже сохранено — не дублируем в библиотеке
+      // Уже сохранено — не дублируем
       if (msgId && list.some((item) => item.messageId === msgId)) {
         setSavedMessageIds((prev) =>
           prev.includes(msgId) ? prev : [...prev, msgId]
@@ -297,7 +297,7 @@ export default function ChatPage() {
     }
   };
 
-  // --- Обновление блока "Продолжить изучение" в библиотеке ---
+  // --- Обновление "Продолжить" в библиотеке ---
   const touchContinueItem = () => {
     if (typeof window === "undefined") return;
 
@@ -356,7 +356,7 @@ export default function ChatPage() {
     }
   };
 
-  // --- Вызов backend /api/chat ---
+  // --- Вызов backend ---
   const callBackend = async (userMessages) => {
     try {
       setError("");
@@ -402,7 +402,7 @@ export default function ChatPage() {
         createdAt: new Date().toISOString(),
       };
 
-      // фиксируем активность для блока "Продолжить" в библиотеке
+      // Обновляем "Продолжить"
       touchContinueItem();
 
       setMessages((prev) => clampHistory([...prev, assistantMessage]));
@@ -535,7 +535,7 @@ export default function ChatPage() {
 
       {/* Кнопка открытия меню на мобилке */}
       <button
-        className="absolute top-4 left-4 z-40 bg-white text-black px-4 py-2 rounded-full shadow-md md:hidden text-xs font-semibold"
+        className="absolute top-4 left-4 z-40 bg.white text-black px-4 py-2 rounded-full shadow-md md:hidden text-xs font-semibold"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
@@ -543,7 +543,7 @@ export default function ChatPage() {
 
       {/* Левое меню */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -603,7 +603,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Левая колонка — контекст сессии */}
+            {/* Левая колонка — контекст */}
             <aside className="space-y-4">
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -667,9 +667,9 @@ export default function ChatPage() {
               </section>
             </aside>
 
-            {/* Правая колонка — сам чат */}
+            {/* Правая колонка — чат */}
             <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
-              <header className="px-4 py-3 border-b border-white/10 flex.items-center justify-between">
+              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">
                     Диалог с NOOLIX
@@ -706,7 +706,7 @@ export default function ChatPage() {
                       }`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-2xl px-3.py-2 text-xs md:text-sm border
+                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
                           ${
                             m.role === "user"
                               ? "bg-purple-500/80 text-white border-purple-300/60"
@@ -771,7 +771,7 @@ export default function ChatPage() {
                   <button
                     type="submit"
                     disabled={!input.trim() || thinking}
-                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg.disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {thinking ? "…" : "Отправить"}
                   </button>
