@@ -59,11 +59,10 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
   const [currentGoal, setCurrentGoal] = useState(null);
-    const [hasWeakTopics, setHasWeakTopics] = useState(false);
+  const [hasWeakTopics, setHasWeakTopics] = useState(false);
   const [weakTopicsCount, setWeakTopicsCount] = useState(0);
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const messagesEndRef = useRef(null);
-
 
   // --- Инициализация: контекст, текущая цель, история чата ---
   useEffect(() => {
@@ -208,6 +207,32 @@ export default function ChatPage() {
     }
   }, [messages]);
 
+  // --- Подтягиваем сохранённые сообщения из библиотеки ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      if (!raw) {
+        setSavedMessageIds([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        setSavedMessageIds([]);
+        return;
+      }
+
+      const ids = parsed
+        .map((item) => item.messageId || item.id)
+        .filter(Boolean);
+
+      setSavedMessageIds(ids);
+    } catch (e) {
+      console.warn("Failed to init savedMessageIds from library", e);
+      setSavedMessageIds([]);
+    }
+  }, []);
+
   // --- Автоскролл вниз ---
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -228,6 +253,16 @@ export default function ChatPage() {
         if (Array.isArray(parsed)) list = parsed;
       }
 
+      const msgId = message.id || null;
+
+      // Если это сообщение уже сохранено — не дублируем в библиотеке
+      if (msgId && list.some((item) => item.messageId === msgId)) {
+        setSavedMessageIds((prev) =>
+          prev.includes(msgId) ? prev : [...prev, msgId]
+        );
+        return;
+      }
+
       const titleFromTopic = currentTopic && currentTopic.trim();
       const firstLine = (message.content || "").split("\n")[0].trim();
       const titleFromText = firstLine.slice(0, 80);
@@ -238,31 +273,29 @@ export default function ChatPage() {
           : `Сохранённое объяснение по ${context.subject}`);
 
       const item = {
-        id: message.id || Date.now(),
+        id: msgId || Date.now(),
         title,
         subject: context.subject,
         level: context.level,
         from: "из диалога",
         savedAt: new Date().toISOString(),
-        messageId: message.id || null,
+        messageId: msgId,
         preview: (message.content || "").slice(0, 400),
       };
 
-            const MAX_SAVED = 50;
+      const MAX_SAVED = 50;
       const newList = [item, ...list].slice(0, MAX_SAVED);
       window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
 
-      // помечаем это сообщение как сохранённое
-      if (message.id) {
+      if (msgId) {
         setSavedMessageIds((prev) =>
-          prev.includes(message.id) ? prev : [...prev, message.id]
+          prev.includes(msgId) ? prev : [...prev, msgId]
         );
       }
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
   };
-
 
   // --- Обновление блока "Продолжить изучение" в библиотеке ---
   const touchContinueItem = () => {
@@ -415,6 +448,8 @@ export default function ChatPage() {
     }
   };
 
+  const subjectPrep = getSubjectPrepositional(context.subject);
+
   const quickActions = [
     {
       key: "explain",
@@ -433,17 +468,16 @@ export default function ChatPage() {
   ];
 
   const handleQuickAction = (key) => {
-    const subjPrep = getSubjectPrepositional(context.subject);
     let text = "";
 
     switch (key) {
       case "explain":
         if (currentTopic) {
-          text = `Объясни, пожалуйста, тему «${currentTopic}» по ${subjPrep} простыми словами и приведи 1–2 базовых примера.`;
+          text = `Объясни, пожалуйста, тему «${currentTopic}» по ${subjectPrep} простыми словами и приведи 1–2 базовых примера.`;
         } else if (currentGoal) {
-          text = `Объясни, пожалуйста, одну из ключевых тем по ${subjPrep}, которые важны для цели «${currentGoal.title}». Начни с базовых понятий.`;
+          text = `Объясни, пожалуйста, одну из ключевых тем по ${subjectPrep}, которые важны для цели «${currentGoal.title}». Начни с базовых понятий.`;
         } else {
-          text = `Объясни, пожалуйста, тему по ${subjPrep}, которая мне сейчас сложна.`;
+          text = `Объясни, пожалуйста, тему по ${subjectPrep}, которая мне сейчас сложна.`;
         }
         break;
       case "steps":
@@ -452,13 +486,13 @@ export default function ChatPage() {
         break;
       case "test":
         if (currentGoal) {
-          text = `Сделай, пожалуйста, мини-тест по ${subjPrep} в рамках моей цели «${currentGoal.title}» на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} в рамках моей цели «${currentGoal.title}» на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
         } else {
-          text = `Сделай, пожалуйста, мини-тест по ${subjPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
         }
         break;
       case "weak":
-        text = `Предложи, пожалуйста, небольшую тренировку по типичным сложным темам по ${subjPrep} на моём уровне. Начни с самой базовой слабой темы.`;
+        text = `Предложи, пожалуйста, небольшую тренировку по типичным сложным темам по ${subjectPrep} на моём уровне. Начни с самой базовой слабой темы.`;
         break;
       default:
         break;
@@ -510,10 +544,9 @@ export default function ChatPage() {
       {/* Левое меню */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
-                ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
-
         <div className="mb-4">
           <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
             NOOLIX
@@ -636,7 +669,7 @@ export default function ChatPage() {
 
             {/* Правая колонка — сам чат */}
             <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
-              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <header className="px-4 py-3 border-b border-white/10 flex.items-center justify-between">
                 <div>
                   <h1 className="text-sm md:text-base font-semibold">
                     Диалог с NOOLIX
@@ -673,7 +706,7 @@ export default function ChatPage() {
                       }`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
+                        className={`max-w-[80%] rounded-2xl px-3.py-2 text-xs md:text-sm border
                           ${
                             m.role === "user"
                               ? "bg-purple-500/80 text-white border-purple-300/60"
@@ -691,8 +724,8 @@ export default function ChatPage() {
                         </div>
                       </div>
 
-                                            {m.role === "assistant" && (
-                        savedMessageIds.includes(m.id) ? (
+                      {m.role === "assistant" &&
+                        (savedMessageIds.includes(m.id) ? (
                           <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200">
                             <span>✅</span>
                             <span>Сохранено</span>
@@ -706,9 +739,7 @@ export default function ChatPage() {
                             <span>⭐</span>
                             <span>Сохранить в библиотеку</span>
                           </button>
-                        )
-                      )}
-
+                        ))}
                     </div>
                   </div>
                 ))}
@@ -740,7 +771,7 @@ export default function ChatPage() {
                   <button
                     type="submit"
                     disabled={!input.trim() || thinking}
-                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg.disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {thinking ? "…" : "Отправить"}
                   </button>
