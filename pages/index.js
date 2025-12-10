@@ -77,13 +77,14 @@ export default function Home() {
       setContext(ctx);
       if (goal) setCurrentGoal(goal);
 
-      // "твои чаты" (continue)
+      // "твои чаты"
       try {
-        const rawContinue = window.localStorage.getItem("noolixLibraryContinue");
+        const rawContinue = window.localStorage.getItem(
+          "noolixLibraryContinue"
+        );
         if (rawContinue) {
           const parsed = JSON.parse(rawContinue);
           if (Array.isArray(parsed)) {
-            // лёгкий сорт по updatedAt (если есть)
             const sorted = [...parsed].sort((a, b) => {
               const da = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
               const db = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -147,15 +148,15 @@ export default function Home() {
 
       {/* Кнопка меню для мобильных */}
       <button
-        className="absolute top-4.left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden text-xs font-semibold"
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden text-xs font-semibold"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
       </button>
 
-      {/* Левое меню */}
+      {/* Левое меню — тот же паттерн, что на библиотеке/диалоге */}
       <aside
-        className={`fixed md:static.top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -201,7 +202,7 @@ export default function Home() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -224,11 +225,13 @@ export default function Home() {
                 </div>
                 <h1 className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight">
                   Учись осознанно. <br className="hidden md:block" />
-                  NOOLIX помогает ставить цели, разбирать темы и закреплять их в диалоге.
+                  NOOLIX помогает ставить цели, разбирать темы и закреплять их в
+                  диалоге.
                 </h1>
                 <p className="text-xs md:text-sm text-purple-100/90 max-w-xl">
-                  Настрой предмет и уровень, сформулируй цель — и дальше платформа поможет
-                  шаг за шагом закрывать темы, тренировать слабые места и готовиться к экзаменам.
+                  Настрой предмет и уровень, сформулируй цель — и дальше платформа
+                  поможет шаг за шагом закрывать темы, тренировать слабые места и
+                  готовиться к экзаменам.
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <a
@@ -252,20 +255,22 @@ export default function Home() {
                     Контекст сейчас
                   </p>
                   <p>
-                    Предмет: <span className="font-semibold">{context.subject}</span>
+                    Предмет:{" "}
+                    <span className="font-semibold">{context.subject}</span>
                   </p>
                   <p>
                     Уровень: <span className="font-semibold">{context.level}</span>
                   </p>
                   {currentGoal && (
                     <p>
-                      Цель: <span className="font-semibold">{currentGoal.title}</span>
+                      Цель:{" "}
+                      <span className="font-semibold">{currentGoal.title}</span>
                     </p>
                   )}
                   {!currentGoal && (
                     <p className="text-purple-200/80">
-                      Цель пока не выбрана. Можно задать её на странице целей — и NOOLIX
-                      подстроит диалог и тесты под неё.
+                      Цель пока не выбрана. Можно задать её на странице целей —
+                      и NOOLIX подстроит диалог и тесты под неё.
                     </p>
                   )}
                 </div>
@@ -303,8 +308,8 @@ export default function Home() {
                     className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 flex flex-col gap-2"
                   >
                     <div className="flex items-center gap-2">
-                      {/* КРУЖОК ОДИНАКОВЫЙ ДЛЯ 1,2,3 */}
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 text-black flex items-center justify-center text-sm font-semibold shadow-md">
+                      {/* одинаковый кружок для 1, 2, 3 */}
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 text-black flex.items-center justify-center text-sm font-semibold shadow-md">
                         {step.number}
                       </div>
                       <div className="text-lg">{step.icon}</div>
@@ -343,15 +348,15 @@ export default function Home() {
 
               {continueChats.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока нет активных чатов. Начни диалог по предмету — и здесь появятся
-                  удобные кнопки для продолжения.
+                  Пока нет активных чатов. Начни диалог по предмету — и здесь
+                  появятся удобные кнопки для продолжения.
                 </p>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                   {continueChats.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 text-xs text-purple-100 flex flex-col justify-between"
+                      className="bg.white/5 border border-white/10 rounded-2xl px-3 py-3 text-xs text-purple-100 flex flex-col justify-between"
                     >
                       <div>
                         <p className="font-semibold text-sm mb-1">
@@ -402,9 +407,9 @@ export default function Home() {
 
               {!hasRecommendations ? (
                 <p className="text-xs text-purple-200/80">
-                  Как только появятся данные по слабым темам и тестам, здесь будут
-                  появляться конкретные рекомендации по темам. Пока можно просто
-                  попросить тьютора объяснить любую тему по предмету.
+                  Как только появятся данные по слабым темам и тестам, здесь
+                  будут появляться конкретные рекомендации по темам. Пока можно
+                  просто попросить тьютора объяснить любую тему по предмету.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -424,8 +429,8 @@ export default function Home() {
                 <p className="text-[11px] text-purple-200/80 pt-1">
                   Цель сейчас:{" "}
                   <span className="font-semibold">{currentGoal.title}</span>. Любую
-                  тему из рекомендаций можно разобрать прямо в диалоге и сохранить
-                  объяснение в библиотеку.
+                  тему из рекомендаций можно разобрать прямо в диалоге и
+                  сохранить объяснение в библиотеку.
                 </p>
               )}
             </section>
@@ -436,16 +441,18 @@ export default function Home() {
                 Что появится дальше в NOOLIX
               </p>
               <p className="text-xs md:text-sm text-purple-100/90">
-                В ближайших обновлениях: более подробная карта знаний, история мини-тестов
-                с разбором ошибок и личная статистика по предметам. Всё это будет работать
-                поверх тех функций, которые уже есть сейчас.
+                В ближайших обновлениях: более подробная карта знаний, история
+                мини-тестов с разбором ошибок и личная статистика по предметам.
+                Всё это будет работать поверх тех функций, которые уже есть
+                сейчас.
               </p>
             </section>
           </div>
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь: support@noolix.ai
+          © 2025 NOOLIX — образовательная платформа будущего. Связь:
+          support@noolix.ai
         </footer>
       </div>
     </div>
