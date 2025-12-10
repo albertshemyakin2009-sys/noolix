@@ -14,7 +14,7 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Fallback-моки
+// Fallback-моки, если localStorage ещё пуст
 const mockContinue = [
   {
     id: 1,
@@ -85,7 +85,7 @@ export default function LibraryPage() {
   const [continueFromStorage, setContinueFromStorage] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
 
-  // Подтягиваем предмет/уровень
+  // Подтягиваем предмет/уровень из контекста, чтобы фильтры были "в теме"
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -102,7 +102,7 @@ export default function LibraryPage() {
     }
   }, []);
 
-  // Читаем сохранённые объяснения
+  // Читаем сохранённые объяснения из localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -123,7 +123,7 @@ export default function LibraryPage() {
     }
   }, []);
 
-  // Читаем "твои чаты" (раньше продолжить)
+  // Читаем "твои чаты" (раньше "Продолжить") из localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -172,7 +172,7 @@ export default function LibraryPage() {
       ? continueFromStorage
       : mockContinue;
 
-  // Дедуп по (subject, level)
+  // Дедуп по (subject, level), чтобы не было 10 карточек одного и того же чата
   const seenChatKeys = new Set();
   const baseContinue = baseContinueRaw.filter((item) => {
     const key = `${item.subject}__${item.level}`;
@@ -203,8 +203,8 @@ export default function LibraryPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
-        <div className="flex flex-col.items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400.bg-clip-text text-transparent tracking-wide">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
           <p className="text-xs text-purple-100/80">
@@ -232,15 +232,15 @@ export default function LibraryPage() {
 
       {/* Кнопка меню на мобилке */}
       <button
-        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded.shadow-md md:hidden"
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
       </button>
 
-      {/* Левое меню */}
+      {/* Левое меню — тот же градиент, что и на других страницах */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform.transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -259,9 +259,9 @@ export default function LibraryPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className="flex items-center gap-3 px-2.py-2 rounded-2xl hover:bg-white/5 transition"
+                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -276,18 +276,14 @@ export default function LibraryPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${
-                    item.key === "library"
-                      ? "bg-white/15"
-                      : "hover:bg-white/5"
-                  }
-                `}
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition ${
+                  item.key === "library" ? "bg-white/15" : "hover:bg-white/5"
+                }`}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === "library" ? "ring-2 ring-purple-200" : ""}
-                  `}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white ${
+                    item.key === "library" ? "ring-2 ring-purple-200" : ""
+                  }`}
                 >
                   {item.icon}
                 </span>
@@ -304,12 +300,12 @@ export default function LibraryPage() {
 
       {/* Основная зона */}
       <div className="flex-1 flex flex-col min-h-screen">
-        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex.justify-center">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             {/* Хедер библиотеки */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3.py-1 rounded-full shadow-sm">
+                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
                   <span>Твоя учебная библиотека</span>
                 </div>
@@ -334,7 +330,7 @@ export default function LibraryPage() {
                 />
                 <div className="flex gap-2">
                   <select
-                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl.bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     value={subjectFilter}
                     onChange={(e) => setSubjectFilter(e.target.value)}
                   >
@@ -370,7 +366,7 @@ export default function LibraryPage() {
                 </p>
                 <a
                   href="/chat"
-                  className="inline-flex items-center justify-center mt-1 px-3.py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                  className="inline-flex items-center justify-center mt-1 px-3 py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                 >
                   Спросить в диалоге
                 </a>
@@ -410,9 +406,7 @@ export default function LibraryPage() {
                         )}
                       </div>
                       <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
-                        <span>
-                          Обновлено: {item.updatedAt || "Недавно"}
-                        </span>
+                        <span>Обновлено: {item.updatedAt || "Недавно"}</span>
                         <a
                           href="/chat"
                           className="underline underline-offset-2 hover:text-white"
@@ -448,8 +442,8 @@ export default function LibraryPage() {
               {!showSaved ? (
                 <p className="text-xs text-purple-200/80">
                   Здесь будут твои сохранённые объяснения из диалога. Любое
-                  объяснение можно сохранить кнопкой «⭐ Сохранить в библиотеку»
-                  прямо в чате.
+                  сообщение NOOLIX можно сохранить кнопкой «⭐ Сохранить в
+                  библиотеку» прямо в чате.
                 </p>
               ) : filteredSaved.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
@@ -461,7 +455,7 @@ export default function LibraryPage() {
                   {filteredSaved.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex.flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
                     >
                       <div>
                         <p className="font-semibold text-sm mb-0.5">
