@@ -1,4 +1,3 @@
-// pages/index.js
 import { useState, useEffect } from "react";
 
 const primaryMenuItems = [
@@ -14,95 +13,127 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-const SUBJECT_OPTIONS = [
-  "Математика",
-  "Физика",
-  "Русский язык",
-  "Английский язык",
-];
-
-const LEVEL_OPTIONS = ["7–9 класс", "10–11 класс", "1 курс вуза"];
-
 const CONTEXT_STORAGE_KEY = "noolixContext";
 
-function getGreetingByHour() {
-  const h = new Date().getHours();
-  if (h < 5) return "Доброй ночи";
-  if (h < 12) return "Доброе утро";
-  if (h < 18) return "Добрый день";
-  return "Добрый вечер";
+function getWeakTopicsForSubject(knowledgeMap, subject) {
+  if (!knowledgeMap || typeof knowledgeMap !== "object") return [];
+  const subjEntry = knowledgeMap[subject];
+  if (!subjEntry || typeof subjEntry !== "object") return [];
+
+  const topics = Object.entries(subjEntry)
+    .filter(([_, v]) => v && typeof v.score === "number")
+    .map(([name, v]) => ({ name, score: v.score }));
+
+  const weak = topics.filter((t) => t.score < 0.8);
+  weak.sort((a, b) => a.score - b.score);
+  return weak;
 }
 
 export default function Home() {
-  const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [subject, setSubject] = useState("Математика");
-  const [level, setLevel] = useState("10–11 класс");
-  const [greeting, setGreeting] = useState("Добро пожаловать");
-  const [lastActivity, setLastActivity] = useState(
-    "Математика — логарифмы (пример, до реальных данных)"
-  );
+  const [context, setContext] = useState({
+    subject: "Математика",
+    level: "10–11 класс",
+    mode: "exam_prep",
+  });
+  const [continueChats, setContinueChats] = useState([]);
+  const [recommendedTopics, setRecommendedTopics] = useState([]);
+  const [currentGoal, setCurrentGoal] = useState(null);
 
-  // Инициализация: подтягиваем контекст
+  // Инициализация: контекст, цель, "твои чаты", рекомендации
   useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      const raw = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
-      if (raw) {
-        const ctx = JSON.parse(raw);
-        if (ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
-          setSubject(ctx.subject);
-        }
-        if (ctx.level && LEVEL_OPTIONS.includes(ctx.level)) {
-          setLevel(ctx.level);
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to read context on home", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    if (typeof window === "undefined") return;
 
-  // Сохраняем контекст
-  useEffect(() => {
     try {
-      if (typeof window === "undefined") return;
-      const ctx = {
-        subject,
-        level,
+      // контекст
+      const rawContext = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
+      let ctx = {
+        subject: "Математика",
+        level: "10–11 класс",
         mode: "exam_prep",
       };
-      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(ctx));
-    } catch (e) {
-      console.warn("Failed to save context on home", e);
-    }
-  }, [subject, level]);
+      if (rawContext) {
+        const parsed = JSON.parse(rawContext);
+        ctx = { ...ctx, ...parsed };
+      }
 
-  // Приветствие по времени суток
-  useEffect(() => {
-    setGreeting(getGreetingByHour());
+      // текущая цель
+      let goal = null;
+      try {
+        const rawGoal = window.localStorage.getItem("noolixCurrentGoal");
+        if (rawGoal) {
+          const parsedGoal = JSON.parse(rawGoal);
+          if (parsedGoal && typeof parsedGoal === "object") {
+            goal = parsedGoal;
+            if (parsedGoal.subject) {
+              ctx = { ...ctx, subject: parsedGoal.subject };
+            }
+          }
+        }
+      } catch (eGoal) {
+        console.warn("Failed to read noolixCurrentGoal", eGoal);
+      }
+
+      setContext(ctx);
+      if (goal) setCurrentGoal(goal);
+
+      // "твои чаты" (continue)
+      try {
+        const rawContinue = window.localStorage.getItem("noolixLibraryContinue");
+        if (rawContinue) {
+          const parsed = JSON.parse(rawContinue);
+          if (Array.isArray(parsed)) {
+            // лёгкий сорт по updatedAt (если есть)
+            const sorted = [...parsed].sort((a, b) => {
+              const da = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const db = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return db - da;
+            });
+            setContinueChats(sorted.slice(0, 3));
+          }
+        }
+      } catch (eCont) {
+        console.warn("Failed to read noolixLibraryContinue", eCont);
+      }
+
+      // рекомендации по слабым темам
+      try {
+        const rawKnowledge = window.localStorage.getItem("noolixKnowledgeMap");
+        if (rawKnowledge) {
+          const knowledge = JSON.parse(rawKnowledge);
+          const weak = getWeakTopicsForSubject(knowledge, ctx.subject);
+          setRecommendedTopics(weak.slice(0, 3));
+        }
+      } catch (eK) {
+        console.warn("Failed to read noolixKnowledgeMap on home", eK);
+      }
+    } catch (e) {
+      console.warn("Failed to init home page", e);
+    }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
-            NOOLIX
-          </div>
-          <p className="text-xs text-purple-100/80">
-            Загружаем твоё пространство учёбы…
-          </p>
-          <div className="flex gap-1 text-sm text-purple-100">
-            <span className="animate-pulse">•</span>
-            <span className="animate-pulse opacity-70">•</span>
-            <span className="animate-pulse opacity-40">•</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const hasRecommendations = recommendedTopics.length > 0;
+
+  const steps = [
+    {
+      number: 1,
+      title: "Выбери предмет и уровень",
+      text: "Задай контекст: ОГЭ, ЕГЭ или просто класс и предмет. Так тьютор понимает твой уровень.",
+      icon: "🎯",
+    },
+    {
+      number: 2,
+      title: "Сформулируй цель",
+      text: "Например: «Подготовиться к пробнику по физике» или «Подтянуть дроби за 8 класс».",
+      icon: "📝",
+    },
+    {
+      number: 3,
+      title: "Начни диалог",
+      text: "Попроси объяснить тему, разобрать задачу по шагам или дать мини-тест.",
+      icon: "💬",
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -116,16 +147,15 @@ export default function Home() {
 
       {/* Кнопка меню для мобильных */}
       <button
-        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        className="absolute top-4.left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden text-xs font-semibold"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
         ☰ Меню
       </button>
 
-      {/* Левое меню (стандарт) */}
+      {/* Левое меню */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
-        transform transition-transform duration-300 z-40
+        className={`fixed md:static.top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -134,7 +164,7 @@ export default function Home() {
             NOOLIX
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
-            Тьютор с ИИ для школьников и студентов
+            AI-платформа для учёбы
           </p>
         </div>
 
@@ -144,14 +174,14 @@ export default function Home() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === "home" ? "bg-white/15" : "hover:bg-white/5"}
-                `}
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition ${
+                  item.key === "home" ? "bg-white/15" : "hover:bg-white/5"
+                }`}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === "home" ? "ring-2 ring-purple-200" : ""}
-                  `}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white ${
+                    item.key === "home" ? "ring-2 ring-purple-200" : ""
+                  }`}
                 >
                   {item.icon}
                 </span>
@@ -171,7 +201,7 @@ export default function Home() {
                 href={item.href}
                 className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span className="inline-flex h-8 w-8 items-center justify-center.rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -181,274 +211,241 @@ export default function Home() {
         </nav>
       </aside>
 
-      {/* Основная зона */}
+      {/* Правая часть */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          {/* ключевое: max-w-6xl (шире блока) */}
-          <div className="w-full max-w-6xl flex flex-col gap-8 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl px-4 py-6 md:px-8 md:py-8 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Hero-блок */}
-            <section className="space-y-4">
-              <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
-                <span>Сегодня • Учёба в твоём ритме</span>
+          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            {/* HERO */}
+            <section className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)] items-center">
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                  <span>Личный ИИ-тьютор для школьников и студентов</span>
+                </div>
+                <h1 className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight">
+                  Учись осознанно. <br className="hidden md:block" />
+                  NOOLIX помогает ставить цели, разбирать темы и закреплять их в диалоге.
+                </h1>
+                <p className="text-xs md:text-sm text-purple-100/90 max-w-xl">
+                  Настрой предмет и уровень, сформулируй цель — и дальше платформа поможет
+                  шаг за шагом закрывать темы, тренировать слабые места и готовиться к экзаменам.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <a
+                    href="/chat"
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg hover:opacity-95 transition"
+                  >
+                    Начать с диалога →
+                  </a>
+                  <a
+                    href="/goals"
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-white/20 bg-black/30 text-xs md:text-sm text-purple-50 hover:bg-white/5 transition"
+                  >
+                    Настроить учебные цели
+                  </a>
+                </div>
               </div>
 
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="space-y-3">
-                  <h1 className="text-3xl md:text-4xl font-bold">
-                    {greeting}! Добро пожаловать в NOOLIX
-                  </h1>
-                  <p className="text-sm md:text-base text-purple-200 max-w-xl">
-                    Начни с выбора предмета или перейди сразу к диалогу с
-                    тьютором. Всё обучение — в одном месте.
-                  </p>
-
-                  <div className="flex flex-wrap gap-3 pt-1">
-                    <a
-                      href="/chat"
-                      className="inline-flex items-center justify-center px-5 py-2.5 rounded-full bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 transition cursor-pointer"
-                    >
-                      Начать диалог с тьютором
-                    </a>
-                    <a
-                      href="/progress"
-                      className="inline-flex.items-center justify-center px-5 py-2.5 rounded-full border border-white/40 text-xs md:text-sm text-purple-100 hover:bg-white/10 transition cursor-pointer"
-                    >
-                      Открыть карту знаний
-                    </a>
-                  </div>
-
-                  <p className="text-xs md:text-sm text-purple-300/90">
-                    Последняя активность:{" "}
-                    <span className="font-semibold">{lastActivity}</span>
-                  </p>
-                  <p className="text-[11px] text-purple-300/80">
-                    Режим: подготовка к экзамену
-                  </p>
-                </div>
-
-                {/* Краткий контекст: предмет и уровень */}
-                <div className="w-full md:w-[260px] bg-black/35 border border-white/15 rounded-2xl p-4 space-y-3">
+              <div className="space-y-3">
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-purple-100 space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Твой контекст
+                    Контекст сейчас
                   </p>
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200">Предмет</p>
-                      <select
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        className="w-full rounded-2xl bg-black/60 border border-white/20 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
-                      >
-                        {SUBJECT_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] text-purple-200">Уровень</p>
-                      <select
-                        value={level}
-                        onChange={(e) => setLevel(e.target.value)}
-                        className="w-full rounded-2xl bg-black/60 border border-white/20 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
-                      >
-                        {LEVEL_OPTIONS.map((l) => (
-                          <option key={l} value={l}>
-                            {l}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-purple-200/80">
-                    Эти настройки используются в диалоге, карте знаний, целях и
-                    библиотеке.
+                  <p>
+                    Предмет: <span className="font-semibold">{context.subject}</span>
                   </p>
+                  <p>
+                    Уровень: <span className="font-semibold">{context.level}</span>
+                  </p>
+                  {currentGoal && (
+                    <p>
+                      Цель: <span className="font-semibold">{currentGoal.title}</span>
+                    </p>
+                  )}
+                  {!currentGoal && (
+                    <p className="text-purple-200/80">
+                      Цель пока не выбрана. Можно задать её на странице целей — и NOOLIX
+                      подстроит диалог и тесты под неё.
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-purple-100 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Что может NOOLIX
+                  </p>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>Объяснять темы простым языком и в диалоге</li>
+                    <li>Готовить мини-тесты по темам и целям</li>
+                    <li>Помогать с картой знаний и слабых мест</li>
+                    <li>Сохранять важные объяснения в библиотеку</li>
+                  </ul>
                 </div>
               </div>
             </section>
 
-            {/* Онбординг: с чего начать */}
-            <section className="bg-black/25 border border-white/10 rounded-2xl p-5 md:p-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                  🧭
-                </span>
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Если ты здесь впервые
-                </p>
+            {/* Блок: с чего начать */}
+            <section className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    С чего начать
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    Три шага, чтобы NOOLIX начал работать на твой результат.
+                  </p>
+                </div>
               </div>
-              <h2 className="text-lg md:text-xl font-semibold">
-                С чего начать в NOOLIX
-              </h2>
-              <div className="grid md:grid-cols-3 gap-3 text-xs md:text-sm text-purple-100">
-                <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
-                  <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
-                      1
-                    </span>
-                    Выбери предмет и уровень
-                  </p>
-                  <p className="text-[11px] text-purple-200/90">
-                    В блоке справа задай, что тебе актуально — например,
-                    “Математика, 10–11 класс”.
-                  </p>
-                </div>
-               <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
-  <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
-    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
-      2
-    </span>
-    Задай вопрос в диалоге
-  </p>
-  <p className="text-[11px] text-purple-200/90">
-    Перейди в диалог и расскажи, что тебе сейчас сложно —
-    тему, задачу или экзамен.
-  </p>
-  <a
-    href="/chat"
-    className="inline-flex mt-1 text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-  >
-    Открыть диалог →
-  </a>
-</div>
-
-                <div className="space-y-1 bg-white/5 rounded-2xl p-3 border border-white/10">
-                  <p className="text-[11px] font-semibold text-purple-100 flex items-center gap-1">
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-300/90 text-black text-[10px]">
-                      3
-                    </span>
-                    Отметь темы и создай цель
-                  </p>
-                  <p className="text-[11px] text-purple-200/90">
-                    В карте знаний отмечай, что даётся сложно, а в целях
-                    зафиксируй, чего хочешь добиться.
-                  </p>
-                  <div className="flex gap-2 mt-1">
-                    <a
-                      href="/progress"
-                      className="text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-                    >
-                      К карте знаний →
-                    </a>
-                    <a
-                      href="/goals"
-                      className="text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-                    >
-                      К целям →
-                    </a>
+              <div className="grid gap-3 md:grid-cols-3 pt-1">
+                {steps.map((step) => (
+                  <div
+                    key={step.number}
+                    className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      {/* КРУЖОК ОДИНАКОВЫЙ ДЛЯ 1,2,3 */}
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 text-black flex items-center justify-center text-sm font-semibold shadow-md">
+                        {step.number}
+                      </div>
+                      <div className="text-lg">{step.icon}</div>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm font-semibold mb-1">
+                        {step.title}
+                      </p>
+                      <p className="text-[11px] md:text-xs text-purple-100/85">
+                        {step.text}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </section>
 
-            {/* Быстрые действия */}
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                  ⚡
-                </span>
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Зона: быстрые действия
-                </p>
+            {/* Блок: Продолжить учёбу */}
+            <section className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Продолжить учёбу
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    Быстрый доступ к последним активным чатам и сессиям.
+                  </p>
+                </div>
+                <a
+                  href="/library"
+                  className="text-[11px] md:text-xs text-purple-100 underline underline-offset-2 hover:text-white"
+                >
+                  Открыть библиотеку
+                </a>
               </div>
-              <div className="grid md:grid-cols-3 gap-3 text-xs md:text-sm">
-                <a
-                  href="/chat"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between.relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200 shadow-md"
-                >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                    💬
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1 text-lg">
-                      Задать вопрос тьютору
-                    </h3>
-                    <p className="text-xs text-purple-200 mb-3">
-                      Объяснение темы, разбор задачи, мини-тест — в одном
-                      диалоге.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-purple-200">
-                    <span className="font-semibold">К диалогу →</span>
-                    <span className="opacity-80">
-                      {subject} • {level}
-                    </span>
-                  </div>
-                </a>
 
-                <a
-                  href="/goals"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all duration-200 shadow-md"
-                >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                    🎯
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1 text-lg">
-                      Поставить цель по предмету
-                    </h3>
-                    <p className="text-xs text-purple-200 mb-3">
-                      Сформулируй одну цель — например, подготовку к пробнику
-                      или экзамену.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-purple-200">
-                    <span className="font-semibold">К целям →</span>
-                    <span className="opacity-80">Шаги и прогресс</span>
-                  </div>
-                </a>
+              {continueChats.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока нет активных чатов. Начни диалог по предмету — и здесь появятся
+                  удобные кнопки для продолжения.
+                </p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {continueChats.map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 text-xs text-purple-100 flex flex-col justify-between"
+                    >
+                      <div>
+                        <p className="font-semibold text-sm mb-1">
+                          {item.title || "Диалог с тьютором"}
+                        </p>
+                        <p className="text-[11px] text-purple-200/80">
+                          {item.subject} • {item.level}
+                        </p>
+                        {item.type && (
+                          <p className="text-[11px] text-purple-200/80 mt-0.5">
+                            Формат: {item.type}
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-purple-200/80">
+                        <span>Обновлено: {item.updatedAt || "Недавно"}</span>
+                        <a
+                          href="/chat"
+                          className="underline underline-offset-2 hover:text-white"
+                        >
+                          Открыть чат →
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
+            {/* Блок: Рекомендуем сегодня */}
+            <section className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Рекомендуем сегодня
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    Темы, которые логично закрыть в ближайшую сессию.
+                  </p>
+                </div>
                 <a
                   href="/progress"
-                  className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl hover:border-white/20 transition-all.duration-200 shadow-md"
+                  className="text-[11px] md:text-xs text-purple-100 underline underline-offset-2 hover:text-white"
                 >
-                  <div className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                    📈
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1 text-lg">
-                      Посмотреть прогресс
-                    </h3>
-                    <p className="text-xs text-purple-200 mb-3">
-                      Отслеживай темы, в которых ты уже силён, и зоны для
-                      роста.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-purple-200">
-                    <span className="font-semibold">К прогрессу →</span>
-                    <span className="opacity-80">Карта знаний</span>
-                  </div>
+                  Открыть прогресс
                 </a>
               </div>
+
+              {!hasRecommendations ? (
+                <p className="text-xs text-purple-200/80">
+                  Как только появятся данные по слабым темам и тестам, здесь будут
+                  появляться конкретные рекомендации по темам. Пока можно просто
+                  попросить тьютора объяснить любую тему по предмету.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {recommendedTopics.map((t) => (
+                    <a
+                      key={t.name}
+                      href={`/chat?topic=${encodeURIComponent(t.name)}`}
+                      className="px-3 py-1.5 rounded-full bg-white/5 border border-purple-300/60 text-[11px] md:text-xs text-purple-50 hover:bg-white/10 transition"
+                    >
+                      {t.name} · уровень {Math.round(t.score * 100)}%
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {currentGoal && (
+                <p className="text-[11px] text-purple-200/80 pt-1">
+                  Цель сейчас:{" "}
+                  <span className="font-semibold">{currentGoal.title}</span>. Любую
+                  тему из рекомендаций можно разобрать прямо в диалоге и сохранить
+                  объяснение в библиотеку.
+                </p>
+              )}
             </section>
 
-            {/* Новости */}
-            <section className="bg-black/25 border border-white/10 rounded-2xl p-5 md:p-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-white text-black text-sm shadow-md">
-                  🔔
-                </span>
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Зона: информация и рекомендации
-                </p>
-              </div>
-              <h2 className="text-xl font-semibold mb-1">
-                Новости и обновления
-              </h2>
-              <p className="text-xs text-purple-200">
-                Здесь в будущем будут отображаться новые функции, обновления
-                платформы и твои персональные рекомендации.
+            {/* Блок: Roadmap / что будет дальше */}
+            <section className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 md:p-5 space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Что появится дальше в NOOLIX
+              </p>
+              <p className="text-xs md:text-sm text-purple-100/90">
+                В ближайших обновлениях: более подробная карта знаний, история мини-тестов
+                с разбором ошибок и личная статистика по предметам. Всё это будет работать
+                поверх тех функций, которые уже есть сейчас.
               </p>
             </section>
           </div>
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь:
-          support@noolix.ai
+          © 2025 NOOLIX — образовательная платформа будущего. Связь: support@noolix.ai
         </footer>
       </div>
     </div>
