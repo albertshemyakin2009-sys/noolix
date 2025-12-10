@@ -303,18 +303,32 @@ export default function Home() {
               </div>
               <div className="grid gap-3 md:grid-cols-3 pt-1">
                 {steps.map((step) => (
-                  <div
-                    key={step.number}
-                    className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 flex flex-col gap-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      {/* одинаковый кружок для 1, 2, 3 */}
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 text-black flex.items-center justify-center text-sm font-semibold shadow-md">
-                        {step.number}
-                      </div>
-                      <div className="text-lg">{step.icon}</div>
-                    </div>
-                    <div>
+  <div
+    key={step.number}
+    className="bg-white/5 border border-white/10 rounded-2xl px-4 py-4 flex flex-col gap-3"
+  >
+    {/* Верхний блок с кружком и иконкой */}
+    <div className="flex items-center gap-3">
+      {/* КРУЖОК С ЦИФРОЙ */}
+      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 
+                      text-black font-bold flex items-center justify-center shadow-md">
+        {step.number}
+      </div>
+
+      {/* Иконка шага */}
+      <div className="text-xl leading-none">{step.icon}</div>
+    </div>
+
+    {/* Название шага */}
+    <p className="text-sm md:text-base font-semibold">{step.title}</p>
+
+    {/* Подтекст */}
+    <p className="text-[11px] md:text-xs text-purple-100/85 leading-relaxed">
+      {step.text}
+    </p>
+  </div>
+))}
+
                       <p className="text-xs md:text-sm font-semibold mb-1">
                         {step.title}
                       </p>
