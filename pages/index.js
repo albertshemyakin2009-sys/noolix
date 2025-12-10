@@ -156,7 +156,7 @@ export default function Home() {
 
       {/* Левое меню — тот же паттерн, что на библиотеке/диалоге */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform.duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -229,9 +229,9 @@ export default function Home() {
                   диалоге.
                 </h1>
                 <p className="text-xs md:text-sm text-purple-100/90 max-w-xl">
-                  Настрой предмет и уровень, сформулируй цель — и дальше платформа
-                  поможет шаг за шагом закрывать темы, тренировать слабые места и
-                  готовиться к экзаменам.
+                  Настрой предмет и уровень, сформулируй цель — и дальше
+                  платформа поможет шаг за шагом закрывать темы, тренировать
+                  слабые места и готовиться к экзаменам.
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <a
@@ -275,7 +275,7 @@ export default function Home() {
                   )}
                 </div>
 
-                <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-purple-100 space-y-2">
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-purple-100.space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                     Что может NOOLIX
                   </p>
@@ -303,39 +303,28 @@ export default function Home() {
               </div>
               <div className="grid gap-3 md:grid-cols-3 pt-1">
                 {steps.map((step) => (
-  <div
-    key={step.number}
-    className="bg-white/5 border border-white/10 rounded-2xl px-4 py-4 flex flex-col gap-3"
-  >
-    {/* Верхний блок с кружком и иконкой */}
-    <div className="flex items-center gap-3">
-      {/* КРУЖОК С ЦИФРОЙ */}
-      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 
-                      text-black font-bold flex items-center justify-center shadow-md">
-        {step.number}
-      </div>
-
-      {/* Иконка шага */}
-      <div className="text-xl leading-none">{step.icon}</div>
-    </div>
-
-    {/* Название шага */}
-    <p className="text-sm md:text-base font-semibold">{step.title}</p>
-
-    {/* Подтекст */}
-    <p className="text-[11px] md:text-xs text-purple-100/85 leading-relaxed">
-      {step.text}
-    </p>
-  </div>
-))}
-
-                      <p className="text-xs md:text-sm font-semibold mb-1">
-                        {step.title}
-                      </p>
-                      <p className="text-[11px] md:text-xs text-purple-100/85">
-                        {step.text}
-                      </p>
+                  <div
+                    key={step.number}
+                    className="bg-white/5 border border-white/10 rounded-2xl px-4 py-4 flex flex-col justify-between gap-3 
+                               transform transition-transform duration-200 hover:scale-[1.02] hover:bg-white/10 hover:shadow-lg fade-in-up"
+                  >
+                    {/* Верхняя связка: кружок + иконка */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 text-black font-bold flex items-center justify-center shadow-md">
+                        {step.number}
+                      </div>
+                      <div className="text-xl leading-none">{step.icon}</div>
                     </div>
+
+                    {/* Название шага */}
+                    <p className="text-sm md:text-base font-semibold">
+                      {step.title}
+                    </p>
+
+                    {/* Подтекст */}
+                    <p className="text-[11px] md:text-xs text-purple-100/85 leading-relaxed">
+                      {step.text}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -370,7 +359,7 @@ export default function Home() {
                   {continueChats.map((item) => (
                     <div
                       key={item.id}
-                      className="bg.white/5 border border-white/10 rounded-2xl px-3 py-3 text-xs text-purple-100 flex flex-col justify-between"
+                      className="bg-white/5 border border-white/10 rounded-2xl px-3 py-3 text-xs text-purple-100 flex flex-col justify-between"
                     >
                       <div>
                         <p className="font-semibold text-sm mb-1">
@@ -442,8 +431,8 @@ export default function Home() {
               {currentGoal && (
                 <p className="text-[11px] text-purple-200/80 pt-1">
                   Цель сейчас:{" "}
-                  <span className="font-semibold">{currentGoal.title}</span>. Любую
-                  тему из рекомендаций можно разобрать прямо в диалоге и
+                  <span className="font-semibold">{currentGoal.title}</span>.
+                  Любую тему из рекомендаций можно разобрать прямо в диалоге и
                   сохранить объяснение в библиотеку.
                 </p>
               )}
@@ -469,6 +458,29 @@ export default function Home() {
           support@noolix.ai
         </footer>
       </div>
+
+      {/* Локальная анимация появления карточек шагов через styled-jsx */}
+      <style jsx>{`
+        .fade-in-up {
+          animation: fade-in-up 0.35s ease-out both;
+        }
+        .fade-in-up:nth-of-type(2) {
+          animation-delay: 0.05s;
+        }
+        .fade-in-up:nth-of-type(3) {
+          animation-delay: 0.1s;
+        }
+        @keyframes fade-in-up {
+          from {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
