@@ -44,6 +44,41 @@ const clampHistory = (list) => {
   if (!Array.isArray(list)) return [];
   return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
 };
+  const applyContextChange = (nextCtx) => {
+    setContext(nextCtx);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("noolixContext", JSON.stringify(nextCtx));
+    }
+
+    // Загружаем историю конкретного чата под (subject + level)
+    try {
+      if (typeof window === "undefined") return;
+
+      const historyKey = getHistoryKey(nextCtx.subject, nextCtx.level);
+      const rawHistory = window.localStorage.getItem(historyKey);
+
+      if (rawHistory) {
+        const arr = JSON.parse(rawHistory);
+        if (Array.isArray(arr) && arr.length > 0) {
+          setMessages(clampHistory(arr));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load history for new context", e);
+    }
+
+    // Если истории нет — стартовое сообщение
+    const starter = {
+      id: Date.now(),
+      role: "assistant",
+      content: `Привет! Я NOOLIX. Давай начнём: что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages([starter]);
+  };
+
 
 // отдельный ключ истории под каждую пару (предмет + уровень)
 const getHistoryKey = (subject, level) => {
@@ -615,14 +650,41 @@ export default function ChatPage() {
                   Текущая сессия
                 </p>
                 <h2 className="text-sm font-semibold mb-1">Контекст</h2>
-                <p className="text-xs text-purple-100">
-                  Предмет:{" "}
-                  <span className="font-semibold">{context.subject}</span>
-                </p>
-                <p className="text-xs text-purple-100">
-                  Уровень:{" "}
-                  <span className="font-semibold">{context.level}</span>
-                </p>
+               <div className="space-y-2">
+  <div>
+    <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+    <select
+      value={context.subject}
+      onChange={(e) => {
+        const next = { ...context, subject: e.target.value };
+        applyContextChange(next);
+      }}
+      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+    >
+      <option>Математика</option>
+      <option>Физика</option>
+      <option>Русский язык</option>
+      <option>Английский язык</option>
+    </select>
+  </div>
+
+  <div>
+    <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
+    <select
+      value={context.level}
+      onChange={(e) => {
+        const next = { ...context, level: e.target.value };
+        applyContextChange(next);
+      }}
+      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+    >
+      <option>7–9 класс</option>
+      <option>10–11 класс</option>
+      <option>1 курс вуза</option>
+    </select>
+  </div>
+</div>
+
                 {currentGoal && (
                   <p className="text-xs text-purple-100">
                     Цель:{" "}
