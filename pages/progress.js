@@ -1,5 +1,5 @@
 // pages/progress.js
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
@@ -17,213 +17,137 @@ const secondaryMenuItems = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
-// Базовый список тем по предметам (MVP)
-const TOPICS = {
-  Математика: [
-    {
-      id: "math_quadratic",
-      title: "Квадратные уравнения",
-      area: "Алгебра",
-      levelHint: "8–9 класс",
-    },
-    {
-      id: "math_linear",
-      title: "Линейные уравнения и системы",
-      area: "Алгебра",
-      levelHint: "7–8 класс",
-    },
-    {
-      id: "math_derivative",
-      title: "Производная и её смысл",
-      area: "Математический анализ",
-      levelHint: "10–11 класс",
-    },
-    {
-      id: "math_trig",
-      title: "Тригонометрические уравнения",
-      area: "Алгебра",
-      levelHint: "10–11 класс",
-    },
-  ],
-  Физика: [
-    {
-      id: "phys_newton2",
-      title: "Второй закон Ньютона",
-      area: "Механика",
-      levelHint: "9–10 класс",
-    },
-    {
-      id: "phys_kinematics",
-      title: "Равноускоренное движение",
-      area: "Механика",
-      levelHint: "9 класс",
-    },
-    {
-      id: "phys_energy",
-      title: "Работа и энергия",
-      area: "Механика",
-      levelHint: "9–10 класс",
-    },
-  ],
-  "Русский язык": [
-    {
-      id: "rus_participles",
-      title: "Причастные обороты",
-      area: "Синтаксис",
-      levelHint: "7–9 класс",
-    },
-    {
-      id: "rus_spelling",
-      title: "Правописание Н и НН",
-      area: "Орфография",
-      levelHint: "8–9 класс",
-    },
-    {
-      id: "rus_essay",
-      title: "Структура сочинения",
-      area: "Письменная речь",
-      levelHint: "9–11 класс",
-    },
-  ],
-  "Английский язык": [
-    {
-      id: "eng_tenses",
-      title: "Основные времена (Present/Past/Future)",
-      area: "Грамматика",
-      levelHint: "7–9 класс",
-    },
-    {
-      id: "eng_perf",
-      title: "Perfect-времена",
-      area: "Грамматика",
-      levelHint: "9–11 класс",
-    },
-    {
-      id: "eng_vocab",
-      title: "Учебный словарь по темам",
-      area: "Лексика",
-      levelHint: "7–11 класс",
-    },
-  ],
-};
-
-function getStatusFromScore(score) {
-  if (typeof score !== "number") {
-    return { label: "Не отмечено", color: "text-purple-200/80" };
+function safeJsonParse(raw, fallback) {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
   }
-  if (score < 0.4) {
-    return { label: "Сложно / не начато", color: "text-red-300" };
-  }
-  if (score < 0.7) {
-    return { label: "Нужна практика", color: "text-orange-300" };
-  }
-  if (score < 0.9) {
-    return { label: "Хороший уровень", color: "text-emerald-300" };
-  }
-  return { label: "Уверенно", color: "text-emerald-400 font-semibold" };
 }
 
-function getScoreForMark(mark) {
-  switch (mark) {
+function normalize(s) {
+  return (s || "").toLowerCase().trim();
+}
+
+function clamp01(x) {
+  if (typeof x !== "number" || Number.isNaN(x)) return 0;
+  if (x < 0) return 0;
+  if (x > 1) return 1;
+  return x;
+}
+
+function getBand(score) {
+  const s = clamp01(score);
+  if (s < 0.5) return "weak";
+  if (s < 0.8) return "mid";
+  return "strong";
+}
+
+function bandLabel(band) {
+  switch (band) {
     case "weak":
-      return 0.3;
-    case "medium":
-      return 0.65;
+      return "Слабые";
+    case "mid":
+      return "Средние";
     case "strong":
-      return 0.95;
+      return "Сильные";
     default:
-      return 0;
+      return "Все";
   }
 }
 
 export default function ProgressPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [subject, setSubject] = useState("Математика");
-  const [knowledgeMap, setKnowledgeMap] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Инициализация: контекст + карта знаний
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
+  const [context, setContext] = useState({
+    subject: "Математика",
+    level: "10–11 класс",
+    mode: "exam_prep",
+  });
 
-      const rawContext = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
-      if (rawContext) {
-        try {
-          const ctx = JSON.parse(rawContext);
-          if (ctx.subject && TOPICS[ctx.subject]) {
-            setSubject(ctx.subject);
-          }
-        } catch (e) {
-          console.warn("Failed to parse context in progress", e);
-        }
+  const [knowledgeMap, setKnowledgeMap] = useState({});
+  const [search, setSearch] = useState("");
+  const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
+
+  // init: context + knowledge map
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
+      const parsedCtx = safeJsonParse(rawCtx, null);
+      if (parsedCtx && typeof parsedCtx === "object") {
+        setContext((prev) => ({ ...prev, ...parsedCtx }));
       }
 
       const rawKnowledge = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
-      if (rawKnowledge) {
-        try {
-          const map = JSON.parse(rawKnowledge);
-          if (map && typeof map === "object") {
-            setKnowledgeMap(map);
-          }
-        } catch (e) {
-          console.warn("Failed to parse knowledge map", e);
-        }
+      const parsedKnowledge = safeJsonParse(rawKnowledge, {});
+      if (parsedKnowledge && typeof parsedKnowledge === "object") {
+        setKnowledgeMap(parsedKnowledge);
       }
-    } catch (e) {
-      console.warn("Failed to init progress page", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Сохраняем карту знаний
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(
-        KNOWLEDGE_STORAGE_KEY,
-        JSON.stringify(knowledgeMap)
-      );
-    } catch (e) {
-      console.warn("Failed to save knowledge map", e);
+  // keep context synced
+  const applyContextChange = (nextCtx) => {
+    setContext(nextCtx);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(nextCtx));
     }
-  }, [knowledgeMap]);
-
-  const subjectTopics = TOPICS[subject] || [];
-  const subjectMap = knowledgeMap[subject] || {};
-
-  const handleMarkTopic = (topicId, mark) => {
-    setKnowledgeMap((prev) => {
-      const prevForSubject = prev[subject] || {};
-      const score = getScoreForMark(mark);
-      return {
-        ...prev,
-        [subject]: {
-          ...prevForSubject,
-          [topicId]: {
-            score,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      };
-    });
   };
 
-  const totalTopics = subjectTopics.length;
-  let mastered = 0;
-  let weak = 0;
-  let inProgress = 0;
+  const subjectTopics = useMemo(() => {
+    const subj = knowledgeMap?.[context.subject];
+    if (!subj || typeof subj !== "object") return [];
+    const arr = Object.entries(subj).map(([topic, data]) => ({
+      topic,
+      score: clamp01(data?.score ?? 0),
+      updatedAt: data?.updatedAt || null,
+    }));
+    // по умолчанию: слабые сверху
+    arr.sort((a, b) => a.score - b.score);
+    return arr;
+  }, [knowledgeMap, context.subject]);
 
-  subjectTopics.forEach((t) => {
-    const entry = subjectMap[t.id];
-    if (!entry || typeof entry.score !== "number") return;
-    if (entry.score < 0.4) weak += 1;
-    else if (entry.score < 0.7) inProgress += 1;
-    else mastered += 1;
-  });
+  const stats = useMemo(() => {
+    const total = subjectTopics.length;
+    let weak = 0;
+    let mid = 0;
+    let strong = 0;
 
-  const hasAnyRated = Object.keys(subjectMap).length > 0;
+    subjectTopics.forEach((t) => {
+      const band = getBand(t.score);
+      if (band === "weak") weak += 1;
+      else if (band === "mid") mid += 1;
+      else strong += 1;
+    });
+
+    const avg =
+      total === 0
+        ? 0
+        : subjectTopics.reduce((sum, t) => sum + t.score, 0) / total;
+
+    return { total, weak, mid, strong, avg: clamp01(avg) };
+  }, [subjectTopics]);
+
+  const filteredTopics = useMemo(() => {
+    const q = normalize(search);
+    return subjectTopics.filter((t) => {
+      const bySearch = !q || normalize(t.topic).includes(q);
+      const byBand = bandFilter === "all" ? true : getBand(t.score) === bandFilter;
+      return bySearch && byBand;
+    });
+  }, [subjectTopics, search, bandFilter]);
+
+  const weakTopics = useMemo(() => {
+    return subjectTopics.filter((t) => getBand(t.score) === "weak").slice(0, 6);
+  }, [subjectTopics]);
+
+  const hasAnyData = subjectTopics.length > 0;
 
   if (loading) {
     return (
@@ -232,9 +156,7 @@ export default function ProgressPage() {
           <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
-          <p className="text-xs text-purple-100/80">
-            Загружаем твою карту знаний…
-          </p>
+          <p className="text-xs text-purple-100/80">Загружаем прогресс…</p>
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
@@ -247,7 +169,7 @@ export default function ProgressPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* Оверлей для мобилки */}
+      {/* overlay mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -255,7 +177,7 @@ export default function ProgressPage() {
         />
       )}
 
-      {/* Кнопка меню на мобилке */}
+      {/* mobile menu button */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -263,7 +185,7 @@ export default function ProgressPage() {
         ☰ Меню
       </button>
 
-      {/* Левое меню (как на главной, активен Прогресс) */}
+      {/* left menu */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
         transform transition-transform duration-300 z-40
@@ -275,7 +197,7 @@ export default function ProgressPage() {
             NOOLIX
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
-            Карта знаний по предметам
+            AI-платформа для учёбы
           </p>
         </div>
 
@@ -286,11 +208,7 @@ export default function ProgressPage() {
                 key={item.key}
                 href={item.href}
                 className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${
-                    item.key === "progress"
-                      ? "bg-white/15"
-                      : "hover:bg-white/5"
-                  }
+                  ${item.key === "progress" ? "bg-white/15" : "hover:bg-white/5"}
                 `}
               >
                 <span
@@ -300,9 +218,7 @@ export default function ProgressPage() {
                 >
                   {item.icon}
                 </span>
-                <span
-                  className={item.key === "progress" ? "font-semibold" : ""}
-                >
+                <span className={item.key === "progress" ? "font-semibold" : ""}>
                   {item.label}
                 </span>
               </a>
@@ -328,184 +244,266 @@ export default function ProgressPage() {
         </nav>
       </aside>
 
-      {/* Контент */}
+      {/* main */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Левая колонка: выбор предмета и сводка */}
-            <aside className="space-y-4">
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Предмет
-                </p>
-                <select
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full rounded-2xl bg-black/60 border border-white/20 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-300/70"
-                >
-                  {Object.keys(TOPICS).map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-purple-200/80">
-                  Выбери предмет, по которому хочешь посмотреть свою карту
-                  знаний.
-                </p>
-              </section>
-
-              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Краткая сводка
-                </p>
-                {subjectTopics.length === 0 ? (
-                  <p className="text-xs text-purple-100/80">
-                    Для этого предмета пока нет заготовленных тем. Можно начать
-                    с диалога — NOOLIX поможет наметить первые шаги.
+          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            {/* header */}
+            <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
+                  <span>Карта знаний и прогресс</span>
+                </div>
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-semibold">
+                    Прогресс
+                  </h1>
+                  <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
+                    Здесь NOOLIX показывает, какие темы уже уверенные, а какие
+                    лучше закрыть в ближайшее время.
                   </p>
-                ) : (
-                  <>
-                    <p className="text-xs text-purple-100/85">
-                      Тем в списке: {totalTopics}
-                    </p>
-                    <div className="space-y-1.5 text-[11px] text-purple-100">
-                      <p>
-                        <span className="inline-block h-2 w-2 rounded-full bg-red-300 mr-1" />
-                        Сложно / не начато:{" "}
-                        <span className="font-semibold">{weak}</span>
-                      </p>
-                      <p>
-                        <span className="inline-block h-2 w-2 rounded-full bg-orange-300 mr-1" />
-                        Нужна практика:{" "}
-                          <span className="font-semibold">{inProgress}</span>
-                      </p>
-                      <p>
-                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-300 mr-1" />
-                        Хороший / уверенный уровень:{" "}
-                        <span className="font-semibold">{mastered}</span>
-                      </p>
-                    </div>
-                  </>
-                )}
-              </section>
+                </div>
+              </div>
 
-              {/* Пустое состояние с CTA */}
-              {!hasAnyRated && subjectTopics.length > 0 && (
-                <section className="bg-black/30 border border-dashed border-purple-300/60 rounded-2xl p-4 space-y-2">
+              {/* quick context */}
+              <div className="w-full md:w-[280px] space-y-2">
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+                  <select
+                    value={context.subject}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, subject: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>Математика</option>
+                    <option>Физика</option>
+                    <option>Русский язык</option>
+                    <option>Английский язык</option>
+                  </select>
+                </div>
+
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
+                  <select
+                    value={context.level}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, level: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>7–9 класс</option>
+                    <option>10–11 класс</option>
+                    <option>1 курс вуза</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            {/* stats */}
+            <section className="grid gap-3 md:grid-cols-4">
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Тем всего
+                </p>
+                <p className="text-2xl font-semibold mt-1">{stats.total}</p>
+                <p className="text-[11px] text-purple-200/80 mt-1">
+                  по предмету {context.subject}
+                </p>
+              </div>
+
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Слабые
+                </p>
+                <p className="text-2xl font-semibold mt-1">{stats.weak}</p>
+                <p className="text-[11px] text-purple-200/80 mt-1">
+                  ниже 50%
+                </p>
+              </div>
+
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Средние
+                </p>
+                <p className="text-2xl font-semibold mt-1">{stats.mid}</p>
+                <p className="text-[11px] text-purple-200/80 mt-1">
+                  50–79%
+                </p>
+              </div>
+
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Средний уровень
+                </p>
+                <p className="text-2xl font-semibold mt-1">
+                  {Math.round(stats.avg * 100)}%
+                </p>
+                <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-300 to-purple-500"
+                    style={{ width: `${Math.round(stats.avg * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* actions + weak topics */}
+            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Пока без оценок
+                    Рекомендация
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    Закрывай слабые темы — так прогресс растёт быстрее всего.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href="/chat"
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                  >
+                    Разобрать в диалоге →
+                  </a>
+                  <a
+                    href="/tests"
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  >
+                    Перейти к тестам
+                  </a>
+                </div>
+              </div>
+
+              {!hasAnyData ? (
+                <div className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Пока нет данных
                   </p>
                   <p className="text-xs text-purple-100/85">
-                    Ты ещё не отмечал(а) темы по этому предмету. Можно начать с
-                    краткой тренировки в диалоге — расскажи, что даётся
-                    сложнее всего.
+                    Прогресс заполняется, когда ты решаешь мини-тесты или
+                    отмечаешь темы. Пока можно начать с диалога: попросить
+                    объяснить тему и затем пройти мини-тест.
                   </p>
                   <a
-                    href={`/chat?topic=${encodeURIComponent(
-                      `${subject}: хочу понять слабые темы`
-                    )}`}
+                    href="/chat"
                     className="inline-flex items-center justify-center mt-1 px-3 py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                   >
-                    Начать с диалога по этому предмету
+                    Начать с диалога →
                   </a>
-                </section>
-              )}
-            </aside>
-
-            {/* Правая колонка: список тем */}
-            <section className="space-y-4">
-              <header className="flex flex-col gap-1">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Карта знаний
-                </p>
-                <h1 className="text-lg md:text-xl font-semibold">
-                  {subject}: темы и уровень владения
-                </h1>
-                <p className="text-xs text-purple-200/90">
-                  Отмечай, что даётся легко, а что — сложно. NOOLIX использует
-                  это в целях, тестах и диалоге.
-                </p>
-              </header>
-
-              {subjectTopics.length === 0 ? (
-                <div className="bg-black/30 border border-white/10 rounded-2xl p-4 text-xs text-purple-100/85">
-                  Для этого предмета ещё нет списка тем. Попробуй выбрать другой
-                  предмет или начни с диалога — вместе составим карту знаний.
-                  <div className="mt-2">
-                    <a
-                      href="/chat"
-                      className="inline-flex text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-                    >
-                      Перейти к диалогу →
-                    </a>
-                  </div>
                 </div>
+              ) : weakTopics.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Слабых тем по этому предмету пока нет — отлично. Можно
+                  закреплять темы через мини-тесты.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {weakTopics.map((t) => (
+                    <a
+                      key={t.topic}
+                      href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                      className="px-3 py-1.5 rounded-full bg-white/5 border border-purple-300/60 text-[11px] md:text-xs text-purple-50 hover:bg-white/10 transition"
+                    >
+                      {t.topic} · {Math.round(t.score * 100)}%
+                    </a>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* filters */}
+            <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-2 w-full md:w-[360px]">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Поиск по темам…"
+                  className="w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                {["all", "weak", "mid", "strong"].map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => setBandFilter(b)}
+                    className={`px-3 py-2 rounded-full text-[11px] transition border
+                      ${
+                        bandFilter === b
+                          ? "bg-white text-black border-white shadow-md"
+                          : "bg-black/30 text-purple-50 border-white/15 hover:bg-white/5"
+                      }`}
+                  >
+                    {b === "all" ? "Все" : bandLabel(b)}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* topics list */}
+            <section className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Темы по предмету
+              </p>
+
+              {filteredTopics.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  По текущим фильтрам ничего не найдено.
+                </p>
               ) : (
                 <div className="space-y-2">
-                  {subjectTopics.map((topic) => {
-                    const entry = subjectMap[topic.id];
-                    const score = entry?.score;
-                    const status = getStatusFromScore(score);
+                  {filteredTopics.map((t) => {
+                    const percent = Math.round(t.score * 100);
+                    const band = getBand(t.score);
+                    const badge =
+                      band === "weak"
+                        ? "Слабая"
+                        : band === "mid"
+                        ? "Средняя"
+                        : "Сильная";
+
                     return (
                       <div
-                        key={topic.id}
-                        className="bg-black/35 border border-white/10 rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                        key={t.topic}
+                        className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
                       >
-                        <div className="space-y-1">
-                          <p className="text-xs md:text-sm font-semibold">
-                            {topic.title}
-                          </p>
-                          <p className="text-[11px] text-purple-200/80">
-                            {topic.area} • {topic.levelHint}
-                          </p>
-                          <p
-                            className={`text-[11px] mt-0.5 ${status.color}`}
-                          >
-                            Статус: {status.label}
-                          </p>
-                          <a
-                            href={`/chat?topic=${encodeURIComponent(
-                              topic.title
-                            )}`}
-                            className="inline-flex mt-1 text-[11px] text-purple-100 underline underline-offset-2 hover:text-white"
-                          >
-                            Потренироваться по теме в диалоге →
-                          </a>
-                        </div>
-                        <div className="flex flex-col items-start md:items-end gap-1 text-[11px]">
-                          <p className="text-purple-200/80">
-                            Оцени, как ты чувствуешь тему:
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleMarkTopic(topic.id, "weak")
-                              }
-                              className="px-2.5 py-1 rounded-full bg-red-500/30 border border-red-300/60 text-[11px] hover:bg-red-500/50 transition"
-                            >
-                              Сложно
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleMarkTopic(topic.id, "medium")
-                              }
-                              className="px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-300/60 text-[11px] hover:bg-orange-500/40 transition"
-                            >
-                              Нужна практика
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleMarkTopic(topic.id, "strong")
-                              }
-                              className="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-300/60 text-[11px] hover:bg-emerald-500/40 transition"
-                            >
-                              Легко
-                            </button>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm truncate">
+                              {t.topic}
+                            </p>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-purple-100/90">
+                              {badge}
+                            </span>
                           </div>
+                          <p className="text-[11px] text-purple-200/80 mt-0.5">
+                            Уровень: {percent}%
+                            {t.updatedAt ? ` · обновлено: ${t.updatedAt}` : ""}
+                          </p>
+
+                          <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-purple-300 to-purple-500"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 md:justify-end">
+                          <a
+                            href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            Разобрать →
+                          </a>
+                          <a
+                            href="/tests"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Мини-тест
+                          </a>
                         </div>
                       </div>
                     );
