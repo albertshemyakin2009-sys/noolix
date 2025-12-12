@@ -44,40 +44,6 @@ const clampHistory = (list) => {
   if (!Array.isArray(list)) return [];
   return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
 };
-  const applyContextChange = (nextCtx) => {
-    setContext(nextCtx);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("noolixContext", JSON.stringify(nextCtx));
-    }
-
-    // Загружаем историю конкретного чата под (subject + level)
-    try {
-      if (typeof window === "undefined") return;
-
-      const historyKey = getHistoryKey(nextCtx.subject, nextCtx.level);
-      const rawHistory = window.localStorage.getItem(historyKey);
-
-      if (rawHistory) {
-        const arr = JSON.parse(rawHistory);
-        if (Array.isArray(arr) && arr.length > 0) {
-          setMessages(clampHistory(arr));
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to load history for new context", e);
-    }
-
-    // Если истории нет — стартовое сообщение
-    const starter = {
-      id: Date.now(),
-      role: "assistant",
-      content: `Привет! Я NOOLIX. Давай начнём: что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages([starter]);
-  };
 
 
 // отдельный ключ истории под каждую пару (предмет + уровень)
@@ -109,6 +75,46 @@ export default function ChatPage() {
   const [weakTopicsCount, setWeakTopicsCount] = useState(0);
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const messagesEndRef = useRef(null);
+
+  // Переключение предмета/уровня: сохраняем контекст и подгружаем историю чата
+  const applyContextChange = (nextCtx) => {
+    setContext(nextCtx);
+
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("noolixContext", JSON.stringify(nextCtx));
+      }
+    } catch (e) {
+      console.warn("Failed to save noolixContext", e);
+    }
+
+    // Загружаем историю конкретного чата под (subject + level)
+    try {
+      if (typeof window === "undefined") return;
+
+      const historyKey = getHistoryKey(nextCtx.subject, nextCtx.level);
+      const rawHistory = window.localStorage.getItem(historyKey);
+
+      if (rawHistory) {
+        const arr = JSON.parse(rawHistory);
+        if (Array.isArray(arr) && arr.length > 0) {
+          setMessages(clampHistory(arr));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load history for new context", e);
+    }
+
+    // Если истории нет — стартовое сообщение
+    const starter = {
+      id: Date.now(),
+      role: "assistant",
+      content: `Привет! Я NOOLIX. Давай начнём: что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages([starter]);
+  };
 
   // --- Инициализация: контекст, цель, история чата (по предмету+уровню) ---
   useEffect(() => {
