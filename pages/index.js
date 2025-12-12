@@ -254,13 +254,61 @@ export default function Home() {
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                     Контекст сейчас
                   </p>
-                  <p>
-                    Предмет:{" "}
-                    <span className="font-semibold">{context.subject}</span>
-                  </p>
-                  <p>
-                    Уровень: <span className="font-semibold">{context.level}</span>
-                  </p>
+                  <div className="space-y-2">
+  <div>
+    <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+    <select
+      value={context.subject}
+      onChange={(e) => {
+        const next = { ...context, subject: e.target.value };
+        setContext(next);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(next));
+        }
+
+        // обновим рекомендации сразу (по слабым темам)
+        try {
+          const rawKnowledge = window.localStorage.getItem("noolixKnowledgeMap");
+          if (rawKnowledge) {
+            const knowledge = JSON.parse(rawKnowledge);
+            const weak = getWeakTopicsForSubject(knowledge, e.target.value);
+            setRecommendedTopics(weak.slice(0, 3));
+          } else {
+            setRecommendedTopics([]);
+          }
+        } catch (_) {
+          setRecommendedTopics([]);
+        }
+      }}
+      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+    >
+      <option>Математика</option>
+      <option>Физика</option>
+      <option>Русский язык</option>
+      <option>Английский язык</option>
+    </select>
+  </div>
+
+  <div>
+    <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
+    <select
+      value={context.level}
+      onChange={(e) => {
+        const next = { ...context, level: e.target.value };
+        setContext(next);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(next));
+        }
+      }}
+      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+    >
+      <option>7–9 класс</option>
+      <option>10–11 класс</option>
+      <option>1 курс вуза</option>
+    </select>
+  </div>
+</div>
+
                   {currentGoal && (
                     <p>
                       Цель:{" "}
