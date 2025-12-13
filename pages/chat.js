@@ -1,11 +1,5 @@
 // pages/chat.js
-import { useEffect, useRef, useState, useMemo } from "react";
-
-/* =========================
-   CONSTANTS & HELPERS
-========================= */
-
-const CONTEXT_STORAGE_KEY = "noolixContext";
+import { useEffect, useRef, useState } from "react";
 
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
@@ -20,29 +14,17 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-const getHistoryKey = (subject, level) =>
-  `noolixChatHistory__${subject || "subject"}__${level || "level"}`;
-
-const clampHistory = (arr, max = 30) =>
-  Array.isArray(arr) ? arr.slice(-max) : [];
-
-const safeParse = (raw, fallback) => {
-  try {
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const formatTime = (iso) => {
-  if (!iso) return "";
-  const d = new Date(iso);
+function formatTime(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-};
+}
 
-const subjectInDative = (s) => {
-  switch ((s || "").toLowerCase()) {
+function getSubjectPrepositional(subject) {
+  if (!subject) return "";
+  const s = subject.toLowerCase();
+  switch (s) {
     case "математика":
       return "математике";
     case "физика":
@@ -52,369 +34,857 @@ const subjectInDative = (s) => {
     case "английский язык":
       return "английскому языку";
     default:
-      return s || "";
+      return s;
   }
+}
+
+const MAX_HISTORY = 40;
+
+const clampHistory = (list) => {
+  if (!Array.isArray(list)) return [];
+  return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
 };
 
-/* =========================
-   COMPONENT
-========================= */
+// отдельный ключ истории под каждую пару (предмет + уровень)
+const getHistoryKey = (subject, level) => {
+  const safe = (s) =>
+    (s || "unknown")
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_а-яё\-–]/gi, "");
+  return `noolixChatHistory__${safe(subject)}__${safe(level)}`;
+};
 
 export default function ChatPage() {
-  /* ---------- SSR / EXPORT GUARD ---------- */
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  /* ---------- UI ---------- */
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
-  /* ---------- CONTEXT ---------- */
   const [context, setContext] = useState({
     subject: "Математика",
     level: "10–11 класс",
     mode: "exam_prep",
   });
-
-  /* ---------- CHAT ---------- */
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
+  const [currentGoal, setCurrentGoal] = useState(null);
+  const [hasWeakTopics, setHasWeakTopics] = useState(false);
+  const [weakTopicsCount, setWeakTopicsCount] = useState(0);
   const [savedMessageIds, setSavedMessageIds] = useState([]);
-
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
 
-  /* =========================
-     INIT (CLIENT ONLY)
-  ========================= */
+  // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
-    if (!isClient) return;
+    setIsClient(true);
+  }, []);
+
+  // Переключение предмета/уровня: сохраняем контекст и подгружаем историю чата
+  const applyContextChange = (nextCtx) => {
+    setContext(nextCtx);
 
     try {
-      const ctx = safeParse(
-        window.localStorage.getItem(CONTEXT_STORAGE_KEY),
-        null
-      );
-      if (ctx) setContext((p) => ({ ...p, ...ctx }));
-
-      const activeCtx = ctx || context;
-      const historyKey = getHistoryKey(
-        activeCtx.subject,
-        activeCtx.level
-      );
-      const history = safeParse(
-        window.localStorage.getItem(historyKey),
-        []
-      );
-
-      if (history.length > 0) {
-        setMessages(clampHistory(history));
-      } else {
-        setMessages([
-          {
-            id: Date.now(),
-            role: "assistant",
-            content: `Привет! Я NOOLIX 🤖  
-Готов помочь тебе по ${subjectInDative(
-              activeCtx.subject
-            )} (${activeCtx.level}).  
-Выбери тему или напиши вопрос — и мы начнём.`,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("noolixContext", JSON.stringify(nextCtx));
       }
     } catch (e) {
-      console.warn("Init chat failed", e);
+      console.warn("Failed to save noolixContext", e);
+    }
+
+    // Загружаем историю конкретного чата под (subject + level)
+    try {
+      if (typeof window === "undefined") return;
+
+      const historyKey = getHistoryKey(nextCtx.subject, nextCtx.level);
+      const rawHistory = window.localStorage.getItem(historyKey);
+
+      if (rawHistory) {
+        const arr = JSON.parse(rawHistory);
+        if (Array.isArray(arr) && arr.length > 0) {
+          setMessages(clampHistory(arr));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load history for new context", e);
+    }
+
+    // Если истории нет — стартовое сообщение
+    const starter = {
+      id: Date.now(),
+      role: "assistant",
+      content: `Привет! Я NOOLIX. Давай начнём: что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages([starter]);
+  };
+
+  // --- Инициализация: контекст, цель, история чата (по предмету+уровню) ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const rawContext = window.localStorage.getItem("noolixContext");
+      let ctx = {
+        subject: "Математика",
+        level: "10–11 класс",
+        mode: "exam_prep",
+      };
+      if (rawContext) {
+        const parsed = JSON.parse(rawContext);
+        ctx = { ...ctx, ...parsed };
+      }
+
+      let goalFromStorage = null;
+      try {
+        const rawGoal = window.localStorage.getItem("noolixCurrentGoal");
+        if (rawGoal) {
+          const parsedGoal = JSON.parse(rawGoal);
+          if (parsedGoal && typeof parsedGoal === "object") {
+            goalFromStorage = parsedGoal;
+            if (parsedGoal.subject) {
+              ctx = { ...ctx, subject: parsedGoal.subject };
+            }
+          }
+        }
+      } catch (eGoal) {
+        console.warn("Failed to read noolixCurrentGoal", eGoal);
+      }
+
+      // история для конкретного предмета+уровня
+      const historyKey = getHistoryKey(ctx.subject, ctx.level);
+      let initialMessages = [];
+      const rawHistory = window.localStorage.getItem(historyKey);
+
+      if (rawHistory) {
+        try {
+          const arr = JSON.parse(rawHistory);
+          if (Array.isArray(arr) && arr.length > 0) {
+            initialMessages = clampHistory(arr);
+          }
+        } catch (eHistory) {
+          console.warn("Failed to parse chat history", eHistory);
+        }
+      }
+
+      setContext(ctx);
+      if (goalFromStorage) {
+        setCurrentGoal(goalFromStorage);
+      }
+
+      if (initialMessages.length > 0) {
+        setMessages(initialMessages);
+      } else {
+        const starter = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages([starter]);
+      }
+    } catch (e) {
+      console.warn("Failed to init chat context/history", e);
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient]);
+  }, []);
 
-  /* =========================
-     AUTOSCROLL
-  ========================= */
+  // --- Слабые темы по предмету ---
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, thinking]);
+    if (typeof window === "undefined") return;
 
-  /* =========================
-     URL ?topic=
-  ========================= */
+    try {
+      const rawKnowledge = window.localStorage.getItem("noolixKnowledgeMap");
+      if (!rawKnowledge) {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      const parsed = JSON.parse(rawKnowledge);
+      if (!parsed || typeof parsed !== "object") {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      const subjEntry = parsed[context.subject];
+      if (!subjEntry || typeof subjEntry !== "object") {
+        setHasWeakTopics(false);
+        setWeakTopicsCount(0);
+        return;
+      }
+
+      let weakCount = 0;
+      Object.values(subjEntry).forEach((t) => {
+        if (t && typeof t.score === "number" && t.score < 0.8) {
+          weakCount += 1;
+        }
+      });
+
+      setWeakTopicsCount(weakCount);
+      setHasWeakTopics(weakCount > 0);
+    } catch (e) {
+      console.warn("Failed to read noolixKnowledgeMap", e);
+      setHasWeakTopics(false);
+      setWeakTopicsCount(0);
+    }
+  }, [context.subject]);
+
+  // --- Тема из URL (?topic=...) ---
   useEffect(() => {
-    if (!isClient) return;
+    if (typeof window === "undefined") return;
     try {
       const params = new URLSearchParams(window.location.search);
-      const t = params.get("topic");
-      if (t && t.trim()) setCurrentTopic(t.trim());
-    } catch {}
-  }, [isClient]);
+      const topicFromQuery = params.get("topic");
+      if (topicFromQuery && topicFromQuery.trim()) {
+        setCurrentTopic(topicFromQuery.trim());
+      }
+    } catch (e) {
+      console.warn("Failed to parse topic from URL", e);
+    }
+  }, []);
 
-  /* =========================
-     AUTO-START BY TOPIC
-  ========================= */
+  // --- Авто-старт: если пришли из /progress с ?topic=..., NOOLIX сам начинает диалог ---
   useEffect(() => {
     if (!isClient) return;
     if (loading) return;
-    if (!currentTopic) return;
+    const topic = (currentTopic || "").trim();
+    if (!topic) return;
     if (didAutoStartRef.current) return;
 
-    const hasUser = messages.some((m) => m.role === "user");
-    if (hasUser) {
+    // если пользователь уже писал в этом чате — не вмешиваемся
+    const hasUserMessages =
+      Array.isArray(messages) && messages.some((m) => m && m.role === "user");
+    if (hasUserMessages) {
       didAutoStartRef.current = true;
       return;
     }
 
-    if (messages.length === 0) return;
+    // ждём, пока инициализируется хотя бы стартовое сообщение
+    if (!Array.isArray(messages) || messages.length === 0) return;
 
-    setMessages((prev) =>
-      clampHistory([
-        ...prev,
-        {
-          id: Date.now() + 1000,
-          role: "assistant",
-          content: `Давай разберём тему «${currentTopic}».  
-Скажи, что тебе нужнее: объяснение с нуля, разбор задач или мини-тест?`,
-          createdAt: new Date().toISOString(),
-        },
-      ])
-    );
-
-    didAutoStartRef.current = true;
-  }, [isClient, loading, currentTopic, messages]);
-
-  /* =========================
-     SAVE CHAT HISTORY
-  ========================= */
-  useEffect(() => {
-    if (!isClient) return;
-    try {
-      const key = getHistoryKey(context.subject, context.level);
-      window.localStorage.setItem(key, JSON.stringify(clampHistory(messages)));
-    } catch {}
-  }, [messages, context.subject, context.level, isClient]);
-
-  /* =========================
-     SAVED MESSAGES (LIBRARY)
-  ========================= */
-  useEffect(() => {
-    if (!isClient) return;
-    const list = safeParse(
-      window.localStorage.getItem("noolixLibrarySaved"),
-      []
-    );
-    setSavedMessageIds(
-      list.map((x) => x.messageId).filter(Boolean)
-    );
-  }, [isClient]);
-
-  const saveExplanationToLibrary = (m) => {
-    if (!isClient || m.role !== "assistant") return;
-    if (savedMessageIds.includes(m.id)) return;
-
-    const list = safeParse(
-      window.localStorage.getItem("noolixLibrarySaved"),
-      []
-    );
-
-    const item = {
-      id: m.id,
-      messageId: m.id,
-      title:
-        currentTopic ||
-        m.content.split("\n")[0].slice(0, 80) ||
-        "Сохранённое объяснение",
-      subject: context.subject,
-      level: context.level,
-      from: "из диалога",
-      savedAt: new Date().toISOString(),
-      preview: m.content.slice(0, 400),
-    };
-
-    const next = [item, ...list.filter((x) => x.messageId !== m.id)].slice(
-      0,
-      50
-    );
-
-    window.localStorage.setItem(
-      "noolixLibrarySaved",
-      JSON.stringify(next)
-    );
-    setSavedMessageIds((p) => [...p, m.id]);
-  };
-
-  /* =========================
-     SEND MESSAGE
-  ========================= */
-  const sendMessage = async () => {
-    if (!input.trim() || thinking) return;
-
-    const userMsg = {
-      id: Date.now(),
-      role: "user",
-      content: input.trim(),
+    const intro = {
+      id: Date.now() + 777,
+      role: "assistant",
+      content: `Давай разберём тему «${topic}».\nСкажи, что тебе сейчас нужнее: объяснение с нуля, разбор задач или мини-тест?`,
       createdAt: new Date().toISOString(),
     };
 
-    const next = clampHistory([...messages, userMsg]);
-    setMessages(next);
-    setInput("");
-    setThinking(true);
-    setError("");
+    setMessages((prev) => clampHistory([...(prev || []), intro]));
+    didAutoStartRef.current = true;
+  }, [isClient, loading, currentTopic, messages]);
+
+  // --- Сохраняем историю конкретного чата ---
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const historyKey = getHistoryKey(context.subject, context.level);
+
+      if (messages.length > 0) {
+        const compact = clampHistory(messages);
+        window.localStorage.setItem(historyKey, JSON.stringify(compact));
+      } else {
+        window.localStorage.removeItem(historyKey);
+      }
+    } catch (e) {
+      console.warn("Failed to save chat history", e);
+    }
+  }, [messages, context.subject, context.level]);
+
+  // --- Подтягиваем сохранённые сообщения из библиотеки ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      if (!raw) {
+        setSavedMessageIds([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        setSavedMessageIds([]);
+        return;
+      }
+
+      const ids = parsed.map((item) => item.messageId || item.id).filter(Boolean);
+
+      setSavedMessageIds(ids);
+    } catch (e) {
+      console.warn("Failed to init savedMessageIds from library", e);
+      setSavedMessageIds([]);
+    }
+  }, []);
+
+  // --- Автоскролл ---
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, thinking]);
+
+  // --- Сохранение объяснения в библиотеку ---
+  const saveExplanationToLibrary = (message) => {
+    if (typeof window === "undefined" || !message || message.role !== "assistant")
+      return;
 
     try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+
+      const msgId = message.id || null;
+
+      // Уже сохранено — не дублируем
+      if (msgId && list.some((item) => item.messageId === msgId)) {
+        setSavedMessageIds((prev) => (prev.includes(msgId) ? prev : [...prev, msgId]));
+        return;
+      }
+
+      const titleFromTopic = currentTopic && currentTopic.trim();
+      const firstLine = (message.content || "").split("\n")[0].trim();
+      const titleFromText = firstLine.slice(0, 80);
+      const title =
+        titleFromTopic ||
+        (titleFromText ? titleFromText : `Сохранённое объяснение по ${context.subject}`);
+
+      const item = {
+        id: msgId || Date.now(),
+        title,
+        subject: context.subject,
+        level: context.level,
+        from: "из диалога",
+        savedAt: new Date().toISOString(),
+        messageId: msgId,
+        preview: (message.content || "").slice(0, 400),
+      };
+
+      const MAX_SAVED = 50;
+      const newList = [item, ...list].slice(0, MAX_SAVED);
+      window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
+
+      if (msgId) {
+        setSavedMessageIds((prev) => (prev.includes(msgId) ? prev : [...prev, msgId]));
+      }
+    } catch (e) {
+      console.warn("Failed to save explanation to library", e);
+    }
+  };
+
+  // --- Обновление списка "твои чаты" в библиотеке ---
+  const touchContinueItem = () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem("noolixLibraryContinue");
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+
+      const title = `Диалог: ${context.subject}, ${context.level}`;
+      const nowIso = new Date().toISOString();
+
+      let found = false;
+      const updated = list.map((item) => {
+        if (item.subject === context.subject && item.level === context.level) {
+          found = true;
+          return { ...item, title, updatedAt: nowIso };
+        }
+        return item;
+      });
+
+      if (!found) {
+        updated.unshift({
+          id: Date.now(),
+          title,
+          subject: context.subject,
+          level: context.level,
+          type: "Диалог с тьютором",
+          updatedAt: nowIso,
+        });
+      }
+
+      const MAX_CONTINUE = 20;
+      const finalList = updated
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, MAX_CONTINUE);
+
+      window.localStorage.setItem("noolixLibraryContinue", JSON.stringify(finalList));
+    } catch (e) {
+      console.warn("Failed to update continue list", e);
+    }
+  };
+
+  // --- Вызов backend ---
+  const callBackend = async (userMessages) => {
+    try {
+      setError("");
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          messages: next.map(({ role, content }) => ({ role, content })),
+          messages: userMessages.map(({ role, content }) => ({
+            role,
+            content,
+          })),
           context: { ...context, currentTopic },
         }),
       });
 
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        console.error("API /api/chat error:", data);
+        throw new Error(
+          data?.error?.message ||
+            data?.message ||
+            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
+        );
+      }
+
       const data = await res.json();
-      setMessages((p) =>
-        clampHistory([
-          ...p,
-          {
-            id: Date.now() + 1,
-            role: "assistant",
-            content: data.reply || "Не удалось получить ответ.",
-            createdAt: new Date().toISOString(),
-          },
-        ])
+      const replyText =
+        typeof data.reply === "string"
+          ? data.reply
+          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: replyText,
+        createdAt: new Date().toISOString(),
+      };
+
+      // обновляем "твои чаты" в библиотеке
+      touchContinueItem();
+
+      setMessages((prev) => clampHistory([...prev, assistantMessage]));
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
       );
-    } catch {
-      setError("Ошибка при получении ответа от NOOLIX.");
     } finally {
       setThinking(false);
     }
   };
 
-  /* =========================
-     LOADER (SSR SAFE)
-  ========================= */
+  const sendMessage = () => {
+    const text = input.trim();
+    if (!text || thinking) return;
+
+    const userMessage = {
+      id: Date.now(),
+      role: "user",
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newMessages = clampHistory([...messages, userMessage]);
+    setMessages(newMessages);
+    setInput("");
+    setThinking(true);
+
+    callBackend(newMessages);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    sendMessage();
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const subjectPrep = getSubjectPrepositional(context.subject);
+
+  const quickActions = [
+    {
+      key: "explain",
+      label: currentTopic ? `Объяснить «${currentTopic}»` : "Объясни тему",
+    },
+    { key: "steps", label: "Разбери задачу по шагам" },
+    {
+      key: "test",
+      label: currentGoal ? "Мини-тест по цели" : "Сделай мини-тест",
+    },
+    ...(hasWeakTopics ? [{ key: "weak", label: "Потренироваться по слабым темам" }] : []),
+  ];
+
+  const handleQuickAction = (key) => {
+    let text = "";
+
+    switch (key) {
+      case "explain":
+        if (currentTopic) {
+          text = `Объясни, пожалуйста, тему «${currentTopic}» по ${subjectPrep} простыми словами и приведи 1–2 базовых примера.`;
+        } else if (currentGoal) {
+          text = `Объясни, пожалуйста, одну из ключевых тем по ${subjectPrep}, которые важны для цели «${currentGoal.title}». Начни с базовых понятий.`;
+        } else {
+          text = `Объясни, пожалуйста, тему по ${subjectPrep}, которая мне сейчас сложна.`;
+        }
+        break;
+      case "steps":
+        text = `Разбери задачу по ${subjectPrep} по шагам. Сначала уточни условия/данные, затем покажи решение и проверку.`;
+        break;
+      case "test":
+        if (currentGoal) {
+          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} в рамках моей цели «${currentGoal.title}» на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        } else {
+          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
+        }
+        break;
+      case "weak":
+        text = `Предложи, пожалуйста, небольшую тренировку по типичным сложным темам по ${subjectPrep} на моём уровне. Начни с самых базовых вопросов и постепенно усложняй.`;
+        break;
+      default:
+        break;
+    }
+
+    if (text) {
+      setInput(text);
+      setTimeout(() => {
+        sendMessage();
+      }, 0);
+    }
+  };
+
   if (!isClient || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold">NOOLIX</div>
-          <p className="text-xs opacity-80">Загружаем диалог…</p>
+          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
+            NOOLIX
+          </div>
+          <p className="text-xs text-purple-100/80">
+            Загружаем твою последнюю сессию…
+          </p>
+          <div className="flex gap-1 text-sm text-purple-100">
+            <span className="animate-pulse">•</span>
+            <span className="animate-pulse opacity-70">•</span>
+            <span className="animate-pulse opacity-40">•</span>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* =========================
-     RENDER
-  ========================= */
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex">
-      {/* SIDEBAR */}
-      <aside className="hidden md:flex w-64 p-6 border-r border-white/10 bg-black/40 flex-col gap-4">
-        <div className="text-2xl font-extrabold">NOOLIX</div>
-        <nav className="space-y-2 text-sm">
-          {[...primaryMenuItems, ...secondaryMenuItems].map((i) => (
-            <a
-              key={i.key}
-              href={i.href}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl ${
-                i.key === "chat" ? "bg-white/15" : "hover:bg-white/5"
-              }`}
-            >
-              <span>{i.icon}</span>
-              <span>{i.label}</span>
-            </a>
-          ))}
+    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+      {/* Оверлей при открытом меню на мобильных */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Кнопка открытия меню на мобильных */}
+      <button
+        className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+      >
+        ☰ Меню
+      </button>
+
+      {/* Левое меню */}
+      <aside
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
+        transform transition-transform duration-300 z-40
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+        bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
+      >
+        <div className="mb-3">
+          <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
+            NOOLIX
+          </div>
+          <p className="text-xs text-purple-200 mt-1 opacity-80">
+            AI-платформа для учёбы
+          </p>
+        </div>
+
+        <nav className="space-y-3 text-sm md:text-base">
+          <div className="space-y-2">
+            {primaryMenuItems.map((item) => (
+              <a
+                key={item.key}
+                href={item.href}
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                  ${item.key === "chat" ? "bg-white/15" : "hover:bg-white/5"}
+                `}
+              >
+                <span
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
+                    ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
+                  `}
+                >
+                  {item.icon}
+                </span>
+                <span className={item.key === "chat" ? "font-semibold" : ""}>
+                  {item.label}
+                </span>
+              </a>
+            ))}
+          </div>
+
+          <div className="h-px bg-white/10 my-2" />
+
+          <div className="space-y-2">
+            {secondaryMenuItems.map((item) => (
+              <a
+                key={item.key}
+                href={item.href}
+                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
+              >
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </div>
         </nav>
       </aside>
 
-      {/* MAIN */}
-      <main className="flex-1 flex flex-col">
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-          {messages.map((m) => {
-            const isUser = m.role === "user";
-            return (
-              <div
-                key={m.id}
-                className={`flex flex-col ${
-                  isUser ? "items-end" : "items-start"
-                } gap-1`}
-              >
-                <div
-                  className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap break-words ${
-                    isUser
-                      ? "bg-white text-black"
-                      : "bg-white/10 border border-white/10"
-                  }`}
-                >
-                  {m.content}
+      <div className="flex-1 flex flex-col min-h-screen">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            {/* Левая колонка — контекст сессии */}
+            <aside className="space-y-4">
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+                  Текущая сессия
+                </p>
+                <h2 className="text-sm font-semibold mb-1">Контекст</h2>
+                <p className="text-xs text-purple-100">
+                  Предмет:{" "}
+                  <span className="font-semibold">{context.subject}</span>
+                </p>
+                <p className="text-xs text-purple-100">
+                  Уровень: <span className="font-semibold">{context.level}</span>
+                </p>
+                {currentGoal && (
+                  <p className="text-xs text-purple-100">
+                    Цель:{" "}
+                    <span className="font-semibold">{currentGoal.title}</span>
+                  </p>
+                )}
+                {hasWeakTopics && (
+                  <p className="text-[11px] text-purple-200 mt-1">
+                    В карте знаний по этому предмету отмечено{" "}
+                    <span className="font-semibold">
+                      {weakTopicsCount} слабых тем
+                    </span>
+                    . Можно оттолкнуться от них в этой сессии.
+                  </p>
+                )}
+                <p className="text-[11px] text-purple-300/80 mt-1">
+                  Режим: подготовка к экзамену
+                </p>
+                {currentTopic && (
+                  <p className="text-[11px] text-purple-200 mt-1">
+                    Тема с карты знаний:{" "}
+                    <span className="font-semibold">{currentTopic}</span>
+                  </p>
+                )}
+              </section>
+
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+                  Быстрый старт
+                </p>
+                <p className="text-[11px] text-purple-100 mb-2">
+                  Можно начать с готовых запросов или написать свой вопрос в
+                  поле справа.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {quickActions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={() => handleQuickAction(action.key)}
+                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[11px] text-purple-50 transition border border-white/15"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
+                  Выбор предмета
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] text-purple-200">Предмет</label>
+                  <select
+                    value={context.subject}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, subject: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>Математика</option>
+                    <option>Физика</option>
+                    <option>Русский язык</option>
+                    <option>Английский язык</option>
+                  </select>
                 </div>
 
-                <div className="flex items-center gap-2 text-[11px] opacity-70 max-w-[85%]">
-                  <span>{formatTime(m.createdAt)}</span>
-
-                  {m.role === "assistant" &&
-                    (savedMessageIds.includes(m.id) ? (
-                      <span className="px-2 py-1 rounded-full border border-emerald-300/60 text-emerald-200">
-                        ✅ Сохранено
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => saveExplanationToLibrary(m)}
-                        className="px-2 py-1 rounded-full border border-white/20 hover:bg-white/5"
-                      >
-                        📌 Сохранить
-                      </button>
-                    ))}
+                <div className="space-y-2 mt-2">
+                  <label className="text-[11px] text-purple-200">Уровень</label>
+                  <select
+                    value={context.level}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, level: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>7–9 класс</option>
+                    <option>10–11 класс</option>
+                    <option>1 курс вуза</option>
+                  </select>
                 </div>
+              </section>
+            </aside>
+
+            {/* Правая колонка — сам чат */}
+            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
+              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <h1 className="text-sm md:text-base font-semibold">
+                    Диалог с NOOLIX
+                  </h1>
+                  <p className="text-[11px] text-purple-200">
+                    {context.subject} • {context.level}
+                    {currentTopic && <> • Тема: {currentTopic}</>}
+                  </p>
+                  {currentGoal && (
+                    <p className="text-[10px] text-purple-300 mt-0.5">
+                      Текущая цель: {currentGoal.title}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-purple-200">
+                  <span className="h-2 w-2 rounded-full bg-green-400" />
+                  <span>{thinking ? "Обрабатываю вопрос…" : "Готов к диалогу"}</span>
+                </div>
+              </header>
+
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
+                {messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`flex ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
+                        ${
+                          m.role === "user"
+                            ? "bg-purple-500/80 text-white border-purple-300/60"
+                            : "bg-black/60 text-purple-50 border-white/10"
+                        }
+                      `}
+                    >
+                      <div className="whitespace-pre-wrap leading-snug">
+                        {m.content}
+                      </div>
+
+                      <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
+                        <span>{m.role === "user" ? "Ты" : "NOOLIX"}</span>
+                        <span>•</span>
+                        <span>{formatTime(m.createdAt)}</span>
+                      </div>
+
+                      {/* Кнопка/статус сохранения */}
+                      {m.role === "assistant" && (
+                        <div className="mt-2 flex justify-end">
+                          {savedMessageIds.includes(m.id) ? (
+                           <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%] self-start">
+  <span>✅</span>
+  <span>Сохранено</span>
+</div>
+
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => saveExplanationToLibrary(m)}
+                              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                            >
+                              <span>📌</span>
+                              <span>Сохранить в библиотеку</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {thinking && (
+                  <div className="flex justify-start">
+                    <div className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 bg-black/60 border border-white/10 text-[11px] text-purple-100">
+                      <span className="h-2 w-2 rounded-full bg-purple-300 animate-pulse" />
+                      <span>Думаю над ответом…</span>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
               </div>
-            );
-          })}
 
-          {thinking && (
-            <div className="bg-white/10 px-4 py-3 rounded-2xl max-w-[60%]">
-              NOOLIX думает…
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {error && (
-          <div className="px-4 py-2 text-xs text-red-300">{error}</div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendMessage();
-          }}
-          className="border-t border-white/10 p-4 flex gap-2"
-        >
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            rows={2}
-            placeholder="Напиши вопрос или тему…"
-            className="flex-1 px-3 py-2 rounded-xl bg-black/50 border border-white/20 text-sm resize-none"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || thinking}
-            className="px-4 py-2 rounded-xl bg-purple-400 text-black font-semibold disabled:opacity-50"
-          >
-            Отправить
-          </button>
-        </form>
-      </main>
+              <footer className="border-t border-white/10 px-3 py-2">
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex items-end gap-2 md:gap-3"
+                >
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="flex-1 resize-none rounded-2xl bg-black/60 border border-white/15 px-3 py-2 text-xs md:text-sm text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
+                    rows={2}
+                    placeholder="Напиши, что тебе сейчас сложно или что хочешь повторить…"
+                  />
+                  <button
+                    type="submit"
+                    disabled={thinking}
+                    className="px-4 py-2 rounded-2xl bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {thinking ? "…" : "Отправить"}
+                  </button>
+                </form>
+                {error && <p className="mt-1 text-[11px] text-red-300/90">{error}</p>}
+              </footer>
+            </section>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
