@@ -65,16 +65,21 @@ export default function ChatPage() {
     level: "10–11 класс",
     mode: "exam_prep",
   });
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [currentTopic, setCurrentTopic] = useState("");
   const [currentGoal, setCurrentGoal] = useState(null);
+
   const [hasWeakTopics, setHasWeakTopics] = useState(false);
   const [weakTopicsCount, setWeakTopicsCount] = useState(0);
+
   const [savedMessageIds, setSavedMessageIds] = useState([]);
+
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
 
@@ -83,8 +88,9 @@ export default function ChatPage() {
     setIsClient(true);
   }, []);
 
-  // Переключение предмета/уровня: сохраняем контекст и подгружаем историю чата
-  const applyContextChange = (nextCtx) => {
+  // Переключение предмета/уровня: сохраняем контекст и подгружаем историю конкретного чата
+  const applyContextChange = (patch) => {
+    const nextCtx = { ...context, ...patch };
     setContext(nextCtx);
 
     try {
@@ -95,7 +101,7 @@ export default function ChatPage() {
       console.warn("Failed to save noolixContext", e);
     }
 
-    // Загружаем историю конкретного чата под (subject + level)
+    // Подгружаем историю для (subject + level)
     try {
       if (typeof window === "undefined") return;
 
@@ -113,11 +119,11 @@ export default function ChatPage() {
       console.warn("Failed to load history for new context", e);
     }
 
-    // Если истории нет — стартовое сообщение
+    // Если истории нет — мягкий старт
     const starter = {
       id: Date.now(),
       role: "assistant",
-      content: `Привет! Я NOOLIX. Давай начнём: что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      content: `Привет! Я NOOLIX. Что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
       createdAt: new Date().toISOString(),
     };
     setMessages([starter]);
@@ -155,11 +161,10 @@ export default function ChatPage() {
         console.warn("Failed to read noolixCurrentGoal", eGoal);
       }
 
-      // история для конкретного предмета+уровня
       const historyKey = getHistoryKey(ctx.subject, ctx.level);
-      let initialMessages = [];
-      const rawHistory = window.localStorage.getItem(historyKey);
 
+      const rawHistory = window.localStorage.getItem(historyKey);
+      let initialMessages = [];
       if (rawHistory) {
         try {
           const arr = JSON.parse(rawHistory);
@@ -172,9 +177,7 @@ export default function ChatPage() {
       }
 
       setContext(ctx);
-      if (goalFromStorage) {
-        setCurrentGoal(goalFromStorage);
-      }
+      if (goalFromStorage) setCurrentGoal(goalFromStorage);
 
       if (initialMessages.length > 0) {
         setMessages(initialMessages);
@@ -194,6 +197,74 @@ export default function ChatPage() {
       setLoading(false);
     }
   }, []);
+
+  // Читаем тему из URL (?topic=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const topicFromQuery = params.get("topic");
+      if (topicFromQuery && topicFromQuery.trim()) {
+        setCurrentTopic(topicFromQuery.trim());
+      }
+    } catch (e) {
+      console.warn("Failed to parse topic from URL", e);
+    }
+  }, []);
+
+  // Авто-старт: если пришли с ?topic=..., автоматически отправляем запрос в /api/chat
+  useEffect(() => {
+    if (!isClient) return;
+    if (loading) return;
+
+    const topic = (currentTopic || "").trim();
+    if (!topic) return;
+    if (didAutoStartRef.current) return;
+
+    // если пользователь уже писал в этом чате — не вмешиваемся
+    const hasUser =
+      Array.isArray(messages) && messages.some((m) => m?.role === "user");
+    if (hasUser) {
+      didAutoStartRef.current = true;
+      return;
+    }
+
+    // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
+    const assistantCount = Array.isArray(messages)
+      ? messages.filter((m) => m?.role === "assistant").length
+      : 0;
+    if (assistantCount > 1) {
+      didAutoStartRef.current = true;
+      return;
+    }
+
+    const subjPrep = getSubjectPrepositional(context.subject);
+    const prompt = `Объясни тему «${topic}» по ${subjPrep} на уровне «${context.level}».
+
+Требования:
+1) Коротко и понятно (без воды).
+2) 1–2 примера.
+3) В конце — 2 контрольных вопроса для самопроверки.`;
+
+    const userMessage = {
+      id: Date.now(),
+      role: "user",
+      content: prompt,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newMessages = clampHistory([...(messages || []), userMessage]);
+
+    // фиксируем, что авто-старт уже был (чтобы не повторялось)
+    didAutoStartRef.current = true;
+
+    setMessages(newMessages);
+    setThinking(true);
+    setInput("");
+
+    callBackend(newMessages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, loading, currentTopic]);
 
   // --- Слабые темы по предмету ---
   useEffect(() => {
@@ -237,67 +308,6 @@ export default function ChatPage() {
     }
   }, [context.subject]);
 
-  // --- Тема из URL (?topic=...) ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const topicFromQuery = params.get("topic");
-      if (topicFromQuery && topicFromQuery.trim()) {
-        setCurrentTopic(topicFromQuery.trim());
-      }
-    } catch (e) {
-      console.warn("Failed to parse topic from URL", e);
-    }
-  }, []);
-
-  // --- Авто-старт: если пришли из /progress с ?topic=..., NOOLIX сам начинает диалог ---
-  useEffect(() => {
-    if (!isClient) return;
-    if (loading) return;
-    const topic = (currentTopic || "").trim();
-    if (!topic) return;
-    if (didAutoStartRef.current) return;
-
-    // если пользователь уже писал в этом чате — не вмешиваемся
-    const hasUserMessages =
-      Array.isArray(messages) && messages.some((m) => m && m.role === "user");
-    if (hasUserMessages) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    // ждём, пока инициализируется хотя бы стартовое сообщение
-    if (!Array.isArray(messages) || messages.length === 0) return;
-
-    const intro = {
-      id: Date.now() + 777,
-      role: "assistant",
-      content: `Давай разберём тему «${topic}».\nСкажи, что тебе сейчас нужнее: объяснение с нуля, разбор задач или мини-тест?`,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => clampHistory([...(prev || []), intro]));
-    didAutoStartRef.current = true;
-  }, [isClient, loading, currentTopic, messages]);
-
-  // --- Сохраняем историю конкретного чата ---
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      const historyKey = getHistoryKey(context.subject, context.level);
-
-      if (messages.length > 0) {
-        const compact = clampHistory(messages);
-        window.localStorage.setItem(historyKey, JSON.stringify(compact));
-      } else {
-        window.localStorage.removeItem(historyKey);
-      }
-    } catch (e) {
-      console.warn("Failed to save chat history", e);
-    }
-  }, [messages, context.subject, context.level]);
-
   // --- Подтягиваем сохранённые сообщения из библиотеки ---
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -313,7 +323,9 @@ export default function ChatPage() {
         return;
       }
 
-      const ids = parsed.map((item) => item.messageId || item.id).filter(Boolean);
+      const ids = parsed
+        .map((item) => item.messageId || item.id)
+        .filter(Boolean);
 
       setSavedMessageIds(ids);
     } catch (e) {
@@ -322,14 +334,33 @@ export default function ChatPage() {
     }
   }, []);
 
-  // --- Автоскролл ---
+  // Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
 
-  // --- Сохранение объяснения в библиотеку ---
+  // --- Сохраняем историю конкретного чата ---
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (!context?.subject || !context?.level) return;
+
+      const compact = clampHistory(messages || []);
+      const historyKey = getHistoryKey(context.subject, context.level);
+
+      if (compact.length > 0) {
+        window.localStorage.setItem(historyKey, JSON.stringify(compact));
+      } else {
+        window.localStorage.removeItem(historyKey);
+      }
+    } catch (e) {
+      console.warn("Failed to save chat history", e);
+    }
+  }, [messages, context?.subject, context?.level]);
+
+  // Сохранение объяснения в библиотеку
   const saveExplanationToLibrary = (message) => {
     if (typeof window === "undefined" || !message || message.role !== "assistant")
       return;
@@ -346,7 +377,9 @@ export default function ChatPage() {
 
       // Уже сохранено — не дублируем
       if (msgId && list.some((item) => item.messageId === msgId)) {
-        setSavedMessageIds((prev) => (prev.includes(msgId) ? prev : [...prev, msgId]));
+        setSavedMessageIds((prev) =>
+          prev.includes(msgId) ? prev : [...prev, msgId]
+        );
         return;
       }
 
@@ -355,7 +388,9 @@ export default function ChatPage() {
       const titleFromText = firstLine.slice(0, 80);
       const title =
         titleFromTopic ||
-        (titleFromText ? titleFromText : `Сохранённое объяснение по ${context.subject}`);
+        (titleFromText
+          ? titleFromText
+          : `Сохранённое объяснение по ${context.subject}`);
 
       const item = {
         id: msgId || Date.now(),
@@ -373,14 +408,16 @@ export default function ChatPage() {
       window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
 
       if (msgId) {
-        setSavedMessageIds((prev) => (prev.includes(msgId) ? prev : [...prev, msgId]));
+        setSavedMessageIds((prev) =>
+          prev.includes(msgId) ? prev : [...prev, msgId]
+        );
       }
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
   };
 
-  // --- Обновление списка "твои чаты" в библиотеке ---
+  // Обновление блока "Твои чаты" в библиотеке
   const touchContinueItem = () => {
     if (typeof window === "undefined") return;
 
@@ -417,10 +454,16 @@ export default function ChatPage() {
 
       const MAX_CONTINUE = 20;
       const finalList = updated
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )
         .slice(0, MAX_CONTINUE);
 
-      window.localStorage.setItem("noolixLibraryContinue", JSON.stringify(finalList));
+      window.localStorage.setItem(
+        "noolixLibraryContinue",
+        JSON.stringify(finalList)
+      );
     } catch (e) {
       console.warn("Failed to update continue list", e);
     }
@@ -475,7 +518,7 @@ export default function ChatPage() {
       // обновляем "твои чаты" в библиотеке
       touchContinueItem();
 
-      setMessages((prev) => clampHistory([...prev, assistantMessage]));
+      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
     } catch (err) {
       console.error(err);
       setError(
@@ -498,7 +541,7 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
     };
 
-    const newMessages = clampHistory([...messages, userMessage]);
+    const newMessages = clampHistory([...(messages || []), userMessage]);
     setMessages(newMessages);
     setInput("");
     setThinking(true);
@@ -530,7 +573,9 @@ export default function ChatPage() {
       key: "test",
       label: currentGoal ? "Мини-тест по цели" : "Сделай мини-тест",
     },
-    ...(hasWeakTopics ? [{ key: "weak", label: "Потренироваться по слабым темам" }] : []),
+    ...(hasWeakTopics
+      ? [{ key: "weak", label: "Потренироваться по слабым темам" }]
+      : []),
   ];
 
   const handleQuickAction = (key) => {
@@ -571,7 +616,7 @@ export default function ChatPage() {
     }
   };
 
-  if (!isClient || loading) {
+  if (loading || !isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -593,7 +638,6 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* Оверлей при открытом меню на мобильных */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -601,7 +645,6 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Кнопка открытия меню на мобильных */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -609,10 +652,8 @@ export default function ChatPage() {
         ☰ Меню
       </button>
 
-      {/* Левое меню */}
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
-        transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -671,41 +712,62 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* Левая колонка — контекст сессии */}
             <aside className="space-y-4">
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
                   Текущая сессия
                 </p>
                 <h2 className="text-sm font-semibold mb-1">Контекст</h2>
-                <p className="text-xs text-purple-100">
-                  Предмет:{" "}
-                  <span className="font-semibold">{context.subject}</span>
-                </p>
-                <p className="text-xs text-purple-100">
-                  Уровень: <span className="font-semibold">{context.level}</span>
-                </p>
+
+                {/* ВЫБОР ПРЕДМЕТА/УРОВНЯ — ТЕПЕРЬ СВЕРХУ */}
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+                    <select
+                      value={context.subject}
+                      onChange={(e) =>
+                        applyContextChange({ subject: e.target.value })
+                      }
+                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      <option>Математика</option>
+                      <option>Физика</option>
+                      <option>Русский язык</option>
+                      <option>Английский язык</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
+                    <select
+                      value={context.level}
+                      onChange={(e) => applyContextChange({ level: e.target.value })}
+                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      <option>7–9 класс</option>
+                      <option>10–11 класс</option>
+                      <option>1 курс вуза</option>
+                    </select>
+                  </div>
+                </div>
+
                 {currentGoal && (
                   <p className="text-xs text-purple-100">
                     Цель:{" "}
                     <span className="font-semibold">{currentGoal.title}</span>
                   </p>
                 )}
+
                 {hasWeakTopics && (
                   <p className="text-[11px] text-purple-200 mt-1">
                     В карте знаний по этому предмету отмечено{" "}
-                    <span className="font-semibold">
-                      {weakTopicsCount} слабых тем
-                    </span>
-                    . Можно оттолкнуться от них в этой сессии.
+                    <span className="font-semibold">{weakTopicsCount} слабых тем</span>.
                   </p>
                 )}
-                <p className="text-[11px] text-purple-300/80 mt-1">
-                  Режим: подготовка к экзамену
-                </p>
+
                 {currentTopic && (
                   <p className="text-[11px] text-purple-200 mt-1">
-                    Тема с карты знаний:{" "}
+                    Тема из прогресса:{" "}
                     <span className="font-semibold">{currentTopic}</span>
                   </p>
                 )}
@@ -716,8 +778,7 @@ export default function ChatPage() {
                   Быстрый старт
                 </p>
                 <p className="text-[11px] text-purple-100 mb-2">
-                  Можно начать с готовых запросов или написать свой вопрос в
-                  поле справа.
+                  Можно начать с готовых запросов или написать свой вопрос в поле справа.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {quickActions.map((action) => (
@@ -732,46 +793,8 @@ export default function ChatPage() {
                   ))}
                 </div>
               </section>
-
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
-                  Выбор предмета
-                </p>
-
-                <div className="space-y-2">
-                  <label className="text-[11px] text-purple-200">Предмет</label>
-                  <select
-                    value={context.subject}
-                    onChange={(e) =>
-                      applyContextChange({ ...context, subject: e.target.value })
-                    }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                  >
-                    <option>Математика</option>
-                    <option>Физика</option>
-                    <option>Русский язык</option>
-                    <option>Английский язык</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2 mt-2">
-                  <label className="text-[11px] text-purple-200">Уровень</label>
-                  <select
-                    value={context.level}
-                    onChange={(e) =>
-                      applyContextChange({ ...context, level: e.target.value })
-                    }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                  >
-                    <option>7–9 класс</option>
-                    <option>10–11 класс</option>
-                    <option>1 курс вуза</option>
-                  </select>
-                </div>
-              </section>
             </aside>
 
-            {/* Правая колонка — сам чат */}
             <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
               <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
@@ -788,9 +811,10 @@ export default function ChatPage() {
                     </p>
                   )}
                 </div>
+
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
-                  <span>{thinking ? "Обрабатываю вопрос…" : "Готов к диалогу"}</span>
+                  <span>{thinking ? "Обрабатываю запрос…" : "Готов к диалогу"}</span>
                 </div>
               </header>
 
@@ -798,9 +822,7 @@ export default function ChatPage() {
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`flex ${
-                      m.role === "user" ? "justify-end" : "justify-start"
-                    }`}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
                       className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
@@ -821,15 +843,13 @@ export default function ChatPage() {
                         <span>{formatTime(m.createdAt)}</span>
                       </div>
 
-                      {/* Кнопка/статус сохранения */}
                       {m.role === "assistant" && (
                         <div className="mt-2 flex justify-end">
                           {savedMessageIds.includes(m.id) ? (
-                           <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%] self-start">
-  <span>✅</span>
-  <span>Сохранено</span>
-</div>
-
+                            <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%]">
+                              <span>✅</span>
+                              <span>Сохранено</span>
+                            </div>
                           ) : (
                             <button
                               type="button"
@@ -859,10 +879,7 @@ export default function ChatPage() {
               </div>
 
               <footer className="border-t border-white/10 px-3 py-2">
-                <form
-                  onSubmit={handleSubmit}
-                  className="flex items-end gap-2 md:gap-3"
-                >
+                <form onSubmit={handleSubmit} className="flex items-end gap-2 md:gap-3">
                   <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
