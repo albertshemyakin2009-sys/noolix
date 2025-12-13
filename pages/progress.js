@@ -16,6 +16,7 @@ const secondaryMenuItems = [
 
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
+const TEST_HISTORY_KEY = "noolixTestsHistory";
 
 function safeJsonParse(raw, fallback) {
   try {
@@ -70,6 +71,7 @@ export default function ProgressPage() {
   const [knowledgeMap, setKnowledgeMap] = useState({});
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
+  const [recentTests, setRecentTests] = useState([]);
 
   // init: context + knowledge map
   useEffect(() => {
@@ -92,7 +94,26 @@ export default function ProgressPage() {
     }
   }, []);
 
-  // keep context synced
+  // подтягиваем последние тесты по текущему предмету/уровню
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+      const list = safeJsonParse(raw, []);
+      const arr = Array.isArray(list) ? list : [];
+
+      const filtered = arr.filter(
+        (x) => x?.subject === context.subject && x?.level === context.level
+      );
+
+      setRecentTests(filtered.slice(0, 5));
+    } catch (e) {
+      console.warn("Failed to read tests history", e);
+      setRecentTests([]);
+    }
+  }, [context.subject, context.level]);
+
   const applyContextChange = (nextCtx) => {
     setContext(nextCtx);
     if (typeof window !== "undefined") {
@@ -108,7 +129,6 @@ export default function ProgressPage() {
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
     }));
-    // по умолчанию: слабые сверху
     arr.sort((a, b) => a.score - b.score);
     return arr;
   }, [knowledgeMap, context.subject]);
@@ -169,7 +189,6 @@ export default function ProgressPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* overlay mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -177,7 +196,6 @@ export default function ProgressPage() {
         />
       )}
 
-      {/* mobile menu button */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -185,7 +203,6 @@ export default function ProgressPage() {
         ☰ Меню
       </button>
 
-      {/* left menu */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
         transform transition-transform duration-300 z-40
@@ -244,11 +261,9 @@ export default function ProgressPage() {
         </nav>
       </aside>
 
-      {/* main */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* header */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
@@ -260,13 +275,11 @@ export default function ProgressPage() {
                     Прогресс
                   </h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
-                    Здесь NOOLIX показывает, какие темы уже уверенные, а какие
-                    лучше закрыть в ближайшее время.
+                    Здесь NOOLIX показывает, какие темы уже уверенные, а какие лучше закрыть в ближайшее время.
                   </p>
                 </div>
               </div>
 
-              {/* quick context */}
               <div className="w-full md:w-[280px] space-y-2">
                 <div>
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
@@ -318,9 +331,7 @@ export default function ProgressPage() {
                   Слабые
                 </p>
                 <p className="text-2xl font-semibold mt-1">{stats.weak}</p>
-                <p className="text-[11px] text-purple-200/80 mt-1">
-                  ниже 50%
-                </p>
+                <p className="text-[11px] text-purple-200/80 mt-1">ниже 50%</p>
               </div>
 
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
@@ -328,9 +339,7 @@ export default function ProgressPage() {
                   Средние
                 </p>
                 <p className="text-2xl font-semibold mt-1">{stats.mid}</p>
-                <p className="text-[11px] text-purple-200/80 mt-1">
-                  50–79%
-                </p>
+                <p className="text-[11px] text-purple-200/80 mt-1">50–79%</p>
               </div>
 
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
@@ -347,6 +356,69 @@ export default function ProgressPage() {
                   />
                 </div>
               </div>
+            </section>
+
+            {/* Последние тесты */}
+            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Последние тесты
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    История попыток по {context.subject} ({context.level}).
+                  </p>
+                </div>
+                <a
+                  href="/tests"
+                  className="text-[11px] md:text-xs text-purple-100 underline underline-offset-2 hover:text-white"
+                >
+                  Открыть тесты
+                </a>
+              </div>
+
+              {recentTests.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока нет попыток по этому предмету и уровню. Пройди мини-тест — и здесь появятся последние результаты.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {recentTests.map((h) => {
+                    const pct = Math.round((h?.score ?? 0) * 100);
+                    const when = h?.createdAt ? new Date(h.createdAt).toLocaleString() : "";
+                    return (
+                      <div
+                        key={h.id}
+                        className="bg-black/20 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {h.topic || "Тема"}
+                          </p>
+                          <p className="text-[11px] text-purple-200/80">
+                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
+                            {when ? ` • ${when}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 md:justify-end">
+                          <a
+                            href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            Разобрать →
+                          </a>
+                          <a
+                            href="/tests"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Повторить тест
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             {/* actions + weak topics */}
@@ -382,9 +454,7 @@ export default function ProgressPage() {
                     Пока нет данных
                   </p>
                   <p className="text-xs text-purple-100/85">
-                    Прогресс заполняется, когда ты решаешь мини-тесты или
-                    отмечаешь темы. Пока можно начать с диалога: попросить
-                    объяснить тему и затем пройти мини-тест.
+                    Прогресс заполняется, когда ты решаешь мини-тесты или отмечаешь темы. Пока можно начать с диалога: попросить объяснить тему и затем пройти мини-тест.
                   </p>
                   <a
                     href="/chat"
@@ -395,8 +465,7 @@ export default function ProgressPage() {
                 </div>
               ) : weakTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Слабых тем по этому предмету пока нет — отлично. Можно
-                  закреплять темы через мини-тесты.
+                  Слабых тем по этому предмету пока нет — отлично. Можно закреплять темы через мини-тесты.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
