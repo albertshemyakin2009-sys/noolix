@@ -230,19 +230,39 @@ export default function ChatPage() {
     }
   }, [context.subject]);
 
-  // --- Тема из URL (?topic=...) ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const topicFromQuery = params.get("topic");
-      if (topicFromQuery && topicFromQuery.trim()) {
-        setCurrentTopic(topicFromQuery.trim());
+ // --- Тема из URL (?topic=...) + автозапуск диалога ---
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const topicFromQuery = params.get("topic");
+
+    if (topicFromQuery && topicFromQuery.trim()) {
+      const topic = topicFromQuery.trim();
+      setCurrentTopic(topic);
+
+      // если это новый чат или только стартовое сообщение — инициируем диалог
+      if (
+        messages.length <= 1 &&
+        messages[0]?.role === "assistant"
+      ) {
+        const intro = {
+          id: Date.now() + 100,
+          role: "assistant",
+          content: `Давай разберём тему «${topic}».  
+Скажи, пожалуйста, что именно по ней тебе сейчас нужно: объяснение с нуля, разбор задач или мини-тест?`,
+          createdAt: new Date().toISOString(),
+        };
+
+        setMessages((prev) => clampHistory([...prev, intro]));
       }
-    } catch (e) {
-      console.warn("Failed to parse topic from URL", e);
     }
-  }, []);
+  } catch (e) {
+    console.warn("Failed to parse topic from URL", e);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   // --- Сохраняем историю конкретного чата ---
   useEffect(() => {
@@ -800,10 +820,11 @@ export default function ChatPage() {
 
                       {m.role === "assistant" &&
                         (savedMessageIds.includes(m.id) ? (
-                          <div className="inline-flex items-center gap-1 text-[11px] px-2.py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200">
-                            <span>✅</span>
-                            <span>Сохранено</span>
-                          </div>
+                          <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%] self-start">
+  <span>✅</span>
+  <span>Сохранено</span>
+</div>
+
                         ) : (
                           <button
                             type="button"
