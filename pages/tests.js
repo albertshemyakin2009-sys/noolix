@@ -100,6 +100,9 @@ export default function TestsPage() {
   const [analysis, setAnalysis] = useState("");
   const [reviewing, setReviewing] = useState(false);
 
+  const [testHistory, setTestHistory] = useState([]);
+  const [historyTick, setHistoryTick] = useState(0);
+
   // init context
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -117,6 +120,19 @@ export default function TestsPage() {
     }
   };
 
+  const loadTestHistory = () => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const list = safeParse(raw, []);
+    const arr = Array.isArray(list) ? list : [];
+
+    const filtered = arr.filter(
+      (x) => x?.subject === context.subject && x?.level === context.level
+    );
+
+    setTestHistory(filtered.slice(0, 10));
+  };
+
   const canGenerate = useMemo(() => {
     return !generating && context.subject && context.level;
   }, [generating, context.subject, context.level]);
@@ -127,6 +143,11 @@ export default function TestsPage() {
     // разрешаем отправить даже если не все ответы выбраны — это MVP
     return true;
   }, [questions.length, submitting]);
+
+  useEffect(() => {
+    loadTestHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level, historyTick]);
 
   const resetSession = () => {
     setError("");
@@ -144,7 +165,6 @@ export default function TestsPage() {
     setResult(null);
 
     try {
-      // /api/generate-test уже есть у тебя в проекте по маршрутам Vercel
       const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -152,7 +172,6 @@ export default function TestsPage() {
           subject: context.subject,
           level: context.level,
           topic: topic?.trim() || "",
-          // можно расширять позже: difficulty, count
         }),
       });
 
@@ -166,7 +185,6 @@ export default function TestsPage() {
 
       const data = await res.json();
 
-      // Поддерживаем разные форматы ответа, чтобы не ломаться
       const q =
         Array.isArray(data?.questions) ? data.questions :
         Array.isArray(data?.test?.questions) ? data.test.questions :
@@ -205,8 +223,10 @@ export default function TestsPage() {
 
       setResult({ correctCount, totalCount, scorePercent });
 
-      // ✅ ПУНКТ (1): обновляем карту знаний (локально)
-      const finalTopic = topic?.trim() || questions?.[0]?.topicTitle || "Тема без названия";
+      const finalTopic =
+        topic?.trim() || questions?.[0]?.topicTitle || "Тема без названия";
+
+      // обновляем карту знаний
       updateKnowledgeFromTest({
         subject: context.subject,
         topic: finalTopic,
@@ -214,7 +234,7 @@ export default function TestsPage() {
         totalCount,
       });
 
-      // (не просил, но полезно для следующих задач): история тестов
+      // пишем историю тестов
       pushTestHistory({
         subject: context.subject,
         level: context.level,
@@ -223,6 +243,9 @@ export default function TestsPage() {
         correctCount,
         totalCount,
       });
+
+      // обновим блок истории тестов на странице
+      setHistoryTick((t) => t + 1);
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
     } finally {
@@ -268,7 +291,6 @@ export default function TestsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
-      {/* overlay mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -276,7 +298,6 @@ export default function TestsPage() {
         />
       )}
 
-      {/* mobile menu button */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -284,7 +305,6 @@ export default function TestsPage() {
         ☰ Меню
       </button>
 
-      {/* left menu */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
         transform transition-transform duration-300 z-40
@@ -343,11 +363,9 @@ export default function TestsPage() {
         </nav>
       </aside>
 
-      {/* main */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            {/* header */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
@@ -357,13 +375,11 @@ export default function TestsPage() {
                 <div>
                   <h1 className="text-2xl md:text-3xl font-semibold">Тесты</h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
-                    Сгенерируй мини-тест, пройди его — и прогресс по теме обновится
-                    автоматически.
+                    Сгенерируй мини-тест, пройди его — и прогресс по теме обновится автоматически.
                   </p>
                 </div>
               </div>
 
-              {/* context quick switch */}
               <div className="w-full md:w-[280px] space-y-2">
                 <div>
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
@@ -398,7 +414,6 @@ export default function TestsPage() {
               </div>
             </section>
 
-            {/* generator */}
             <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                 <div className="flex-1">
@@ -439,6 +454,70 @@ export default function TestsPage() {
               {error && (
                 <div className="bg-black/40 border border-red-400/30 rounded-xl p-3 text-xs text-red-200">
                   {error}
+                </div>
+              )}
+            </section>
+
+            {/* История тестов */}
+            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    История тестов
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    Последние попытки по текущему предмету и уровню.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTick((t) => t + 1)}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Обновить
+                </button>
+              </div>
+
+              {testHistory.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока нет попыток. Пройди мини-тест — и здесь появится история.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {testHistory.map((h) => {
+                    const pct = Math.round((h?.score ?? 0) * 100);
+                    const when = h?.createdAt ? new Date(h.createdAt).toLocaleString() : "";
+                    return (
+                      <div
+                        key={h.id}
+                        className="bg-black/20 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {h.topic || "Тема"}
+                          </p>
+                          <p className="text-[11px] text-purple-200/80">
+                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
+                            {when ? ` • ${when}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 md:justify-end">
+                          <a
+                            href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            Разобрать в чате →
+                          </a>
+                          <a
+                            href="/progress"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Прогресс
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>
