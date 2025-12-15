@@ -58,6 +58,21 @@ function bandLabel(band) {
   }
 }
 
+function formatUpdatedAt(value) {
+  if (!value) return "";
+  // если уже человекочитаемо (например, "Вчера") — оставляем как есть
+  if (typeof value === "string" && !value.includes("T")) return value;
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 export default function ProgressPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -128,6 +143,7 @@ export default function ProgressPage() {
       topic,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
+      source: data?.source || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
@@ -151,21 +167,35 @@ export default function ProgressPage() {
         ? 0
         : subjectTopics.reduce((sum, t) => sum + t.score, 0) / total;
 
-    return { total, weak, mid, strong, avg: clamp01(avg) };
+    return {
+      total,
+      weak,
+      mid,
+      strong,
+      avg: clamp01(avg),
+    };
+  }, [subjectTopics]);
+
+  const weakTopics = useMemo(() => {
+    return subjectTopics
+      .filter((t) => getBand(t.score) === "weak")
+      .slice(0, 8);
   }, [subjectTopics]);
 
   const filteredTopics = useMemo(() => {
     const q = normalize(search);
-    return subjectTopics.filter((t) => {
-      const bySearch = !q || normalize(t.topic).includes(q);
-      const byBand = bandFilter === "all" ? true : getBand(t.score) === bandFilter;
-      return bySearch && byBand;
-    });
-  }, [subjectTopics, search, bandFilter]);
+    const byBand =
+      bandFilter === "all"
+        ? subjectTopics
+        : subjectTopics.filter((t) => getBand(t.score) === bandFilter);
 
-  const weakTopics = useMemo(() => {
-    return subjectTopics.filter((t) => getBand(t.score) === "weak").slice(0, 6);
-  }, [subjectTopics]);
+    const bySearch = q
+      ? byBand.filter((t) => normalize(t.topic).includes(q))
+      : byBand;
+
+    // сначала слабее (или выбранный фильтр), дальше по релевантности поиска не усложняем — MVP
+    return bySearch;
+  }, [subjectTopics, search, bandFilter]);
 
   const hasAnyData = subjectTopics.length > 0;
 
@@ -264,47 +294,45 @@ export default function ProgressPage() {
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            {/* header */}
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
-                  <span>Карта знаний и прогресс</span>
+                  <span>Карта знаний</span>
                 </div>
                 <div>
                   <h1 className="text-2xl md:text-3xl font-semibold">
                     Прогресс
                   </h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
-                    Здесь NOOLIX показывает, какие темы уже уверенные, а какие лучше закрыть в ближайшее время.
+                    Здесь видно, какие темы уже сильные, а какие требуют внимания.
+                    Темы, сохранённые из диалога, помечаются отдельно.
                   </p>
                 </div>
               </div>
 
-              <div className="w-full md:w-[280px] space-y-2">
-                <div>
-                  <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+              <div className="flex flex-col gap-2 w-full md:w-[320px]">
+                <div className="flex gap-2">
                   <select
+                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     value={context.subject}
                     onChange={(e) =>
                       applyContextChange({ ...context, subject: e.target.value })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                   >
                     <option>Математика</option>
                     <option>Физика</option>
                     <option>Русский язык</option>
                     <option>Английский язык</option>
                   </select>
-                </div>
 
-                <div>
-                  <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
                   <select
+                    className="flex-1 text-[11px] md:text-xs px-2 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     value={context.level}
                     onChange={(e) =>
                       applyContextChange({ ...context, level: e.target.value })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
@@ -315,138 +343,30 @@ export default function ProgressPage() {
             </section>
 
             {/* stats */}
-            <section className="grid gap-3 md:grid-cols-4">
+            <section className="grid md:grid-cols-4 gap-3">
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Тем всего
-                </p>
-                <p className="text-2xl font-semibold mt-1">{stats.total}</p>
-                <p className="text-[11px] text-purple-200/80 mt-1">
-                  по предмету {context.subject}
-                </p>
+                <p className="text-[11px] text-purple-200/80">Всего тем</p>
+                <p className="text-xl font-semibold mt-0.5">{stats.total}</p>
               </div>
-
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Слабые
-                </p>
-                <p className="text-2xl font-semibold mt-1">{stats.weak}</p>
-                <p className="text-[11px] text-purple-200/80 mt-1">ниже 50%</p>
+                <p className="text-[11px] text-purple-200/80">Слабые</p>
+                <p className="text-xl font-semibold mt-0.5">{stats.weak}</p>
               </div>
-
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Средние
-                </p>
-                <p className="text-2xl font-semibold mt-1">{stats.mid}</p>
-                <p className="text-[11px] text-purple-200/80 mt-1">50–79%</p>
+                <p className="text-[11px] text-purple-200/80">Средние</p>
+                <p className="text-xl font-semibold mt-0.5">{stats.mid}</p>
               </div>
-
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Средний уровень
-                </p>
-                <p className="text-2xl font-semibold mt-1">
-                  {Math.round(stats.avg * 100)}%
-                </p>
-                <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-300 to-purple-500"
-                    style={{ width: `${Math.round(stats.avg * 100)}%` }}
-                  />
-                </div>
+                <p className="text-[11px] text-purple-200/80">Сильные</p>
+                <p className="text-xl font-semibold mt-0.5">{stats.strong}</p>
               </div>
             </section>
 
-            {/* Последние тесты */}
-            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Последние тесты
-                  </p>
-                  <p className="text-xs md:text-sm text-purple-100/90">
-                    История попыток по {context.subject} ({context.level}).
-                  </p>
-                </div>
-                <a
-                  href="/tests"
-                  className="text-[11px] md:text-xs text-purple-100 underline underline-offset-2 hover:text-white"
-                >
-                  Открыть тесты
-                </a>
-              </div>
-
-              {recentTests.length === 0 ? (
-                <p className="text-xs text-purple-200/80">
-                  Пока нет попыток по этому предмету и уровню. Пройди мини-тест — и здесь появятся последние результаты.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {recentTests.map((h) => {
-                    const pct = Math.round((h?.score ?? 0) * 100);
-                    const when = h?.createdAt ? new Date(h.createdAt).toLocaleString() : "";
-                    return (
-                      <div
-                        key={h.id}
-                        className="bg-black/20 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-semibold text-sm truncate">
-                            {h.topic || "Тема"}
-                          </p>
-                          <p className="text-[11px] text-purple-200/80">
-                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
-                            {when ? ` • ${when}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 md:justify-end">
-                          <a
-                            href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                          >
-                            Разобрать →
-                          </a>
-                          <a
-                            href="/tests"
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                          >
-                            Повторить тест
-                          </a>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* actions + weak topics */}
-            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Рекомендация
-                  </p>
-                  <p className="text-xs md:text-sm text-purple-100/90">
-                    Закрывай слабые темы — так прогресс растёт быстрее всего.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <a
-                    href="/chat"
-                    className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                  >
-                    Разобрать в диалоге →
-                  </a>
-                  <a
-                    href="/tests"
-                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                  >
-                    Перейти к тестам
-                  </a>
-                </div>
-              </div>
+            {/* weak topics */}
+            <section className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Слабые темы
+              </p>
 
               {!hasAnyData ? (
                 <div className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 space-y-2">
@@ -454,7 +374,9 @@ export default function ProgressPage() {
                     Пока нет данных
                   </p>
                   <p className="text-xs text-purple-100/85">
-                    Прогресс заполняется, когда ты решаешь мини-тесты или отмечаешь темы. Пока можно начать с диалога: попросить объяснить тему и затем пройти мини-тест.
+                    Прогресс заполняется, когда ты решаешь мини-тесты или
+                    отмечаешь темы. Пока можно начать с диалога: попросить
+                    объяснить тему и затем пройти мини-тест.
                   </p>
                   <a
                     href="/chat"
@@ -465,7 +387,8 @@ export default function ProgressPage() {
                 </div>
               ) : weakTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Слабых тем по этому предмету пока нет — отлично. Можно закреплять темы через мини-тесты.
+                  Слабых тем по этому предмету пока нет — отлично. Можно
+                  закреплять темы через мини-тесты.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -536,20 +459,29 @@ export default function ProgressPage() {
                     return (
                       <div
                         key={t.topic}
-                        className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                        className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
                       >
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm truncate">
                               {t.topic}
                             </p>
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-purple-100/90">
                               {badge}
                             </span>
+
+                            {t.source === "dialog_saved" && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-300/15 border border-emerald-300/40 text-emerald-200/90">
+                                из диалога
+                              </span>
+                            )}
                           </div>
+
                           <p className="text-[11px] text-purple-200/80 mt-0.5">
                             Уровень: {percent}%
-                            {t.updatedAt ? ` · обновлено: ${t.updatedAt}` : ""}
+                            {t.updatedAt
+                              ? ` · обновлено: ${formatUpdatedAt(t.updatedAt)}`
+                              : ""}
                           </p>
 
                           <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
@@ -580,6 +512,41 @@ export default function ProgressPage() {
                 </div>
               )}
             </section>
+
+            {/* recent tests (если есть) */}
+            {recentTests.length > 0 && (
+              <section className="space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Последние тесты
+                </p>
+                <div className="space-y-2">
+                  {recentTests.map((t, idx) => (
+                    <div
+                      key={t?.id || idx}
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {t?.title || "Тест"}
+                        </p>
+                        <p className="text-[11px] text-purple-200/80">
+                          {t?.subject} • {t?.level}
+                          {t?.createdAt
+                            ? ` · ${formatUpdatedAt(t.createdAt)}`
+                            : ""}
+                        </p>
+                      </div>
+                      <a
+                        href="/tests"
+                        className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white/10 border border-white/15 text-[11px] text-purple-50 hover:bg-white/15 transition"
+                      >
+                        Открыть тесты →
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </main>
 
