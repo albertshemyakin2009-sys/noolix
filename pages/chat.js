@@ -212,6 +212,67 @@ export default function ChatPage() {
     }
   }, []);
 
+  // --- Вызов backend (объявлен выше автостарта) ---
+  const callBackend = async (userMessages) => {
+    try {
+      setError("");
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: userMessages.map(({ role, content }) => ({
+            role,
+            content,
+          })),
+          context: { ...context, currentTopic },
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          data = {};
+        }
+        console.error("API /api/chat error:", data);
+        throw new Error(
+          data?.error?.message ||
+            data?.message ||
+            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
+        );
+      }
+
+      const data = await res.json();
+      const replyText =
+        typeof data.reply === "string"
+          ? data.reply
+          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: replyText,
+        createdAt: new Date().toISOString(),
+      };
+
+      // обновляем "твои чаты" в библиотеке
+      touchContinueItem();
+
+      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
+      );
+    } finally {
+      setThinking(false);
+    }
+  };
+
   // Авто-старт: если пришли с ?topic=..., автоматически отправляем запрос в /api/chat
   useEffect(() => {
     if (!isClient) return;
@@ -360,6 +421,49 @@ export default function ChatPage() {
     }
   }, [messages, context?.subject, context?.level]);
 
+  // ✅ NEW: обновление прогресса при сохранении объяснения
+  const touchProgressFromDialogSave = (topicKey) => {
+    if (typeof window === "undefined") return;
+
+    const topic = (topicKey || "").trim();
+    if (!topic) return;
+
+    try {
+      const raw = window.localStorage.getItem("noolixKnowledgeMap");
+      const km = raw ? JSON.parse(raw) : {};
+      const safeKm = km && typeof km === "object" ? km : {};
+
+      const subject = context?.subject || "Без предмета";
+      const subjEntry =
+        safeKm[subject] && typeof safeKm[subject] === "object"
+          ? safeKm[subject]
+          : {};
+
+      const prev =
+        subjEntry[topic] && typeof subjEntry[topic] === "object"
+          ? subjEntry[topic]
+          : {};
+
+      const prevScore = typeof prev.score === "number" ? prev.score : 0.55;
+
+      // небольшой, честный "буст" за сохранение объяснения
+      const nextScore = Math.min(1, +(prevScore + 0.03).toFixed(3));
+      const nowIso = new Date().toISOString();
+
+      subjEntry[topic] = {
+        ...prev,
+        score: nextScore,
+        updatedAt: nowIso,
+        source: "dialog_saved",
+      };
+
+      safeKm[subject] = subjEntry;
+      window.localStorage.setItem("noolixKnowledgeMap", JSON.stringify(safeKm));
+    } catch (e) {
+      console.warn("Failed to update noolixKnowledgeMap from dialog save", e);
+    }
+  };
+
   // Сохранение объяснения в библиотеку
   const saveExplanationToLibrary = (message) => {
     if (typeof window === "undefined" || !message || message.role !== "assistant")
@@ -412,6 +516,10 @@ export default function ChatPage() {
           prev.includes(msgId) ? prev : [...prev, msgId]
         );
       }
+
+      // ✅ NEW: после сохранения — отмечаем тему в прогрессе
+      const topicKey = (currentTopic && currentTopic.trim()) || title;
+      touchProgressFromDialogSave(topicKey);
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
@@ -466,67 +574,6 @@ export default function ChatPage() {
       );
     } catch (e) {
       console.warn("Failed to update continue list", e);
-    }
-  };
-
-  // --- Вызов backend ---
-  const callBackend = async (userMessages) => {
-    try {
-      setError("");
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: userMessages.map(({ role, content }) => ({
-            role,
-            content,
-          })),
-          context: { ...context, currentTopic },
-        }),
-      });
-
-      if (!res.ok) {
-        let data = {};
-        try {
-          data = await res.json();
-        } catch (_) {
-          data = {};
-        }
-        console.error("API /api/chat error:", data);
-        throw new Error(
-          data?.error?.message ||
-            data?.message ||
-            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
-        );
-      }
-
-      const data = await res.json();
-      const replyText =
-        typeof data.reply === "string"
-          ? data.reply
-          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
-
-      const assistantMessage = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: replyText,
-        createdAt: new Date().toISOString(),
-      };
-
-      // обновляем "твои чаты" в библиотеке
-      touchContinueItem();
-
-      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
-    } catch (err) {
-      console.error(err);
-      setError(
-        err?.message ||
-          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
-      );
-    } finally {
-      setThinking(false);
     }
   };
 
@@ -719,7 +766,6 @@ export default function ChatPage() {
                 </p>
                 <h2 className="text-sm font-semibold mb-1">Контекст</h2>
 
-                {/* ВЫБОР ПРЕДМЕТА/УРОВНЯ — ТЕПЕРЬ СВЕРХУ */}
                 <div className="space-y-2">
                   <div>
                     <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
@@ -741,7 +787,9 @@ export default function ChatPage() {
                     <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
                     <select
                       value={context.level}
-                      onChange={(e) => applyContextChange({ level: e.target.value })}
+                      onChange={(e) =>
+                        applyContextChange({ level: e.target.value })
+                      }
                       className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     >
                       <option>7–9 класс</option>
@@ -761,7 +809,10 @@ export default function ChatPage() {
                 {hasWeakTopics && (
                   <p className="text-[11px] text-purple-200 mt-1">
                     В карте знаний по этому предмету отмечено{" "}
-                    <span className="font-semibold">{weakTopicsCount} слабых тем</span>.
+                    <span className="font-semibold">
+                      {weakTopicsCount} слабых тем
+                    </span>
+                    .
                   </p>
                 )}
 
@@ -814,7 +865,9 @@ export default function ChatPage() {
 
                 <div className="flex items-center gap-2 text-[11px] text-purple-200">
                   <span className="h-2 w-2 rounded-full bg-green-400" />
-                  <span>{thinking ? "Обрабатываю запрос…" : "Готов к диалогу"}</span>
+                  <span>
+                    {thinking ? "Обрабатываю запрос…" : "Готов к диалогу"}
+                  </span>
                 </div>
               </header>
 
@@ -822,7 +875,9 @@ export default function ChatPage() {
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                    className={`flex ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                   >
                     <div
                       className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
@@ -879,7 +934,10 @@ export default function ChatPage() {
               </div>
 
               <footer className="border-t border-white/10 px-3 py-2">
-                <form onSubmit={handleSubmit} className="flex items-end gap-2 md:gap-3">
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex items-end gap-2 md:gap-3"
+                >
                   <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -896,7 +954,9 @@ export default function ChatPage() {
                     {thinking ? "…" : "Отправить"}
                   </button>
                 </form>
-                {error && <p className="mt-1 text-[11px] text-red-300/90">{error}</p>}
+                {error && (
+                  <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
+                )}
               </footer>
             </section>
           </div>
