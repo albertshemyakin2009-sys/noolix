@@ -115,6 +115,7 @@ export default function GoalsPage() {
   const [stepInputs, setStepInputs] = useState({});
 
   const [knowledgeMap, setKnowledgeMap] = useState({});
+  const [contextLevel, setContextLevel] = useState(null);
 
   // ---- Загрузка контекста, карты знаний и целей ----
   useEffect(() => {
@@ -127,6 +128,9 @@ export default function GoalsPage() {
           const ctx = JSON.parse(rawContext);
           if (ctx && ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
             setNewSubject(ctx.subject);
+          }
+          if (ctx && typeof ctx.level === "string" && ctx.level.trim()) {
+            setContextLevel(ctx.level.trim());
           }
         } catch (e) {
           console.warn("Failed to parse noolixContext", e);
@@ -170,13 +174,21 @@ export default function GoalsPage() {
 
   // --- слабые темы по предмету из карты знаний ---
   const getWeakTopicsCount = (subject) => {
-    const subjEntry = knowledgeMap[subject];
-    if (!subjEntry) return null;
+    const subjEntry = knowledgeMap?.[subject];
+    if (!subjEntry || typeof subjEntry !== "object") return null;
+
+    // Новый формат: subject -> level -> topics
+    const maybeLevelEntry =
+      contextLevel && subjEntry?.[contextLevel] && typeof subjEntry[contextLevel] === "object"
+        ? subjEntry[contextLevel]
+        : null;
+
+    // Legacy формат: subject -> topics
+    const topicsMap = maybeLevelEntry ?? subjEntry;
+
     let weakCount = 0;
-    Object.values(subjEntry).forEach((t) => {
-      if (typeof t.score === "number" && t.score < 0.8) {
-        weakCount += 1;
-      }
+    Object.values(topicsMap).forEach((t) => {
+      if (t && typeof t.score === "number" && t.score < 0.8) weakCount += 1;
     });
     return weakCount;
   };
