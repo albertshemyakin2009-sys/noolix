@@ -16,6 +16,7 @@ const secondaryMenuItems = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
+const MISTAKE_STATS_KEY = "noolixMistakeStats";
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const getToday = () => new Date().toISOString().slice(0, 10);
@@ -70,6 +71,99 @@ const safeParse = (raw, fallback) => {
   }
 };
 
+
+const hashString = (s) => {
+  let h = 2166136261;
+  const str = String(s || "");
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+};
+
+const classifyMistake = ({ timeSec, confident, repeats }) => {
+  const t = typeof timeSec === "number" ? timeSec : null;
+  const r = typeof repeats === "number" ? repeats : 1;
+  const c = !!confident;
+
+  if (r >= 3) return "повторяется";
+  if (c && r >= 2) return "путаю понятия";
+  if (c) return "уверенно ошибся";
+  if (t !== null && t < 7 && r <= 1) return "скорее невнимательность";
+  if (t !== null && t >= 12 && r >= 2) return "пробел в знании";
+  if (r >= 2) return "нужно закрепить";
+  return "разобрать и закрепить";
+};
+
+const readMistakeStats = () => {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem(MISTAKE_STATS_KEY);
+  return safeParse(raw, {});
+};
+
+const writeMistakeStats = (stats) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MISTAKE_STATS_KEY, JSON.stringify(stats || {}));
+};
+
+const updateMistakeStats = ({ subject, level, topic, mistakes }) => {
+  if (typeof window === "undefined") return;
+  if (!subject || !level || !Array.isArray(mistakes) || mistakes.length === 0) return;
+
+  const stats = readMistakeStats();
+  if (!stats[subject] || typeof stats[subject] !== "object") stats[subject] = {};
+  if (!stats[subject][level] || typeof stats[subject][level] !== "object") stats[subject][level] = {};
+
+  const lvl = stats[subject][level];
+  const now = new Date().toISOString();
+
+  for (const m of mistakes) {
+    const qHash = hashString(m.question || "");
+    const key = `${topic || ""}::${qHash}::${m.correctIndex}::${m.userIndex}`;
+    const prev = lvl[key] && typeof lvl[key] === "object" ? lvl[key] : {};
+    const prevCount = typeof prev.count === "number" ? prev.count : 0;
+    const nextCount = prevCount + 1;
+
+    const prevAvgTime = typeof prev.avgTimeSec === "number" ? prev.avgTimeSec : null;
+    const t = typeof m.timeSec === "number" ? m.timeSec : null;
+    const nextAvgTime =
+      t === null ? prevAvgTime : prevAvgTime === null ? t : +(prevAvgTime * 0.7 + t * 0.3).toFixed(2);
+
+    const prevConfWrong = typeof prev.confidentWrongCount === "number" ? prev.confidentWrongCount : 0;
+    const nextConfWrong = prevConfWrong + (m.confident ? 1 : 0);
+
+    lvl[key] = {
+      key,
+      subject,
+      level,
+      topic: topic || "",
+      question: m.question || "",
+      correctIndex: m.correctIndex,
+      userIndex: m.userIndex,
+      count: nextCount,
+      avgTimeSec: nextAvgTime,
+      confidentWrongCount: nextConfWrong,
+      lastAt: now,
+    };
+  }
+
+  stats[subject][level] = lvl;
+  writeMistakeStats(stats);
+};
+
+const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
+  if (typeof window === "undefined") return [];
+  const stats = readMistakeStats();
+  const lvl = stats?.[subject]?.[level];
+  if (!lvl || typeof lvl !== "object") return [];
+  return Object.values(lvl)
+    .filter((x) => x && typeof x === "object" && typeof x.count === "number" && x.count >= 2)
+    .sort((a, b) => (b.count - a.count) || ((b.confidentWrongCount || 0) - (a.confidentWrongCount || 0)))
+    .slice(0, limit);
+};
+
+
 const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
   if (typeof window === "undefined") return;
   if (!subject || !level || !topic || !totalCount || totalCount <= 0) return;
@@ -93,7 +187,7 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
   window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
 };
 
-const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount }) => {
+const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
   if (typeof window === "undefined") return;
 
   const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
@@ -109,6 +203,7 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
     correctCount,
     totalCount,
     createdAt: new Date().toISOString(),
+    mistakesSummary: mistakesSummary || null,
   });
 
   // MVP: храним максимум 50
@@ -131,6 +226,10 @@ export default function TestsPage() {
 
   const [questions, setQuestions] = useState([]); // [{question, options, correctIndex, topicTitle?}]
   const [userAnswers, setUserAnswers] = useState([]); // number|null
+  const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
+  const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
+  const [confidence, setConfidence] = useState([]); // "low" | "high"
+
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewing, setReviewing] = useState(false);
@@ -199,6 +298,11 @@ export default function TestsPage() {
     return !generating && context.subject && context.level;
   }, [generating, context.subject, context.level]);
 
+  const topRepeatedMistakes = useMemo(() => {
+    if (typeof window === "undefined") return [];
+    return getTopRepeatedMistakes({ subject: context.subject, level: context.level, limit: 3 });
+  }, [context.subject, context.level, historyTick]);
+
   const canSubmit = useMemo(() => {
     if (!questions.length) return false;
     if (submitting) return false;
@@ -215,9 +319,49 @@ export default function TestsPage() {
     setError("");
     setQuestions([]);
     setUserAnswers([]);
+    setQuestionShownAt([]);
+    setTimeToFirstAnswerSec([]);
+    setConfidence([]);
     setResult(null);
     setAnalysis("");
     setReviewing(false);
+  };
+
+  const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
+    setError("");
+    setGenerating(true);
+    setAnalysis("");
+    setResult(null);
+    try {
+      if (!context?.subject || !context?.level) throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
+      const titles = Array.isArray(forcedTopicTitles) ? forcedTopicTitles.filter(Boolean) : [];
+      if (!titles.length) throw new Error("Нет темы для закрепления.");
+      const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
+      const res = await fetch("/api/generate-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: context.subject, topics: topicsToSend, questionCount: count }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Не удалось сгенерировать тест");
+      }
+      const data = await res.json();
+      const q = Array.isArray(data?.questions) ? data.questions : [];
+      if (!q.length) throw new Error("Пустой тест. Попробуй ещё раз.");
+      resetSession();
+      setQuestions(q);
+      setUserAnswers(new Array(q.length).fill(null));
+      const nowMs = Date.now();
+      setQuestionShownAt(new Array(q.length).fill(nowMs));
+      setTimeToFirstAnswerSec(new Array(q.length).fill(null));
+      setConfidence(new Array(q.length).fill("low"));
+      setTopic(titles[0] || "");
+      setGenerating(false);
+    } catch (e) {
+      setError(e?.message || "Ошибка");
+      setGenerating(false);
+    }
   };
 
   const generateTest = async () => {
@@ -271,6 +415,10 @@ export default function TestsPage() {
 
       setQuestions(q);
       setUserAnswers(new Array(q.length).fill(null));
+      const nowMs = Date.now();
+      setQuestionShownAt(new Array(q.length).fill(nowMs));
+      setTimeToFirstAnswerSec(new Array(q.length).fill(null));
+      setConfidence(new Array(q.length).fill("low"));
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
@@ -287,9 +435,27 @@ export default function TestsPage() {
       const totalCount = questions.length;
 
       let correctCount = 0;
+      const mistakes = [];
       questions.forEach((q, idx) => {
         const ua = userAnswers[idx];
-        if (typeof ua === "number" && ua === q.correctIndex) correctCount += 1;
+        const isCorrect = typeof ua === "number" && ua === q.correctIndex;
+        if (isCorrect) {
+          correctCount += 1;
+        } else {
+          const opts = Array.isArray(q.options) ? q.options : [];
+          const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
+          const conf = Array.isArray(confidence) ? confidence[idx] : "low";
+          mistakes.push({
+            idx,
+            question: q.question || q.text || "",
+            options: opts,
+            correctIndex: typeof q.correctIndex === "number" ? q.correctIndex : 0,
+            userIndex: typeof ua === "number" ? ua : null,
+            explanation: q.explanation || "",
+            timeSec: typeof tSec === "number" ? tSec : null,
+            confident: conf === "high",
+          });
+        }
       });
 
       const score = totalCount > 0 ? correctCount / totalCount : 0;
@@ -307,9 +473,19 @@ export default function TestsPage() {
         topic: finalTopic,
         correctCount,
         totalCount,
+        mistakesSummary: {
+          wrongCount: mistakes.length,
+          avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
+          confidentWrongCount: confidentWrong,
+        },
       });
 
       // пишем историю тестов
+      updateMistakeStats({ subject: context.subject, level: context.level, topic: finalTopic, mistakes });
+
+      const avgTime = mistakes.filter(m=>typeof m.timeSec==="number").reduce((s,m)=>s+m.timeSec,0) / Math.max(1, mistakes.filter(m=>typeof m.timeSec==="number").length);
+      const confidentWrong = mistakes.filter(m=>m.confident).length;
+
       pushTestHistory({
         subject: context.subject,
         level: context.level,
@@ -317,6 +493,11 @@ export default function TestsPage() {
         score: clamp01(score),
         correctCount,
         totalCount,
+        mistakesSummary: {
+          wrongCount: mistakes.length,
+          avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
+          confidentWrongCount: confidentWrong,
+        },
       });
 
       // обновим блок истории тестов на странице
@@ -677,6 +858,19 @@ export default function TestsPage() {
                                 name={`q_${idx}`}
                                 checked={checked}
                                 onChange={() => {
+                                  setTimeToFirstAnswerSec((prev) => {
+                                    const next = Array.isArray(prev) ? [...prev] : [];
+                                    if (next[idx] === null || typeof next[idx] !== "number") {
+                                      const shown = Array.isArray(questionShownAt) ? questionShownAt[idx] : null;
+                                      if (typeof shown === "number") {
+                                        const sec = (Date.now() - shown) / 1000;
+                                        next[idx] = +sec.toFixed(1);
+                                      } else {
+                                        next[idx] = null;
+                                      }
+                                    }
+                                    return next;
+                                  });
                                   setUserAnswers((prev) => {
                                     const next = [...prev];
                                     next[idx] = oi;
@@ -691,6 +885,58 @@ export default function TestsPage() {
                           );
                         })}
                       </div>
+
+                      <div className="pt-1">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Уверенность
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfidence((prev) => {
+                                const next = Array.isArray(prev) ? [...prev] : [];
+                                next[idx] = "low";
+                                return next;
+                              })
+                            }
+                            className={`px-3 py-2 rounded-full border text-[11px] transition
+                              ${
+                                confidence[idx] !== "high"
+                                  ? "bg-white/15 border-white/20 text-purple-50"
+                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
+                              }`}
+                          >
+                            Не уверен
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfidence((prev) => {
+                                const next = Array.isArray(prev) ? [...prev] : [];
+                                next[idx] = "high";
+                                return next;
+                              })
+                            }
+                            className={`px-3 py-2 rounded-full border text-[11px] transition
+                              ${
+                                confidence[idx] === "high"
+                                  ? "bg-white text-black border-white shadow-md"
+                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
+                              }`}
+                          >
+                            Уверен
+                          </button>
+
+                          <span className="text-[11px] text-purple-200/80 self-center">
+                            {typeof timeToFirstAnswerSec[idx] === "number"
+                              ? `время: ${timeToFirstAnswerSec[idx]}с`
+                              : "время: —"}
+                          </span>
+                        </div>
+                      </div>
+
                     </div>
                   ))}
                 </div>
@@ -729,6 +975,56 @@ export default function TestsPage() {
                     <p className="text-[11px] text-purple-200/80">
                       Прогресс по теме обновлён (см. страницу “Прогресс”).
                     </p>
+
+                    {topRepeatedMistakes.length > 0 && (
+                      <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Повторяющиеся ошибки
+                        </p>
+                        <div className="space-y-2">
+                          {topRepeatedMistakes.map((m) => {
+                            const repeats = m.count || 2;
+                            const tag = classifyMistake({
+                              timeSec: typeof m.avgTimeSec === "number" ? m.avgTimeSec : null,
+                              confident: (m.confidentWrongCount || 0) >= 1,
+                              repeats,
+                            });
+                            return (
+                              <div
+                                key={m.key}
+                                className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold truncate">
+                                    {m.topic || "Тема"}
+                                  </p>
+                                  <p className="text-[11px] text-purple-200/80">
+                                    {tag} • повторов: {repeats}
+                                    {typeof m.avgTimeSec === "number" ? ` • сред. время: ${m.avgTimeSec}s` : ""}
+                                  </p>
+                                </div>
+                                <div className="flex gap-2 flex-wrap md:justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => generateFocusedTest([m.topic || topic?.trim() || "Базовые понятия"], 2)}
+                                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                  >
+                                    Закрепить (2)
+                                  </button>
+                                  <a
+                                    href={`/chat?topic=${encodeURIComponent(m.topic || "")}`}
+                                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                  >
+                                    Разобрать в чате →
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
 
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
