@@ -165,49 +165,59 @@ const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
 
 
 const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
-  if (typeof window === "undefined") return;
-  if (!subject || !level || !topic || !totalCount || totalCount <= 0) return;
+  if (typeof window === "undefined") return { ok: false, error: "no-window" };
+  if (!subject || !level || !topic || !totalCount || totalCount <= 0) return { ok: false, error: "missing-context" };
 
-  const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
-  const km = safeParse(raw, {});
+  try {
+    const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+    const km = safeParse(raw, {});
 
-  if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
-  if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
+    if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
+    if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
 
-  const newScore = clamp01(correctCount / totalCount);
-  const prev = km[subject][level][topic] || {};
-  const nextScore = blendScore(prev.score, newScore, 0.35);
+    const newScore = clamp01(correctCount / totalCount);
+    const prev = km[subject][level][topic] || {};
+    const nextScore = blendScore(prev.score, newScore, 0.35);
 
-  km[subject][level][topic] = {
-    ...prev,
-    score: nextScore,
-    updatedAt: getToday(),
-  };
+    km[subject][level][topic] = {
+      ...prev,
+      score: nextScore,
+      updatedAt: getToday(),
+    };
 
-  window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
+    window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e?.message || "km-write-failed" };
+  }
 };
 
 const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
-  const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-  const list = safeParse(raw, []);
-  const next = Array.isArray(list) ? list : [];
+  try {
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const list = safeParse(raw, []);
+    const next = Array.isArray(list) ? list : [];
 
-  next.unshift({
-    id: Date.now(),
-    subject,
-    level,
-    topic,
-    score,
-    correctCount,
-    totalCount,
-    createdAt: new Date().toISOString(),
-    mistakesSummary: mistakesSummary || null,
-  });
+    next.unshift({
+      id: Date.now(),
+      subject,
+      level,
+      topic,
+      score,
+      correctCount,
+      totalCount,
+      createdAt: new Date().toISOString(),
+      mistakesSummary: mistakesSummary || null,
+    });
 
-  // MVP: храним максимум 50
-  window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next.slice(0, 50)));
+    const trimmed = next.slice(0, 50);
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(trimmed));
+    return { ok: true, count: trimmed.length, error: null };
+  } catch (e) {
+    return { ok: false, count: 0, error: e?.message || "history-write-failed" };
+  }
 };
 
 export default function TestsPage() {
@@ -233,6 +243,7 @@ export default function TestsPage() {
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewing, setReviewing] = useState(false);
+  const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
@@ -467,18 +478,19 @@ export default function TestsPage() {
         topic?.trim() || questions?.[0]?.topicTitle || "Тема без названия";
 
       // обновляем карту знаний
-      updateKnowledgeFromTest({
+      const kmRes = updateKnowledgeFromTest({
         subject: context.subject,
         level: context.level,
         topic: finalTopic,
         correctCount,
         totalCount,
-        mistakesSummary: {
+      });
+
+      const _mistakesSummary = {
           wrongCount: mistakes.length,
           avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
           confidentWrongCount: confidentWrong,
-        },
-      });
+        };
 
       // пишем историю тестов
       updateMistakeStats({ subject: context.subject, level: context.level, topic: finalTopic, mistakes });
@@ -497,8 +509,22 @@ export default function TestsPage() {
           wrongCount: mistakes.length,
           avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
           confidentWrongCount: confidentWrong,
-        },
+        };
+
+      setSaveInfo({
+        ts: new Date().toISOString(),
+        historyOk: hRes?.ok === true,
+        historyCount: hRes?.count || 0,
+        historyError: hRes?.error || null,
+        kmOk: kmRes?.ok === true,
+        kmError: kmRes?.error || null,
       });
+
+      if (!(hRes?.ok === true)) {
+        setError(`Не удалось сохранить историю теста: ${hRes?.error || "unknown"}`);
+      } else if (!(kmRes?.ok === true)) {
+        setError(`История сохранена, но прогресс не обновился: ${kmRes?.error || "unknown"}`);
+      }
 
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
@@ -976,6 +1002,11 @@ export default function TestsPage() {
                     <p className="text-[11px] text-purple-200/80">
                       Прогресс по теме обновлён (см. страницу “Прогресс”).
                     </p>
+                    {saveInfo ? (
+                      <p className="text-[11px] text-purple-200/80">
+                        Сохранение: история {saveInfo.historyOk ? "✓" : "✕"} (в памяти: {saveInfo.historyCount}) • прогресс {saveInfo.kmOk ? "✓" : "✕"}
+                      </p>
+                    ) : null}
 
                     {topRepeatedMistakes.length > 0 && (
                       <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
