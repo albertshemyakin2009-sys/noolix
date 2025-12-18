@@ -1,7 +1,6 @@
 // pages/goals.js
 
-import { useEffect, useState } from "react";
-
+import React, { useEffect, useState  } from "react";
 const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
@@ -115,7 +114,6 @@ export default function GoalsPage() {
   const [stepInputs, setStepInputs] = useState({});
 
   const [knowledgeMap, setKnowledgeMap] = useState({});
-  const [contextLevel, setContextLevel] = useState(null);
 
   // ---- Загрузка контекста, карты знаний и целей ----
   useEffect(() => {
@@ -128,9 +126,6 @@ export default function GoalsPage() {
           const ctx = JSON.parse(rawContext);
           if (ctx && ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
             setNewSubject(ctx.subject);
-          }
-          if (ctx && typeof ctx.level === "string" && ctx.level.trim()) {
-            setContextLevel(ctx.level.trim());
           }
         } catch (e) {
           console.warn("Failed to parse noolixContext", e);
@@ -174,21 +169,13 @@ export default function GoalsPage() {
 
   // --- слабые темы по предмету из карты знаний ---
   const getWeakTopicsCount = (subject) => {
-    const subjEntry = knowledgeMap?.[subject];
-    if (!subjEntry || typeof subjEntry !== "object") return null;
-
-    // Новый формат: subject -> level -> topics
-    const maybeLevelEntry =
-      contextLevel && subjEntry?.[contextLevel] && typeof subjEntry[contextLevel] === "object"
-        ? subjEntry[contextLevel]
-        : null;
-
-    // Legacy формат: subject -> topics
-    const topicsMap = maybeLevelEntry ?? subjEntry;
-
+    const subjEntry = knowledgeMap[subject];
+    if (!subjEntry) return null;
     let weakCount = 0;
-    Object.values(topicsMap).forEach((t) => {
-      if (t && typeof t.score === "number" && t.score < 0.8) weakCount += 1;
+    Object.values(subjEntry).forEach((t) => {
+      if (typeof t.score === "number" && t.score < 0.8) {
+        weakCount += 1;
+      }
     });
     return weakCount;
   };
@@ -412,12 +399,20 @@ export default function GoalsPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className="flex items-center gap-3 px-2 py-2 rounded-2xl hover:bg-white/5 transition"
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
+                  ${item.key === "goals" ? "bg-white/15" : "hover:bg-white/5"}
+                `}
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white">
+                <span
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
+                    ${item.key === "goals" ? "ring-2 ring-purple-200" : ""}
+                  `}
+                >
                   {item.icon}
                 </span>
-                <span>{item.label}</span>
+                <span className={item.key === "goals" ? "font-semibold" : ""}>
+                  {item.label}
+                </span>
               </a>
             ))}
           </div>
