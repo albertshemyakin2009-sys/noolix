@@ -1,6 +1,5 @@
 // pages/tests.js
-import { useEffect, useMemo, useState } from "react";
-
+import React, { useEffect, useMemo, useState  } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -36,20 +35,21 @@ const safeParse = (raw, fallback) => {
   }
 };
 
-const updateKnowledgeFromTest = ({ subject, topic, correctCount, totalCount }) => {
+const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
   if (typeof window === "undefined") return;
-  if (!subject || !topic || !totalCount || totalCount <= 0) return;
+  if (!subject || !level || !topic || !totalCount || totalCount <= 0) return;
 
   const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
   const km = safeParse(raw, {});
 
   if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
+  if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
 
   const newScore = clamp01(correctCount / totalCount);
-  const prev = km[subject][topic] || {};
+  const prev = km[subject][level][topic] || {};
   const nextScore = blendScore(prev.score, newScore, 0.35);
 
-  km[subject][topic] = {
+  km[subject][level][topic] = {
     ...prev,
     score: nextScore,
     updatedAt: getToday(),
@@ -229,6 +229,7 @@ export default function TestsPage() {
       // обновляем карту знаний
       updateKnowledgeFromTest({
         subject: context.subject,
+        level: context.level,
         topic: finalTopic,
         correctCount,
         totalCount,
