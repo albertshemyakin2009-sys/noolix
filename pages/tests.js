@@ -502,6 +502,7 @@ export default function TestsPage() {
 
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
+      try { loadTestHistory(); } catch (_) {}
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
     } finally {
