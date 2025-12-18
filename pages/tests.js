@@ -102,6 +102,7 @@ export default function TestsPage() {
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
+  const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
 
   // init context
   useEffect(() => {
@@ -122,15 +123,41 @@ export default function TestsPage() {
 
   const loadTestHistory = () => {
     if (typeof window === "undefined") return;
+
     const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const list = safeParse(raw, []);
-    const arr = Array.isArray(list) ? list : [];
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
 
-    const filtered = arr.filter(
-      (x) => x?.subject === context.subject && x?.level === context.level
-    );
+    let scoped = list;
 
-    setTestHistory(filtered.slice(0, 10));
+    if (historyScope === "current") {
+      scoped = list.filter(
+        (x) => x?.subject === context.subject && x?.level === context.level
+      );
+    }
+
+    setTestHistory(scoped.slice(0, 20));
+  };
+
+  const clearTestHistory = () => {
+    if (typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
+
+    let next = list;
+
+    if (historyScope === "current") {
+      next = list.filter(
+        (x) => !(x?.subject === context.subject && x?.level === context.level)
+      );
+    } else {
+      next = [];
+    }
+
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
+    setHistoryTick((t) => t + 1);
   };
 
   const canGenerate = useMemo(() => {
@@ -147,7 +174,7 @@ export default function TestsPage() {
   useEffect(() => {
     loadTestHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level, historyTick]);
+  }, [context.subject, context.level, historyScope, historyTick]);
 
   const resetSession = () => {
     setError("");
@@ -467,9 +494,19 @@ export default function TestsPage() {
                     История тестов
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
-                    Последние попытки по текущему предмету и уровню.
+                    {historyScope === "current"
+                    ? "Последние попытки по текущему предмету и уровню."
+                    : "Последние попытки по всем предметам и уровням."}
                   </p>
                 </div>
+                <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  {historyScope === "current" ? "Показать все" : "Только текущие"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setHistoryTick((t) => t + 1)}
@@ -477,7 +514,40 @@ export default function TestsPage() {
                 >
                   Обновить
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = window.confirm(
+                      historyScope === "current"
+                        ? "Очистить историю по текущему предмету и уровню?"
+                        : "Очистить ВСЮ историю мини‑тестов?"
+                    );
+                    if (ok) clearTestHistory();
+                  }}
+                  className="px-3 py-2 rounded-full border border-red-300/30 bg-black/30 text-[11px] text-red-100 hover:bg-white/5 transition"
+                >
+                  Очистить
+                </button>
               </div>
+              </div>
+
+              {testHistory.length > 0 && (
+                <div className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 flex flex-wrap gap-2">
+                  <span>Показано: <b>{testHistory.length}</b></span>
+                  <span>•</span>
+                  <span>
+                    Средний результат:{" "}
+                    <b>
+                      {Math.round(
+                        (testHistory.reduce((sum, x) => sum + (x?.score ?? 0), 0) /
+                          Math.max(1, testHistory.length)) *
+                          100
+                      )}
+                      %
+                    </b>
+                  </span>
+                </div>
+              )}
 
               {testHistory.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
