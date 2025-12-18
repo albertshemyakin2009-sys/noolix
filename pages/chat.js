@@ -1,8 +1,4 @@
-// pages/chat.js
-import { useEffect, useRef, useState } from "react";
-
-const primaryMenuItems = [
-  { label: "Главная", href: "/", icon: "🏛", key: "home" },
+{ label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
   { label: "Тесты", href: "/tests", icon: "🧪", key: "tests" },
   { label: "Прогресс", href: "/progress", icon: "📈", key: "progress" },
@@ -434,30 +430,45 @@ export default function ChatPage() {
       const safeKm = km && typeof km === "object" ? km : {};
 
       const subject = context?.subject || "Без предмета";
-      const subjEntry =
-        safeKm[subject] && typeof safeKm[subject] === "object"
-          ? safeKm[subject]
-          : {};
+      const level = context?.level || "Без уровня";
+
+      const rawSubj =
+        safeKm[subject] && typeof safeKm[subject] === "object" ? safeKm[subject] : {};
+
+      // legacy: subject -> topic -> {score...}
+      const sampleVal = Object.values(rawSubj || {})[0];
+      const looksLegacy =
+        sampleVal &&
+        typeof sampleVal === "object" &&
+        ("score" in sampleVal || "updatedAt" in sampleVal || "source" in sampleVal);
+
+      if (looksLegacy) {
+        safeKm[subject] = { [level]: rawSubj };
+      } else if (!safeKm[subject] || typeof safeKm[subject] !== "object") {
+        safeKm[subject] = {};
+      }
+
+      if (!safeKm[subject][level] || typeof safeKm[subject][level] !== "object") {
+        safeKm[subject][level] = {};
+      }
+
+      const lvlEntry = safeKm[subject][level];
 
       const prev =
-        subjEntry[topic] && typeof subjEntry[topic] === "object"
-          ? subjEntry[topic]
-          : {};
+        lvlEntry[topic] && typeof lvlEntry[topic] === "object" ? lvlEntry[topic] : {};
 
       const prevScore = typeof prev.score === "number" ? prev.score : 0.55;
-
-      // небольшой, честный "буст" за сохранение объяснения
       const nextScore = Math.min(1, +(prevScore + 0.03).toFixed(3));
       const nowIso = new Date().toISOString();
 
-      subjEntry[topic] = {
+      lvlEntry[topic] = {
         ...prev,
         score: nextScore,
         updatedAt: nowIso,
         source: "dialog_saved",
       };
 
-      safeKm[subject] = subjEntry;
+      safeKm[subject][level] = lvlEntry;
       window.localStorage.setItem("noolixKnowledgeMap", JSON.stringify(safeKm));
     } catch (e) {
       console.warn("Failed to update noolixKnowledgeMap from dialog save", e);
