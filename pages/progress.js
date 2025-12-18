@@ -1,13 +1,3 @@
-// pages/progress.js
-import { useEffect, useMemo, useState } from "react";
-
-const primaryMenuItems = [
-  { label: "Главная", href: "/", icon: "🏛", key: "home" },
-  { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
-  { label: "Тесты", href: "/tests", icon: "🧪", key: "tests" },
-  { label: "Прогресс", href: "/progress", icon: "📈", key: "progress" },
-];
-
 const secondaryMenuItems = [
   { label: "Библиотека", href: "/library", icon: "📚", key: "library" },
   { label: "Цели", href: "/goals", icon: "🎯", key: "goals" },
@@ -102,7 +92,29 @@ export default function ProgressPage() {
       const rawKnowledge = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
       const parsedKnowledge = safeJsonParse(rawKnowledge, {});
       if (parsedKnowledge && typeof parsedKnowledge === "object") {
-        setKnowledgeMap(parsedKnowledge);
+        const subject = (parsedCtx?.subject || "Математика").toString();
+        const level = (parsedCtx?.level || "10–11 класс").toString();
+
+        // Мягкая миграция legacy-формата: subject -> topic -> {score...}
+        const migrated = { ...parsedKnowledge };
+        Object.keys(migrated).forEach((subjKey) => {
+          const subjVal = migrated[subjKey];
+          if (!subjVal || typeof subjVal !== "object") return;
+
+          const sampleVal = Object.values(subjVal)[0];
+          const looksLegacy =
+            sampleVal &&
+            typeof sampleVal === "object" &&
+            ("score" in sampleVal || "updatedAt" in sampleVal || "source" in sampleVal);
+
+          if (looksLegacy) {
+            const targetLevel = subjKey === subject ? level : level;
+            migrated[subjKey] = { [targetLevel]: subjVal };
+          }
+        });
+
+        setKnowledgeMap(migrated);
+        window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
       }
     } finally {
       setLoading(false);
@@ -138,16 +150,24 @@ export default function ProgressPage() {
 
   const subjectTopics = useMemo(() => {
     const subj = knowledgeMap?.[context.subject];
-    if (!subj || typeof subj !== "object") return [];
-    const arr = Object.entries(subj).map(([topic, data]) => ({
+    const lvl = subj?.[context.level];
+
+    // legacy fallback: если нет level-слоя
+    const legacySubj = subj && typeof subj === "object" ? subj : null;
+    const sourceObj = lvl && typeof lvl === "object" ? lvl : legacySubj;
+
+    if (!sourceObj || typeof sourceObj !== "object") return [];
+
+    const arr = Object.entries(sourceObj).map(([topic, data]) => ({
       topic,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
+      label: data?.label || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
-  }, [knowledgeMap, context.subject]);
+  }, [knowledgeMap, context.subject, context.level]);
 
   const stats = useMemo(() => {
     const total = subjectTopics.length;
@@ -196,6 +216,33 @@ export default function ProgressPage() {
     // сначала слабее (или выбранный фильтр), дальше по релевантности поиска не усложняем — MVP
     return bySearch;
   }, [subjectTopics, search, bandFilter]);
+
+  const setTopicState = (topicKey, patch) => {
+    if (typeof window === "undefined") return;
+    const topic = (topicKey || "").trim();
+    if (!topic) return;
+
+    setKnowledgeMap((prev) => {
+      const next = { ...(prev || {}) };
+      const subject = context.subject;
+      const level = context.level;
+
+      if (!next[subject] || typeof next[subject] !== "object") next[subject] = {};
+      if (!next[subject][level] || typeof next[subject][level] !== "object") {
+        next[subject][level] = {};
+      }
+
+      const prevEntry = next[subject][level][topic] || {};
+      next[subject][level][topic] = {
+        ...prevEntry,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+
+      window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const hasAnyData = subjectTopics.length > 0;
 
@@ -405,7 +452,62 @@ export default function ProgressPage() {
               )}
             </section>
 
-            {/* filters */}
+            
+            {/* recommendations */}
+            <section className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Рекомендации
+              </p>
+
+              {subjectTopics.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока рекомендаций нет: пройди мини-тест или сохрани объяснение в диалоге.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {subjectTopics
+                    .slice()
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3)
+                    .map((t) => (
+                      <div
+                        key={t.topic}
+                        className="bg-black/30 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{t.topic}</p>
+                          <p className="text-[11px] text-purple-200/80">
+                            Сейчас: {Math.round(t.score * 100)}%
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2 flex-shrink-0">
+                          <a
+                            href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            Разобрать →
+                          </a>
+                          <button
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 1,
+                                label: "Изучено",
+                                source: "manual",
+                              })
+                            }
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Изучено ✓
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </section>
+
+{/* filters */}
             <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="flex flex-col gap-2 w-full md:w-[360px]">
                 <input
@@ -505,6 +607,30 @@ export default function ProgressPage() {
                           >
                             Мини-тест
                           </a>
+                          <button
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 1,
+                                label: "Изучено",
+                                source: "manual",
+                              })
+                            }
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Изучено ✓
+                          </button>
+                          <button
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 0,
+                                label: null,
+                                source: "manual_reset",
+                              })
+                            }
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Сброс
+                          </button>
                         </div>
                       </div>
                     );
