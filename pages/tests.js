@@ -477,6 +477,18 @@ export default function TestsPage() {
       const finalTopic =
         topic?.trim() || questions?.[0]?.topicTitle || "Тема без названия";
 
+      // агрегаты по ошибкам
+      const avgTime =
+        mistakes.filter((m) => typeof m.timeSec === "number").reduce((s, m) => s + m.timeSec, 0) /
+        Math.max(1, mistakes.filter((m) => typeof m.timeSec === "number").length);
+      const confidentWrong = mistakes.filter((m) => m.confident).length;
+
+      const _mistakesSummary = {
+        wrongCount: mistakes.length,
+        avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
+        confidentWrongCount: confidentWrong,
+      };
+
       // обновляем карту знаний
       const kmRes = updateKnowledgeFromTest({
         subject: context.subject,
@@ -486,30 +498,24 @@ export default function TestsPage() {
         totalCount,
       });
 
-      const _mistakesSummary = {
-          wrongCount: mistakes.length,
-          avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
-          confidentWrongCount: confidentWrong,
-        };
+      // обновляем статистику ошибок
+      updateMistakeStats({
+        subject: context.subject,
+        level: context.level,
+        topic: finalTopic,
+        mistakes,
+      });
 
       // пишем историю тестов
-      updateMistakeStats({ subject: context.subject, level: context.level, topic: finalTopic, mistakes });
-
-      const avgTime = mistakes.filter(m=>typeof m.timeSec==="number").reduce((s,m)=>s+m.timeSec,0) / Math.max(1, mistakes.filter(m=>typeof m.timeSec==="number").length);
-      const confidentWrong = mistakes.filter(m=>m.confident).length;
-
-      pushTestHistory({
+      const hRes = pushTestHistory({
         subject: context.subject,
         level: context.level,
         topic: finalTopic,
         score: clamp01(score),
         correctCount,
         totalCount,
-        mistakesSummary: {
-          wrongCount: mistakes.length,
-          avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
-          confidentWrongCount: confidentWrong,
-        };
+        mistakesSummary: _mistakesSummary,
+      });
 
       setSaveInfo({
         ts: new Date().toISOString(),
