@@ -1,3 +1,12 @@
+// pages/progress.js
+import React, { useEffect, useMemo, useState  } from "react";
+const primaryMenuItems = [
+  { label: "Главная", href: "/", icon: "🏛", key: "home" },
+  { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
+  { label: "Тесты", href: "/tests", icon: "🧪", key: "tests" },
+  { label: "Прогресс", href: "/progress", icon: "📈", key: "progress" },
+];
+
 const secondaryMenuItems = [
   { label: "Библиотека", href: "/library", icon: "📚", key: "library" },
   { label: "Цели", href: "/goals", icon: "🎯", key: "goals" },
