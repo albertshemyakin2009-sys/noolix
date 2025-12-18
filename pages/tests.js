@@ -1,5 +1,5 @@
 // pages/tests.js
-import React, { useEffect, useMemo, useState  } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -25,6 +25,41 @@ const blendScore = (oldScore, newScore, alpha = 0.35) => {
   const o = typeof oldScore === "number" ? oldScore : 0;
   return clamp01(o * (1 - alpha) + newScore * alpha);
 };
+
+const parseTopicsInput = (raw) => {
+  const txt = typeof raw === "string" ? raw : "";
+  const parts = txt
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // убираем дубликаты сохраняя порядок
+  const seen = new Set();
+  const unique = [];
+  for (const p of parts) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(p);
+  }
+  return unique;
+};
+
+const getWeakestTopicFromProgress = (subject, level) => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+  const km = safeParse(raw, {});
+  const subj = km?.[subject];
+  const lvl = subj?.[level];
+  if (!lvl || typeof lvl !== "object") return null;
+  const entries = Object.entries(lvl)
+    .map(([topic, data]) => ({
+      topic,
+      score: typeof data?.score === "number" ? data.score : 0,
+    }))
+    .sort((a, b) => a.score - b.score);
+  return entries[0]?.topic || null;
+};
+
 
 const safeParse = (raw, fallback) => {
   try {
@@ -192,13 +227,25 @@ export default function TestsPage() {
     setResult(null);
 
     try {
+      const manualTopics = parseTopicsInput(topic);
+      const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
+      const topicsToSend = manualTopics.length > 0 ? manualTopics : (autoWeakest ? [autoWeakest] : []);
+
+      if (!context.subject) {
+        throw new Error("Выбери предмет (subject), чтобы сгенерировать тест.");
+      }
+      if (!Array.isArray(topicsToSend) || topicsToSend.length === 0) {
+        throw new Error("Введи тему (минимум одну) или сначала получи прогресс по темам (мини‑тест/объяснение).");
+      }
+
       const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject: context.subject,
-          level: context.level,
-          topic: topic?.trim() || "",
+          topics: topicsToSend,
+          questionCount: 5,
+          difficulty: "medium",
         }),
       });
 
@@ -455,14 +502,14 @@ export default function TestsPage() {
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
                   />
                   <p className="text-[11px] text-purple-200/80 mt-2">
-                    Можно оставить пустым — NOOLIX выберет тему сам.
+                    Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
                   <button
                     type="button"
-                    onClick={resetSession}
+                    onClick={() => { setTopic(""); resetSession(); }}
                     className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                   >
                     Сброс
@@ -709,7 +756,72 @@ export default function TestsPage() {
                       Разбор ошибок
                     </p>
                     <div className="text-xs md:text-sm text-purple-50 whitespace-pre-wrap leading-relaxed">
-                      {analysis}
+                      
+              {result && Array.isArray(questions) && Array.isArray(userAnswers) && questions.length > 0 ? (
+                <div className="mt-4 bg-black/30 border border-white/10 rounded-3xl p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">Твои ошибки</p>
+                    <p className="text-[11px] text-purple-200/80">
+                      Показаны только неверные ответы
+                    </p>
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {questions
+                      .map((q, i) => ({ q, i }))
+                      .filter(({ q, i }) => userAnswers[i] !== q.correctIndex)
+                      .map(({ q, i }) => {
+                        const userIdx = userAnswers[i];
+                        const userText =
+                          typeof userIdx === "number" && q.options?.[userIdx]
+                            ? q.options[userIdx]
+                            : "—";
+                        const correctText =
+                          typeof q.correctIndex === "number" && q.options?.[q.correctIndex]
+                            ? q.options[q.correctIndex]
+                            : "—";
+                        const topicTitle = q.topicTitle || (parseTopicsInput(topic)[0] || "");
+                        const chatHref = `/chat?topic=${encodeURIComponent(topicTitle || "Разбор ошибки")}&prefill=${encodeURIComponent(
+                          `Разбери ошибку по вопросу: "${q.question}". Я ответил: "${userText}", правильный ответ: "${correctText}". Объясни и дай 1 похожий пример.`
+                        )}`;
+
+                        return (
+                          <div key={i} className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                            <p className="text-sm font-semibold">
+                              {i + 1}. {q.question}
+                            </p>
+                            <div className="mt-2 grid md:grid-cols-2 gap-2">
+                              <div className="text-[12px] text-purple-100/90">
+                                <span className="text-purple-300/80">Твой ответ:</span>{" "}
+                                {userText}
+                              </div>
+                              <div className="text-[12px] text-purple-100/90">
+                                <span className="text-purple-300/80">Правильно:</span>{" "}
+                                {correctText}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex gap-2">
+                              <a
+                                href={chatHref}
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                              >
+                                Разобрать в диалоге →
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {questions.filter((q, i) => userAnswers[i] !== q.correctIndex).length === 0 ? (
+                      <p className="text-xs text-purple-200/80">
+                        Ошибок нет — идеально.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+{analysis}
                     </div>
                   </div>
                 )}
