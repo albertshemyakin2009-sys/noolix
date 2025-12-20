@@ -312,7 +312,7 @@ export default function GoalsPage() {
   const activeGoals = goals.filter((g) => computeProgress(g) < 1);
 
   // Умная навигация (MVP)
-  const smartWeakTopics = (() => {
+  const smartWeakTopics = isClient ? (() => {
     const subj = contextSubject;
     const lvl = contextLevel;
     const byLvl = knowledgeMap && knowledgeMap[subj] ? knowledgeMap[subj][lvl] : null;
@@ -321,9 +321,9 @@ export default function GoalsPage() {
       .map(([topic, data]) => ({ topic, score: typeof data?.score === "number" ? data.score : 0 }))
       .sort((a, b) => a.score - b.score)
       .slice(0, 3);
-  })();
+  })() : [];
 
-  const smartRepeatedMistakes = (() => {
+  const smartRepeatedMistakes = isClient ? (() => {
     const subj = contextSubject;
     const lvl = contextLevel;
     const lvlObj = mistakeStats && mistakeStats[subj] ? mistakeStats[subj][lvl] : null;
@@ -332,9 +332,9 @@ export default function GoalsPage() {
       .filter((x) => x && typeof x === "object" && (x.count || 0) >= 2)
       .sort((a, b) => (b.count || 0) - (a.count || 0))
       .slice(0, 2);
-  })();
+  })() : [];
 
-  const smartPlan = (() => {
+  const smartPlan = isClient ? (() => {
     const weak = smartWeakTopics[0]?.topic || "";
     const mistakeTopic = smartRepeatedMistakes[0]?.topic || "";
     const t = weak || mistakeTopic || "";
@@ -507,6 +507,7 @@ export default function GoalsPage() {
               </section>
 
               {/* Умная навигация: что делать дальше */}
+              {isClient ? (
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -605,6 +606,8 @@ export default function GoalsPage() {
                   </div>
                 )}
               </section>
+              ) : null}
+
 
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
