@@ -1,6 +1,6 @@
 // pages/goals.js
 
-import React, { useEffect, useState  } from "react";
+import React, { useEffect, useState } from "react";
 const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
@@ -120,13 +120,20 @@ export default function GoalsPage() {
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
+    setIsClient(true);
+
+    let ctx = null;
+    let mistakesParsed = {};
+    let knowledgeMapParsed = {};
 
       const rawContext = window.localStorage.getItem("noolixContext");
       if (rawContext) {
         try {
-          const ctx = JSON.parse(rawContext);
+          ctx = JSON.parse(rawContext);
           if (ctx && ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
             setNewSubject(ctx.subject);
+            setContextSubject(ctx.subject);
+            if (ctx && ctx.level) setContextLevel(ctx.level);
           }
         } catch (e) {
           console.warn("Failed to parse noolixContext", e);
@@ -150,9 +157,10 @@ export default function GoalsPage() {
       if (rawKnowledge) {
         try {
           const km = JSON.parse(rawKnowledge);
-          if (km && typeof km === "object") {
-            setKnowledgeMap(km);
-          }
+        if (km && typeof km === "object") {
+          knowledgeMapParsed = km;
+          setKnowledgeMap(km);
+        }
         } catch (e) {
           console.warn("Failed to parse knowledge map", e);
         }
