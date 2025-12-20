@@ -1,6 +1,6 @@
 // pages/goals.js
 
-import React, { useEffect, useState  } from "react";
+import React, { useEffect, useState  , useMemo} from "react";
 const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
@@ -114,6 +114,7 @@ export default function GoalsPage() {
   const [stepInputs, setStepInputs] = useState({});
 
   const [knowledgeMap, setKnowledgeMap] = useState({});
+  const [mistakeStats, setMistakeStats] = useState({});
 
   // ---- Загрузка контекста, карты знаний и целей ----
   useEffect(() => {
@@ -129,6 +130,16 @@ export default function GoalsPage() {
           }
         } catch (e) {
           console.warn("Failed to parse noolixContext", e);
+        }
+      }
+
+      const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
+      if (rawMistakes) {
+        try {
+          const ms = JSON.parse(rawMistakes);
+          if (ms && typeof ms === "object") setMistakeStats(ms);
+        } catch (e) {
+          console.warn("Failed to parse noolixMistakeStats", e);
         }
       }
 
@@ -455,6 +466,107 @@ export default function GoalsPage() {
                   </ul>
                 )}
               </section>
+
+              {/* Умная навигация: что делать дальше */}
+              <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                      Что делать дальше
+                    </p>
+                    <p className="text-xs text-purple-100/80">
+                      На основе прогресса и ошибок для: {contextSubject} • {contextLevel}
+                    </p>
+                  </div>
+                </div>
+
+                {smartWeakTopics.length === 0 && smartRepeatedMistakes.length === 0 ? (
+                  <p className="text-xs text-purple-100/80">
+                    Пока данных мало. Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {smartWeakTopics.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Сейчас важно подтянуть
+                        </p>
+                        {smartWeakTopics.map((t) => (
+                          <div key={t.topic} className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold truncate">{t.topic}</p>
+                              <p className="text-[11px] text-purple-200/80">прогресс: {Math.round(t.score * 100)}%</p>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <a
+                                href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                                className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                              >
+                                Разобрать →
+                              </a>
+                              <a
+                                href={`/tests?topic=${encodeURIComponent(t.topic)}&quick=2`}
+                                className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                              >
+                                Закрепить (2)
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {smartRepeatedMistakes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Повторяющиеся ошибки
+                        </p>
+                        {smartRepeatedMistakes.map((m) => (
+                          <div key={m.key} className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold truncate">{m.topic || "Тема"}</p>
+                              <p className="text-[11px] text-purple-200/80">повторов: {m.count || 2}</p>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <a
+                                href={`/tests?topic=${encodeURIComponent(m.topic || "")}&quick=2`}
+                                className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                              >
+                                Закрепить →
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {smartPlan.topic ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          План на 10 минут
+                        </p>
+                        <div className="space-y-2">
+                          {smartPlan.steps.map((s, i) => (
+                            <a
+                              key={s.title}
+                              href={s.action}
+                              className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
+                            >
+                              <p className="text-sm font-semibold">
+                                {i + 1}. {s.title}
+                              </p>
+                              <p className="text-[11px] text-purple-200/80">
+                                Тема: {smartPlan.topic}
+                              </p>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </section>
+
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -798,3 +910,53 @@ export default function GoalsPage() {
     </div>
   );
 }
+
+  const smartWeakTopics = useMemo(() => {
+    const subj = contextSubject;
+    const lvl = contextLevel;
+    const byLvl = knowledgeMap?.[subj]?.[lvl];
+    if (!byLvl || typeof byLvl !== "object") return [];
+    return Object.entries(byLvl)
+      .map(([topic, data]) => ({
+        topic,
+        score: typeof data?.score === "number" ? data.score : 0,
+      }))
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 3);
+  }, [knowledgeMap, contextSubject, contextLevel]);
+
+  const smartRepeatedMistakes = useMemo(() => {
+    const subj = contextSubject;
+    const lvl = contextLevel;
+    const lvlObj = mistakeStats?.[subj]?.[lvl];
+    if (!lvlObj || typeof lvlObj !== "object") return [];
+    return Object.values(lvlObj)
+      .filter((x) => x && typeof x === "object" && (x.count || 0) >= 2)
+      .sort((a, b) => (b.count || 0) - (a.count || 0))
+      .slice(0, 2);
+  }, [mistakeStats, contextSubject, contextLevel]);
+
+  const smartPlan = useMemo(() => {
+    const weak = smartWeakTopics[0]?.topic || "";
+    const mistakeTopic = smartRepeatedMistakes[0]?.topic || "";
+    const t = weak || mistakeTopic || "";
+    return {
+      topic: t,
+      steps: [
+        {
+          title: "Закрепить (2 вопроса)",
+          action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests",
+        },
+        {
+          title: "Разобрать в диалоге",
+          action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
+        },
+        {
+          title: "Мини‑тест по теме",
+          action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
+        },
+      ],
+    };
+  }, [smartWeakTopics, smartRepeatedMistakes]);
+
+
