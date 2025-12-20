@@ -346,7 +346,7 @@ export default function GoalsPage() {
         { title: "Мини‑тест по теме", action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests" },
       ],
     };
-  })();
+  })() : { topic: "", steps: [] };
 
 
   const completedGoals = goals.filter((g) => computeProgress(g) >= 1);
