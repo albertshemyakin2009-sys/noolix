@@ -1,6 +1,6 @@
 // pages/goals.js
 
-import React, { useEffect, useState  , useMemo} from "react";
+import React, { useEffect, useState  } from "react";
 const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
@@ -310,6 +310,45 @@ export default function GoalsPage() {
 
   // ---- Активные / завершённые ----
   const activeGoals = goals.filter((g) => computeProgress(g) < 1);
+
+  // Умная навигация (MVP)
+  const smartWeakTopics = (() => {
+    const subj = contextSubject;
+    const lvl = contextLevel;
+    const byLvl = knowledgeMap && knowledgeMap[subj] ? knowledgeMap[subj][lvl] : null;
+    if (!byLvl || typeof byLvl !== "object") return [];
+    return Object.entries(byLvl)
+      .map(([topic, data]) => ({ topic, score: typeof data?.score === "number" ? data.score : 0 }))
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 3);
+  })();
+
+  const smartRepeatedMistakes = (() => {
+    const subj = contextSubject;
+    const lvl = contextLevel;
+    const lvlObj = mistakeStats && mistakeStats[subj] ? mistakeStats[subj][lvl] : null;
+    if (!lvlObj || typeof lvlObj !== "object") return [];
+    return Object.values(lvlObj)
+      .filter((x) => x && typeof x === "object" && (x.count || 0) >= 2)
+      .sort((a, b) => (b.count || 0) - (a.count || 0))
+      .slice(0, 2);
+  })();
+
+  const smartPlan = (() => {
+    const weak = smartWeakTopics[0]?.topic || "";
+    const mistakeTopic = smartRepeatedMistakes[0]?.topic || "";
+    const t = weak || mistakeTopic || "";
+    return {
+      topic: t,
+      steps: [
+        { title: "Закрепить (2 вопроса)", action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests" },
+        { title: "Разобрать в диалоге", action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat" },
+        { title: "Мини‑тест по теме", action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests" },
+      ],
+    };
+  })();
+
+
   const completedGoals = goals.filter((g) => computeProgress(g) >= 1);
 
   // ---- Фокус на сегодня ----
@@ -910,53 +949,3 @@ export default function GoalsPage() {
     </div>
   );
 }
-
-  const smartWeakTopics = useMemo(() => {
-    const subj = contextSubject;
-    const lvl = contextLevel;
-    const byLvl = knowledgeMap?.[subj]?.[lvl];
-    if (!byLvl || typeof byLvl !== "object") return [];
-    return Object.entries(byLvl)
-      .map(([topic, data]) => ({
-        topic,
-        score: typeof data?.score === "number" ? data.score : 0,
-      }))
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 3);
-  }, [knowledgeMap, contextSubject, contextLevel]);
-
-  const smartRepeatedMistakes = useMemo(() => {
-    const subj = contextSubject;
-    const lvl = contextLevel;
-    const lvlObj = mistakeStats?.[subj]?.[lvl];
-    if (!lvlObj || typeof lvlObj !== "object") return [];
-    return Object.values(lvlObj)
-      .filter((x) => x && typeof x === "object" && (x.count || 0) >= 2)
-      .sort((a, b) => (b.count || 0) - (a.count || 0))
-      .slice(0, 2);
-  }, [mistakeStats, contextSubject, contextLevel]);
-
-  const smartPlan = useMemo(() => {
-    const weak = smartWeakTopics[0]?.topic || "";
-    const mistakeTopic = smartRepeatedMistakes[0]?.topic || "";
-    const t = weak || mistakeTopic || "";
-    return {
-      topic: t,
-      steps: [
-        {
-          title: "Закрепить (2 вопроса)",
-          action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests",
-        },
-        {
-          title: "Разобрать в диалоге",
-          action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
-        },
-        {
-          title: "Мини‑тест по теме",
-          action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
-        },
-      ],
-    };
-  }, [smartWeakTopics, smartRepeatedMistakes]);
-
-
