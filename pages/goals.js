@@ -133,33 +133,38 @@ function SmartNextSteps() {
               <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                 Сейчас важно подтянуть
               </p>
-              {weakTopics.map((t) => (
+              {weakTopics.map((t) => {
+              const topicTitle = String(t?.topic || "").trim();
+              if (!topicTitle) return null;
+              const scorePct = Number.isFinite(t?.score) ? Math.round(t.score * 100) : 0;
+              return (
                 <div
-                  key={t.topic}
-                  className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
+                  key={topicTitle}
+                  className="bg-black/40 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold truncate">{t.topic}</p>
+                    <p className="text-sm font-semibold truncate">{topicTitle}</p>
                     <p className="text-[11px] text-purple-200/80">
-                      прогресс: {Math.round(t.score * 100)}%
+                      прогресс: {scorePct}%
                     </p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="flex gap-2 flex-wrap md:justify-end flex-shrink-0">
                     <a
-                      href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                      href={`/chat?topic=${encodeURIComponent(topicTitle)}`}
                       className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                     >
                       Разобрать →
                     </a>
                     <a
-                      href={`/tests?topic=${encodeURIComponent(t.topic)}&quick=2`}
+                      href={`/tests?topic=${encodeURIComponent(topicTitle)}&quick=2`}
                       className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                     >
                       Закрепить (2)
                     </a>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
 
@@ -663,8 +668,6 @@ export default function GoalsPage() {
                 )}
               </section>
 
-              <SmartNextSteps />
-
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
@@ -780,6 +783,9 @@ export default function GoalsPage() {
 
             {/* Правая колонка — список целей */}
             <section className="flex flex-col gap-4">
+
+              <SmartNextSteps />
+
               {/* Активные цели */}
               <section className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
