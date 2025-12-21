@@ -243,7 +243,14 @@ export default function TestsPage() {
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewing, setReviewing] = useState(false);
-  const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
+  const [saveInfo, setSaveInfo] = useState(null);
+
+  // A2: micro-feedback toast
+  const [toast, setToast] = useState(null);
+  const showToast = (text) => {
+    setToast({ text });
+    window.setTimeout(() => setToast(null), 2000);
+  }; // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
@@ -303,6 +310,13 @@ export default function TestsPage() {
 
     window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
     setHistoryTick((t) => t + 1);
+      if (hRes?.ok && kmRes?.ok) {
+        showToast(`Тест сохранён • результат: ${scorePercent}%`);
+      } else if (hRes?.ok && !kmRes?.ok) {
+        showToast("Тест сохранён • прогресс не обновился");
+      } else {
+        showToast("Не удалось сохранить тест");
+      }
   };
 
   const canGenerate = useMemo(() => {
@@ -534,6 +548,13 @@ export default function TestsPage() {
 
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
+      if (hRes?.ok && kmRes?.ok) {
+        showToast(`Тест сохранён • результат: ${scorePercent}%`);
+      } else if (hRes?.ok && !kmRes?.ok) {
+        showToast("Тест сохранён • прогресс не обновился");
+      } else {
+        showToast("Не удалось сохранить тест");
+      }
       try { loadTestHistory(); } catch (_) {}
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
@@ -654,6 +675,11 @@ export default function TestsPage() {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+          {toast ? (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+              <div className="px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-white shadow-lg">{toast.text}</div>
+            </div>
+          ) : null}
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
