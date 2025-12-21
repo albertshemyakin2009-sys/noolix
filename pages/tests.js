@@ -246,10 +246,10 @@ export default function TestsPage() {
   const [saveInfo, setSaveInfo] = useState(null);
 
   // A2: micro-feedback toast
-  const [toast, setToast] = useState(null);
-  const showToast = (text) => {
-    setToast({ text });
-    window.setTimeout(() => setToast(null), 2000);
+  const [toast, setToast] = useState(null); // { text, tone: 'success'|'warn'|'error' }
+  const showToast = (text, tone = "success") => {
+    setToast({ text, tone });
+    window.setTimeout(() => setToast(null), 2500);
   }; // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
@@ -311,11 +311,11 @@ export default function TestsPage() {
     window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
     setHistoryTick((t) => t + 1);
       if (hRes?.ok && kmRes?.ok) {
-        showToast(`Тест сохранён • результат: ${scorePercent}%`);
+        showToast(`Тест сохранён • результат: ${scorePercent}%`, "success");
       } else if (hRes?.ok && !kmRes?.ok) {
-        showToast("Тест сохранён • прогресс не обновился");
+        showToast("Тест сохранён • прогресс не обновился", "warn");
       } else {
-        showToast("Не удалось сохранить тест");
+        showToast("Не удалось сохранить тест", "error");
       }
   };
 
@@ -549,11 +549,11 @@ export default function TestsPage() {
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
       if (hRes?.ok && kmRes?.ok) {
-        showToast(`Тест сохранён • результат: ${scorePercent}%`);
+        showToast(`Тест сохранён • результат: ${scorePercent}%`, "success");
       } else if (hRes?.ok && !kmRes?.ok) {
-        showToast("Тест сохранён • прогресс не обновился");
+        showToast("Тест сохранён • прогресс не обновился", "warn");
       } else {
-        showToast("Не удалось сохранить тест");
+        showToast("Не удалось сохранить тест", "error");
       }
       try { loadTestHistory(); } catch (_) {}
     } catch (e) {
@@ -677,7 +677,15 @@ export default function TestsPage() {
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           {toast ? (
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-              <div className="px-5 py-3 rounded-2xl bg-black/80 border border-purple-400/40 text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in">{toast.text}</div>
+              {/* toast */}
+              <div
+                className={`px-5 py-3 rounded-2xl bg-black/80 border text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in flex items-center gap-2 ${toast.tone === "error" ? "border-red-400/50" : toast.tone === "warn" ? "border-yellow-400/50" : "border-purple-400/40"}`}
+              >
+                <span className="text-base">
+                  {toast.tone === "error" ? "⚠️" : toast.tone === "warn" ? "🟡" : "✅"}
+                </span>
+                <span>{toast.text}</span>
+              </div>
             </div>
           ) : null}
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
