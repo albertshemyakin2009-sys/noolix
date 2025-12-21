@@ -80,10 +80,10 @@ export default function ChatPage() {
   const [savedMessageIds, setSavedMessageIds] = useState([]);
 
   // A2: micro-feedback toast
-  const [toast, setToast] = useState(null);
-  const showToast = (text) => {
-    setToast({ text });
-    window.setTimeout(() => setToast(null), 2000);
+  const [toast, setToast] = useState(null); // { text, tone: 'success'|'warn'|'error' }
+  const showToast = (text, tone = "success") => {
+    setToast({ text, tone });
+    window.setTimeout(() => setToast(null), 2500);
   };
 
   const messagesEndRef = useRef(null);
@@ -541,7 +541,7 @@ export default function ChatPage() {
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
       const topicKey = (currentTopic && currentTopic.trim()) || title;
       touchProgressFromDialogSave(topicKey);
-      showToast("Объяснение сохранено • прогресс обновлён");
+      showToast("Объяснение сохранено • прогресс обновлён", "success");
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
@@ -709,7 +709,15 @@ export default function ChatPage() {
     <>
       {toast ? (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="px-5 py-3 rounded-2xl bg-black/80 border border-purple-400/40 text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in">{toast.text}</div>
+          {/* toast */}
+              <div
+                className={`px-5 py-3 rounded-2xl bg-black/80 border text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in flex items-center gap-2 ${toast.tone === "error" ? "border-red-400/50" : toast.tone === "warn" ? "border-yellow-400/50" : "border-purple-400/40"}`}
+              >
+                <span className="text-base">
+                  {toast.tone === "error" ? "⚠️" : toast.tone === "warn" ? "🟡" : "✅"}
+                </span>
+                <span>{toast.text}</span>
+              </div>
         </div>
       ) : null}
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
