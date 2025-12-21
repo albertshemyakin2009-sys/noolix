@@ -114,42 +114,21 @@ export default function GoalsPage() {
   const [stepInputs, setStepInputs] = useState({});
 
   const [knowledgeMap, setKnowledgeMap] = useState({});
-  const [mistakeStats, setMistakeStats] = useState({});
 
   // ---- Загрузка контекста, карты знаний и целей ----
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
-    setIsClient(true);
-
-    let ctx = null;
-    let mistakesParsed = {};
-    let knowledgeMapParsed = {};
 
       const rawContext = window.localStorage.getItem("noolixContext");
       if (rawContext) {
         try {
-          ctx = JSON.parse(rawContext);
+          const ctx = JSON.parse(rawContext);
           if (ctx && ctx.subject && SUBJECT_OPTIONS.includes(ctx.subject)) {
             setNewSubject(ctx.subject);
-            setContextSubject(ctx.subject);
-            if (ctx && ctx.level) setContextLevel(ctx.level);
           }
         } catch (e) {
           console.warn("Failed to parse noolixContext", e);
-        }
-      }
-
-      const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
-      if (rawMistakes) {
-        try {
-          const ms = JSON.parse(rawMistakes);
-          if (ms && typeof ms === "object") {
-            mistakesParsed = ms;
-            setMistakeStats(ms);
-          }
-        } catch (e) {
-          console.warn("Failed to parse noolixMistakeStats", e);
         }
       }
 
@@ -157,10 +136,9 @@ export default function GoalsPage() {
       if (rawKnowledge) {
         try {
           const km = JSON.parse(rawKnowledge);
-        if (km && typeof km === "object") {
-          knowledgeMapParsed = km;
-          setKnowledgeMap(km);
-        }
+          if (km && typeof km === "object") {
+            setKnowledgeMap(km);
+          }
         } catch (e) {
           console.warn("Failed to parse knowledge map", e);
         }
@@ -477,108 +455,8 @@ export default function GoalsPage() {
                   </ul>
                 )}
               </section>
-              {/* Умная навигация: что делать дальше */}
-              {isClient ? (
-                <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                        Что делать дальше
-                      </p>
-                      <p className="text-xs text-purple-100/80">
-                        На основе прогресса и ошибок для: {contextSubject} • {contextLevel}
-                      </p>
-                    </div>
-                  </div>
 
-                  {smartWeakTopics.length === 0 && smartRepeatedMistakes.length === 0 ? (
-                    <p className="text-xs text-purple-100/80">
-                      Пока данных мало. Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {smartWeakTopics.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                            Сейчас важно подтянуть
-                          </p>
-                          {smartWeakTopics.map((t) => (
-                            <div key={t.topic} className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">{t.topic}</p>
-                                <p className="text-[11px] text-purple-200/80">прогресс: {Math.round(t.score * 100)}%</p>
-                              </div>
-                              <div className="flex gap-2 flex-shrink-0">
-                                <a
-                                  href={`/chat?topic=${encodeURIComponent(t.topic)}`}
-                                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                                >
-                                  Разобрать →
-                                </a>
-                                <a
-                                  href={`/tests?topic=${encodeURIComponent(t.topic)}&quick=2`}
-                                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                                >
-                                  Закрепить (2)
-                                </a>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {smartRepeatedMistakes.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                            Повторяющиеся ошибки
-                          </p>
-                          {smartRepeatedMistakes.map((m) => (
-                            <div key={m.key} className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">{m.topic || "Тема"}</p>
-                                <p className="text-[11px] text-purple-200/80">повторов: {m.count || 2}</p>
-                              </div>
-                              <div className="flex gap-2 flex-shrink-0">
-                                <a
-                                  href={`/tests?topic=${encodeURIComponent(m.topic || "")}&quick=2`}
-                                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                                >
-                                  Закрепить →
-                                </a>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {smartPlan.topic ? (
-                        <div className="space-y-2">
-                          <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                            План на 10 минут
-                          </p>
-                          <div className="space-y-2">
-                            {smartPlan.steps.map((s, i) => (
-                              <a
-                                key={s.title}
-                                href={s.action}
-                                className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
-                              >
-                                <p className="text-sm font-semibold">
-                                  {i + 1}. {s.title}
-                                </p>
-                                <p className="text-[11px] text-purple-200/80">
-                                  Тема: {smartPlan.topic}
-                                </p>
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </section>
-              ) : null}
-
+              <SmartNextSteps />
 
 
               <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
