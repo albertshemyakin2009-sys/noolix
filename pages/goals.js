@@ -110,7 +110,13 @@ function SmartNextSteps() {
   if (!isClient) return null;
 
   return (
-    <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+    <section className="relative bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3 ring-1 ring-purple-400/25">
+<div className="absolute -top-3 left-4">
+  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-[11px] text-purple-100">
+    ✨ Рекомендовано
+  </span>
+</div>
+
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
