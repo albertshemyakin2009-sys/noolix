@@ -677,7 +677,7 @@ export default function TestsPage() {
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           {toast ? (
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-              <div className="px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-white shadow-lg">{toast.text}</div>
+              <div className="px-5 py-3 rounded-2xl bg-black/80 border border-purple-400/40 text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in">{toast.text}</div>
             </div>
           ) : null}
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
