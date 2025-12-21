@@ -79,6 +79,13 @@ export default function ChatPage() {
 
   const [savedMessageIds, setSavedMessageIds] = useState([]);
 
+  // A2: micro-feedback toast
+  const [toast, setToast] = useState(null);
+  const showToast = (text) => {
+    setToast({ text });
+    window.setTimeout(() => setToast(null), 2000);
+  };
+
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
 
@@ -534,6 +541,7 @@ export default function ChatPage() {
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
       const topicKey = (currentTopic && currentTopic.trim()) || title;
       touchProgressFromDialogSave(topicKey);
+      showToast("Объяснение сохранено • прогресс обновлён");
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
@@ -698,7 +706,13 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <>
+      {toast ? (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+          <div className="px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-white shadow-lg">{toast.text}</div>
+        </div>
+      ) : null}
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -977,5 +991,6 @@ export default function ChatPage() {
         </main>
       </div>
     </div>
+    </>
   );
 }
