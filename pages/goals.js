@@ -13,6 +13,213 @@ const SUBJECT_OPTIONS = [
 
 const TYPE_OPTIONS = ["Экзамен / тест", "Домашка", "Проект", "Свой вариант"];
 
+
+function SmartNextSteps() {
+  const [isClient, setIsClient] = useState(false);
+  const [ctx, setCtx] = useState({ subject: SUBJECT_OPTIONS[0], level: "Без уровня" });
+  const [weakTopics, setWeakTopics] = useState([]);
+  const [repeatedMistakes, setRepeatedMistakes] = useState([]);
+  const [plan, setPlan] = useState({ topic: "", steps: [] });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsClient(true);
+
+    try {
+      // context
+      const rawCtx = window.localStorage.getItem("noolixContext");
+      let parsedCtx = null;
+      if (rawCtx) {
+        try {
+          parsedCtx = JSON.parse(rawCtx);
+        } catch {}
+      }
+      const subject =
+        parsedCtx && parsedCtx.subject && SUBJECT_OPTIONS.includes(parsedCtx.subject)
+          ? parsedCtx.subject
+          : SUBJECT_OPTIONS[0];
+      const level = parsedCtx && parsedCtx.level ? parsedCtx.level : "Без уровня";
+      setCtx({ subject, level });
+
+      // progress (knowledge map)
+      const rawKM = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+      let km = {};
+      if (rawKM) {
+        try {
+          km = JSON.parse(rawKM) || {};
+        } catch {
+          km = {};
+        }
+      }
+      const byLvl = km?.[subject]?.[level];
+      const weak =
+        byLvl && typeof byLvl === "object"
+          ? Object.entries(byLvl)
+              .map(([topic, data]) => ({
+                topic,
+                score: typeof data?.score === "number" ? data.score : 0,
+              }))
+              .sort((a, b) => a.score - b.score)
+              .slice(0, 3)
+          : [];
+      setWeakTopics(weak);
+
+      // repeated mistakes
+      const rawMS = window.localStorage.getItem("noolixMistakeStats");
+      let ms = {};
+      if (rawMS) {
+        try {
+          ms = JSON.parse(rawMS) || {};
+        } catch {
+          ms = {};
+        }
+      }
+      const lvlObj = ms?.[subject]?.[level];
+      const rep =
+        lvlObj && typeof lvlObj === "object"
+          ? Object.values(lvlObj)
+              .filter((x) => x && typeof x === "object" && (x.count || 0) >= 2)
+              .sort((a, b) => (b.count || 0) - (a.count || 0))
+              .slice(0, 2)
+          : [];
+      setRepeatedMistakes(rep);
+
+      const t = weak[0]?.topic || rep[0]?.topic || "";
+      setPlan({
+        topic: t,
+        steps: [
+          {
+            title: "Закрепить (2 вопроса)",
+            action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests",
+          },
+          {
+            title: "Разобрать в диалоге",
+            action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
+          },
+          {
+            title: "Мини‑тест по теме",
+            action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
+          },
+        ],
+      });
+    } catch (e) {
+      console.warn("SmartNextSteps failed", e);
+    }
+  }, []);
+
+  if (!isClient) return null;
+
+  return (
+    <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+            Что делать дальше
+          </p>
+          <p className="text-xs text-purple-100/80">
+            На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}
+          </p>
+        </div>
+      </div>
+
+      {weakTopics.length === 0 && repeatedMistakes.length === 0 ? (
+        <p className="text-xs text-purple-100/80">
+          Пока данных мало. Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {weakTopics.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Сейчас важно подтянуть
+              </p>
+              {weakTopics.map((t) => (
+                <div
+                  key={t.topic}
+                  className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{t.topic}</p>
+                    <p className="text-[11px] text-purple-200/80">
+                      прогресс: {Math.round(t.score * 100)}%
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <a
+                      href={`/chat?topic=${encodeURIComponent(t.topic)}`}
+                      className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                    >
+                      Разобрать →
+                    </a>
+                    <a
+                      href={`/tests?topic=${encodeURIComponent(t.topic)}&quick=2`}
+                      className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                    >
+                      Закрепить (2)
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {repeatedMistakes.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Повторяющиеся ошибки
+              </p>
+              {repeatedMistakes.map((m) => (
+                <div
+                  key={m.key || `${m.topic}_${m.count}`}
+                  className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{m.topic || "Тема"}</p>
+                    <p className="text-[11px] text-purple-200/80">
+                      повторов: {m.count || 2}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <a
+                      href={`/tests?topic=${encodeURIComponent(m.topic || "")}&quick=2`}
+                      className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                    >
+                      Закрепить →
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {plan.topic ? (
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                План на 10 минут
+              </p>
+              <div className="space-y-2">
+                {plan.steps.map((s, i) => (
+                  <a
+                    key={s.title}
+                    href={s.action}
+                    className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
+                  >
+                    <p className="text-sm font-semibold">
+                      {i + 1}. {s.title}
+                    </p>
+                    <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
