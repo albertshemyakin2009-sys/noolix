@@ -709,7 +709,7 @@ export default function ChatPage() {
     <>
       {toast ? (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-white shadow-lg">{toast.text}</div>
+          <div className="px-5 py-3 rounded-2xl bg-black/80 border border-purple-400/40 text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in">{toast.text}</div>
         </div>
       ) : null}
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
