@@ -845,9 +845,35 @@ export default function TestsPage() {
               )}
 
               {testHistory.length === 0 ? (
-                <p className="text-xs text-purple-200/80">
-                  Пока нет попыток. Пройди мини-тест — и здесь появится история.
-                </p>
+                <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
+                  <p className="text-sm font-semibold">История появится после первой попытки</p>
+                  <p className="text-xs text-purple-200/80">
+                    Сгенерируй мини‑тест по одной теме и нажми «Завершить тест». Noolix сохранит результат и ошибки —
+                    чтобы улучшать рекомендации и прогресс.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        } catch {}
+                        if (canGenerate) generateTest();
+                        else showToast("Выбери предмет и тему (или оставь тему пустой для авто)", "warn");
+                      }}
+                      className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={generating}
+                    >
+                      🧪 Быстрый мини‑тест
+                    </button>
+                    <a
+                      href="/goals"
+                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
+                    >
+                      🎯 Перейти к целям
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {testHistory.map((h) => {
