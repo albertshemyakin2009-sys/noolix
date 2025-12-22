@@ -44,6 +44,24 @@ function getBand(score) {
   return "strong";
 }
 
+
+function getConfidenceMeta(score) {
+  const s = clamp01(score);
+  if (s < 0.5) return { level: 1, label: "Начал" };
+  if (s < 0.7) return { level: 2, label: "Разбираюсь" };
+  if (s < 0.85) return { level: 3, label: "Понимаю" };
+  if (s < 0.95) return { level: 4, label: "Уверенно" };
+  return { level: 5, label: "Освоено" };
+}
+
+function getConfidenceDots(score) {
+  const { level } = getConfidenceMeta(score);
+  const filled = "●".repeat(Math.max(0, Math.min(5, level)));
+  const empty = "○".repeat(Math.max(0, 5 - Math.max(0, Math.min(5, level))));
+  return filled + empty;
+}
+
+
 function bandLabel(band) {
   switch (band) {
     case "weak":
@@ -454,7 +472,7 @@ export default function ProgressPage() {
                       href={`/chat?topic=${encodeURIComponent(t.topic)}`}
                       className="px-3 py-1.5 rounded-full bg-white/5 border border-purple-300/60 text-[11px] md:text-xs text-purple-50 hover:bg-white/10 transition"
                     >
-                      {t.topic} · {Math.round(t.score * 100)}%
+                      {t.topic} · {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {Math.round(t.score * 100)}%
                     </a>
                   ))}
                 </div>
@@ -486,7 +504,7 @@ export default function ProgressPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-semibold truncate">{t.topic}</p>
                           <p className="text-[11px] text-purple-200/80">
-                            Сейчас: {Math.round(t.score * 100)}%
+                            {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {Math.round(t.score * 100)}%
                           </p>
                         </div>
 
@@ -553,7 +571,7 @@ export default function ProgressPage() {
 
               {filteredTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  По текущим фильтрам ничего не найдено.
+                  По текущим фильтрам ничего не найдено. Попробуй переключить «Слабые/Средние/Сильные» или выбрать другой уровень. Если данных мало — начни с мини-теста.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -589,7 +607,7 @@ export default function ProgressPage() {
                           </div>
 
                           <p className="text-[11px] text-purple-200/80 mt-0.5">
-                            Уровень: {percent}%
+                            Уверенность: {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {percent}%
                             {t.updatedAt
                               ? ` · обновлено: ${formatUpdatedAt(t.updatedAt)}`
                               : ""}
