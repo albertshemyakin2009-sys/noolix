@@ -569,6 +569,58 @@ export default function ProgressPage() {
                 Темы по предмету
               </p>
 
+              {subjectTopics.length === 0 ? (
+                <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
+                  <p className="text-sm font-semibold">Прогресс появится после первых действий</p>
+                  <p className="text-xs text-purple-200/80">
+                    Noolix пока не собрал карту знаний для: <b>{context.subject}</b> • <b>{context.level}</b>.
+                    Начни с мини‑теста или сохрани объяснение в диалоге — и здесь появятся темы, слабые места и рекомендации.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href="/tests"
+                      className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                    >
+                      🧪 Пройти мини‑тест
+                    </a>
+                    <a
+                      href="/chat"
+                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
+                    >
+                      💬 Разобрать в диалоге
+                    </a>
+                    <a
+                      href="/goals"
+                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
+                    >
+                      🎯 Цели
+                    </a>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href="/tests"
+                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Быстро: Тесты →
+                </a>
+                <a
+                  href="/chat"
+                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Быстро: Диалог →
+                </a>
+                <a
+                  href="/goals"
+                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Быстро: Цели →
+                </a>
+              </div>
+
+
               {filteredTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
                   По текущим фильтрам ничего не найдено. Попробуй переключить «Слабые/Средние/Сильные» или выбрать другой уровень. Если данных мало — начни с мини-теста.
