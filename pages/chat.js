@@ -990,6 +990,16 @@ export default function ChatPage() {
                     {thinking ? "…" : "Отправить"}
                   </button>
                 </form>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-purple-100/70">
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                    💡 Подсказка: попроси <b>пример</b> и <b>проверку понимания</b> — затем сохрани лучшее в библиотеку.
+                  </span>
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                    ⌘ Совет: в конце напиши “проверь меня” — Noolix задаст 2–3 контрольных вопроса.
+                  </span>
+                </div>
+
                 {error && (
                   <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
                 )}
