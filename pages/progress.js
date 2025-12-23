@@ -162,14 +162,24 @@ export default function ProgressPage() {
       const historyList = safeJsonParse(rawHistory, []);
       const historyArr = Array.isArray(historyList) ? historyList : [];
 
-      const testsTotal = historyArr.length;
-      const testsInContext = historyArr.filter(
+      const testsTotalAll = historyArr.length;
+      const historyCtx = historyArr.filter(
         (x) => x?.subject === context.subject && x?.level === context.level
-      ).length;
+      );
+      const testsInContext = historyCtx.length;
 
-      const lastTestTs =
+      const lastTestTsAny =
         historyArr.length > 0
           ? historyArr
+              .map((x) => x?.ts)
+              .filter(Boolean)
+              .sort()
+              .slice(-1)[0] || null
+          : null;
+
+      const lastTestTsInContext =
+        historyCtx.length > 0
+          ? historyCtx
               .map((x) => x?.ts)
               .filter(Boolean)
               .sort()
@@ -202,7 +212,9 @@ export default function ProgressPage() {
           : null;
 
       // 3) “объяснения” как источник = dialog
-      const explanationsSaved = topics.filter((t) => t.source === "dialog").length;
+      const explanationsSaved = topics.filter(
+        (t) => t.source === "dialog_saved" || t.source === "dialog"
+      ).length;
 
       // 4) ошибки
       const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
@@ -218,11 +230,19 @@ export default function ProgressPage() {
           : null;
 
       // 5) объединённая “последняя активность”
-      const lastActivity = [lastTestTs, lastTopicUpdate].filter(Boolean).sort().slice(-1)[0] || null;
+      const lastActivity = [lastTestTsInContext || lastTestTsAny, lastTopicUpdate]
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0] || null;
 
       const result = {
         context: { subject: context.subject, level: context.level },
-        tests: { total: testsTotal, inContext: testsInContext, lastTestTs: lastTestTs },
+        tests: {
+          totalAll: testsTotalAll,
+          inContext: testsInContext,
+          lastTestTsInContext: lastTestTsInContext,
+          lastTestTsAny: lastTestTsAny,
+        },
         topics: {
           touched: topicsTouched,
           confident: topicsConfident,
@@ -543,9 +563,12 @@ export default function ProgressPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Тестов</p>
-                    <p className="text-xl font-semibold">{analytics.tests?.total || 0}</p>
+                    <p className="text-xl font-semibold">{analytics.tests?.inContext || 0}</p>
                     <p className="text-[11px] text-purple-200/70">
-                      последний: {analytics.tests?.lastTestTs ? formatUpdatedAt(analytics.tests.lastTestTs) : "—"}
+                      всего: {analytics.tests?.totalAll || 0}
+                    </p>
+                    <p className="text-[11px] text-purple-200/70">
+                      последний: {analytics.tests?.lastTestTsInContext ? formatUpdatedAt(analytics.tests.lastTestTsInContext) : (analytics.tests?.lastTestTsAny ? formatUpdatedAt(analytics.tests.lastTestTsAny) : "—")}
                     </p>
                   </div>
 
