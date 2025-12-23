@@ -20,6 +20,7 @@ function SmartNextSteps() {
   const [weakTopics, setWeakTopics] = useState([]);
   const [repeatedMistakes, setRepeatedMistakes] = useState([]);
   const [plan, setPlan] = useState({ topic: "", steps: [] });
+  const [signal, setSignal] = useState(null); // { title, text, ctas: [{label, href}] }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -84,6 +85,43 @@ function SmartNextSteps() {
           : [];
       setRepeatedMistakes(rep);
 
+      // tests history (for "давно не было теста")
+      const rawTH = window.localStorage.getItem("noolixTestHistory");
+      let testHistory = [];
+      if (rawTH) {
+        try {
+          const parsed = JSON.parse(rawTH);
+          testHistory = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          testHistory = [];
+        }
+      }
+      const historyCtx = testHistory.filter(
+        (x) => x?.subject === subject && x?.level === level
+      );
+      const lastTestTsInCtx =
+        historyCtx.length > 0
+          ? historyCtx
+              .map((x) => x?.ts)
+              .filter(Boolean)
+              .sort()
+              .slice(-1)[0] || null
+          : null;
+
+      const daysSinceLastTest = lastTestTsInCtx
+        ? Math.floor(
+            (Date.now() - new Date(lastTestTsInCtx).getTime()) / (1000 * 60 * 60 * 24)
+          )
+        : null;
+
+      // "объяснения" считаем по карте знаний (source: dialog_saved / dialog)
+      const explanationsSaved = byLvl && typeof byLvl === "object"
+        ? Object.values(byLvl).filter((d) => d && (d.source === "dialog_saved" || d.source === "dialog")).length
+        : 0;
+
+      const lowData = (historyCtx.length === 0) && explanationsSaved === 0 && weak.length === 0 && rep.length === 0;
+      const staleTests = historyCtx.length > 0 && daysSinceLastTest !== null && daysSinceLastTest >= 7;
+
       const t = weak[0]?.topic || rep[0]?.topic || "";
       setPlan({
         topic: t,
@@ -102,6 +140,48 @@ function SmartNextSteps() {
           },
         ],
       });
+
+
+      // v2: signal (why this recommendation)
+      if (lowData) {
+        setSignal({
+          title: "С чего начать",
+          text: "Данных пока мало. Сделай мини‑тест или сохрани объяснение — и Noolix начнёт подбирать темы точнее.",
+          ctas: [
+            { label: "🧪 Мини‑тест", href: "/tests?quick=2" },
+            { label: "💬 Диалог", href: "/chat" },
+          ],
+        });
+      } else if (rep.length > 0) {
+        const top = rep[0];
+        setSignal({
+          title: "Повторяющиеся ошибки",
+          text: `Тема «${top.topic || "тема"}» ошибается часто — лучше закрепить её коротким тестом и разбором.`,
+          ctas: [
+            { label: "Закрепить (2)", href: `/tests?topic=${encodeURIComponent(top.topic || "")}&quick=2` },
+            { label: "Разобрать", href: `/chat?topic=${encodeURIComponent(top.topic || "")}` },
+          ],
+        });
+      } else if (weak.length > 0) {
+        const top = weak[0];
+        setSignal({
+          title: "Слабое место",
+          text: `Низкий прогресс по теме «${top.topic}». 10 минут практики дадут быстрый эффект.`,
+          ctas: [
+            { label: "План на 10 минут", href: `/tests?topic=${encodeURIComponent(top.topic)}&quick=2` },
+            { label: "Разобрать", href: `/chat?topic=${encodeURIComponent(top.topic)}` },
+          ],
+        });
+      } else if (staleTests) {
+        setSignal({
+          title: "Давно не было теста",
+          text: daysSinceLastTest === null ? "Сделай быструю проверку, чтобы обновить прогресс." : `Прошло ${daysSinceLastTest} дн. с последнего теста — быстрая проверка освежит знания.`,
+          ctas: [{ label: "🧪 Быстрый тест (2)", href: "/tests?quick=2" }],
+        });
+      } else {
+        setSignal(null);
+      }
+
     } catch (e) {
       console.warn("SmartNextSteps failed", e);
     }
@@ -126,7 +206,30 @@ function SmartNextSteps() {
             На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}
           </p>
         </div>
-      </div>
+      
+      {signal ? (
+        <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">{signal.title}</p>
+              <p className="text-xs text-purple-200/80 mt-1">{signal.text}</p>
+            </div>
+            <div className="flex gap-2 flex-wrap justify-end">
+              {(signal.ctas || []).map((c) => (
+                <a
+                  key={c.href + c.label}
+                  href={c.href}
+                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                >
+                  {c.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+</div>
 
       {weakTopics.length === 0 && repeatedMistakes.length === 0 ? (
         <p className="text-xs text-purple-100/80">
