@@ -86,7 +86,7 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
-  const [analytics, setAnalytics] = useState(null); // шаг 1: считаем метрики, UI добавим позже
+  const [analytics, setAnalytics] = useState(null);
 
   // init: context + knowledge map
   useEffect(() => {
@@ -516,7 +516,75 @@ export default function ProgressPage() {
               </div>
             </section>
 
-            {/* weak topics */}
+            
+            {/* analytics */}
+            <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Твоя активность
+                  </p>
+                  <p className="text-xs text-purple-100/70">
+                    Короткая сводка по тому, как ты учишься в Noolix
+                  </p>
+                </div>
+                <a
+                  href="/tests"
+                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  title="Перейти к тестам"
+                >
+                  🧪
+                </a>
+              </div>
+
+              {!analytics ? (
+                <p className="text-xs text-purple-200/80">Считаю статистику…</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Тестов</p>
+                    <p className="text-xl font-semibold">{analytics.tests?.total || 0}</p>
+                    <p className="text-[11px] text-purple-200/70">
+                      последний: {analytics.tests?.lastTestTs ? formatUpdatedAt(analytics.tests.lastTestTs) : "—"}
+                    </p>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Объяснений</p>
+                    <p className="text-xl font-semibold">{analytics.topics?.explanationsSaved || 0}</p>
+                    <p className="text-[11px] text-purple-200/70">сохранено</p>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Тем начато</p>
+                    <p className="text-xl font-semibold">{analytics.topics?.touched || 0}</p>
+                    <p className="text-[11px] text-purple-200/70">с прогрессом</p>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Фокус</p>
+                    {analytics.topics?.weakestTopic ? (
+                      <>
+                        <a
+                          href={`/chat?topic=${encodeURIComponent(analytics.topics.weakestTopic)}`}
+                          className="text-sm font-semibold truncate block hover:underline"
+                          title="Открыть разбор в диалоге"
+                        >
+                          {analytics.topics.weakestTopic}
+                        </a>
+                        <p className="text-[11px] text-purple-200/70">
+                          низкий прогресс: {Math.round((analytics.topics.weakestScore || 0) * 100)}%
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm font-semibold">—</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+
+{/* weak topics */}
             <section className="space-y-2">
               <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                 Слабые темы
