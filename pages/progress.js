@@ -44,24 +44,6 @@ function getBand(score) {
   return "strong";
 }
 
-
-function getConfidenceMeta(score) {
-  const s = clamp01(score);
-  if (s < 0.5) return { level: 1, label: "Начал" };
-  if (s < 0.7) return { level: 2, label: "Разбираюсь" };
-  if (s < 0.85) return { level: 3, label: "Понимаю" };
-  if (s < 0.95) return { level: 4, label: "Уверенно" };
-  return { level: 5, label: "Освоено" };
-}
-
-function getConfidenceDots(score) {
-  const { level } = getConfidenceMeta(score);
-  const filled = "●".repeat(Math.max(0, Math.min(5, level)));
-  const empty = "○".repeat(Math.max(0, 5 - Math.max(0, Math.min(5, level))));
-  return filled + empty;
-}
-
-
 function bandLabel(band) {
   switch (band) {
     case "weak":
@@ -104,6 +86,7 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
+  const [analytics, setAnalytics] = useState(null); // шаг 1: считаем метрики, UI добавим позже
 
   // init: context + knowledge map
   useEffect(() => {
@@ -167,6 +150,103 @@ export default function ProgressPage() {
       setRecentTests([]);
     }
   }, [context.subject, context.level]);
+
+
+  // analytics (Шаг 1): считаем метрики и кладём в window + console (без UI)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      // 1) тесты
+      const rawHistory = window.localStorage.getItem(TEST_HISTORY_KEY);
+      const historyList = safeJsonParse(rawHistory, []);
+      const historyArr = Array.isArray(historyList) ? historyList : [];
+
+      const testsTotal = historyArr.length;
+      const testsInContext = historyArr.filter(
+        (x) => x?.subject === context.subject && x?.level === context.level
+      ).length;
+
+      const lastTestTs =
+        historyArr.length > 0
+          ? historyArr
+              .map((x) => x?.ts)
+              .filter(Boolean)
+              .sort()
+              .slice(-1)[0] || null
+          : null;
+
+      // 2) темы/прогресс
+      const levelObj = knowledgeMap?.[context.subject]?.[context.level];
+      const topicsObj = levelObj && typeof levelObj === "object" ? levelObj : {};
+      const topics = Object.entries(topicsObj).map(([topic, data]) => ({
+        topic,
+        score: typeof data?.score === "number" ? data.score : 0,
+        updatedAt: data?.updatedAt || null,
+        source: data?.source || null,
+      }));
+
+      const topicsTouched = topics.length;
+      const topicsConfident = topics.filter((t) => (t.score || 0) >= 0.85).length;
+      const weakest = topicsTouched
+        ? topics.slice().sort((a, b) => (a.score || 0) - (b.score || 0))[0]
+        : null;
+
+      const lastTopicUpdate =
+        topicsTouched
+          ? topics
+              .map((t) => t.updatedAt)
+              .filter(Boolean)
+              .sort()
+              .slice(-1)[0] || null
+          : null;
+
+      // 3) “объяснения” как источник = dialog
+      const explanationsSaved = topics.filter((t) => t.source === "dialog").length;
+
+      // 4) ошибки
+      const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
+      const mistakes = safeJsonParse(rawMistakes, {});
+      const mistakesLvl = mistakes?.[context.subject]?.[context.level];
+      const mistakesObj = mistakesLvl && typeof mistakesLvl === "object" ? mistakesLvl : {};
+      const mistakeEntries = Object.values(mistakesObj).filter(Boolean);
+
+      const mistakesTotal = mistakeEntries.reduce((sum, m) => sum + (m?.count || 0), 0);
+      const topMistake =
+        mistakeEntries.length > 0
+          ? mistakeEntries.slice().sort((a, b) => (b?.count || 0) - (a?.count || 0))[0]
+          : null;
+
+      // 5) объединённая “последняя активность”
+      const lastActivity = [lastTestTs, lastTopicUpdate].filter(Boolean).sort().slice(-1)[0] || null;
+
+      const result = {
+        context: { subject: context.subject, level: context.level },
+        tests: { total: testsTotal, inContext: testsInContext, lastTestTs: lastTestTs },
+        topics: {
+          touched: topicsTouched,
+          confident: topicsConfident,
+          weakestTopic: weakest?.topic || null,
+          weakestScore: typeof weakest?.score === "number" ? weakest.score : null,
+          lastTopicUpdate: lastTopicUpdate,
+          explanationsSaved: explanationsSaved,
+        },
+        mistakes: {
+          total: mistakesTotal,
+          topTopic: topMistake?.topic || null,
+          topCount: topMistake?.count || null,
+        },
+        lastActivityTs: lastActivity,
+      };
+
+      setAnalytics(result);
+      window.__noolixAnalytics = result;
+      console.log("[NOOLIX analytics]", result);
+    } catch (e) {
+      console.warn("Analytics compute failed", e);
+    }
+  }, [context.subject, context.level, knowledgeMap]);
+
 
   const applyContextChange = (nextCtx) => {
     setContext(nextCtx);
@@ -472,7 +552,7 @@ export default function ProgressPage() {
                       href={`/chat?topic=${encodeURIComponent(t.topic)}`}
                       className="px-3 py-1.5 rounded-full bg-white/5 border border-purple-300/60 text-[11px] md:text-xs text-purple-50 hover:bg-white/10 transition"
                     >
-                      {t.topic} · {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {Math.round(t.score * 100)}%
+                      {t.topic} · {Math.round(t.score * 100)}%
                     </a>
                   ))}
                 </div>
@@ -504,7 +584,7 @@ export default function ProgressPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-semibold truncate">{t.topic}</p>
                           <p className="text-[11px] text-purple-200/80">
-                            {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {Math.round(t.score * 100)}%
+                            Сейчас: {Math.round(t.score * 100)}%
                           </p>
                         </div>
 
@@ -569,61 +649,9 @@ export default function ProgressPage() {
                 Темы по предмету
               </p>
 
-              {subjectTopics.length === 0 ? (
-                <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
-                  <p className="text-sm font-semibold">Прогресс появится после первых действий</p>
-                  <p className="text-xs text-purple-200/80">
-                    Noolix пока не собрал карту знаний для: <b>{context.subject}</b> • <b>{context.level}</b>.
-                    Начни с мини‑теста или сохрани объяснение в диалоге — и здесь появятся темы, слабые места и рекомендации.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href="/tests"
-                      className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
-                    >
-                      🧪 Пройти мини‑тест
-                    </a>
-                    <a
-                      href="/chat"
-                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                    >
-                      💬 Разобрать в диалоге
-                    </a>
-                    <a
-                      href="/goals"
-                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                    >
-                      🎯 Цели
-                    </a>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href="/tests"
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                >
-                  Быстро: Тесты →
-                </a>
-                <a
-                  href="/chat"
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                >
-                  Быстро: Диалог →
-                </a>
-                <a
-                  href="/goals"
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                >
-                  Быстро: Цели →
-                </a>
-              </div>
-
-
               {filteredTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  По текущим фильтрам ничего не найдено. Попробуй переключить «Слабые/Средние/Сильные» или выбрать другой уровень. Если данных мало — начни с мини-теста.
+                  По текущим фильтрам ничего не найдено.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -659,7 +687,7 @@ export default function ProgressPage() {
                           </div>
 
                           <p className="text-[11px] text-purple-200/80 mt-0.5">
-                            Уверенность: {getConfidenceDots(t.score)} · {getConfidenceMeta(t.score).label} · {percent}%
+                            Уровень: {percent}%
                             {t.updatedAt
                               ? ` · обновлено: ${formatUpdatedAt(t.updatedAt)}`
                               : ""}
