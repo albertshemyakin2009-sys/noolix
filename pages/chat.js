@@ -13,7 +13,6 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-
 const AVATAR_EMOJI = {
   panda: "🐼",
   crab: "🦀",
@@ -93,8 +92,14 @@ export default function ChatPage() {
   const [weakTopicsCount, setWeakTopicsCount] = useState(0);
 
   const [savedMessageIds, setSavedMessageIds] = useState([]);
-
   const [userProfile, setUserProfile] = useState({ name: "", avatar: "panda" });
+
+  // A2: micro-feedback toast
+  const [toast, setToast] = useState(null); // { text, tone: 'success'|'warn'|'error' }
+  const showToast = (text, tone = "success") => {
+    setToast({ text, tone });
+    window.setTimeout(() => setToast(null), 2500);
+  };
 
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
@@ -194,6 +199,21 @@ export default function ChatPage() {
       }
 
       setContext(ctx);
+
+      // profile (name/avatar)
+      if (rawProfile) {
+        try {
+          const p = JSON.parse(rawProfile);
+          if (p && typeof p === "object") {
+            setUserProfile({
+              name: typeof p.name === "string" ? p.name : "",
+              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+            });
+          }
+        } catch (eProfile) {
+          console.warn("Failed to read noolixProfile", eProfile);
+        }
+      }
       if (goalFromStorage) setCurrentGoal(goalFromStorage);
 
       if (initialMessages.length > 0) {
@@ -202,7 +222,8 @@ export default function ChatPage() {
         const starter = {
           id: Date.now(),
           role: "assistant",
-          content: `Привет${profileName ? ", " + profileName : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
+          content:
+            "Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
           createdAt: new Date().toISOString(),
         };
         setMessages([starter]);
@@ -551,6 +572,7 @@ export default function ChatPage() {
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
       const topicKey = (currentTopic && currentTopic.trim()) || title;
       touchProgressFromDialogSave(topicKey);
+      showToast("Объяснение сохранено • прогресс обновлён", "success");
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
     }
@@ -715,7 +737,21 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <>
+      {toast ? (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+          {/* toast */}
+              <div
+                className={`px-5 py-3 rounded-2xl bg-black/80 border text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in flex items-center gap-2 ${toast.tone === "error" ? "border-red-400/50" : toast.tone === "warn" ? "border-yellow-400/50" : "border-purple-400/40"}`}
+              >
+                <span className="text-base">
+                  {toast.tone === "error" ? "⚠️" : toast.tone === "warn" ? "🟡" : "✅"}
+                </span>
+                <span>{toast.text}</span>
+              </div>
+        </div>
+      ) : null}
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -910,11 +946,15 @@ export default function ChatPage() {
                   const isUser = m.role === "user";
                   const displayName = isUser ? (userProfile.name || "Ты") : "NOOLIX";
 
+                  const rawTime = m.ts || m.createdAt || m.time || m.timestamp;
+                  const d = rawTime ? new Date(rawTime) : null;
+                  const timeLabel =
+                    d && !Number.isNaN(d.getTime())
+                      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "—";
+
                   return (
-                    <div
-                      key={m.id}
-                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                    >
+                    <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                       <div className="max-w-[80%]">
                         {showName ? (
                           <div
@@ -935,30 +975,27 @@ export default function ChatPage() {
                         >
                           {/* avatar (absolute, does not change alignment) */}
                           <div
-                            className={`absolute -top-2 ${
-                              isUser ? "-right-2" : "-left-2"
-                            } h-9 w-9 rounded-2xl flex items-center justify-center shadow-md border ${
+                            className={`absolute top-1/2 -translate-y-1/2 ${
+                              isUser ? "-right-10" : "-left-10"
+                            } h-8 w-8 rounded-2xl flex items-center justify-center shadow-md border ${
                               isUser
                                 ? "bg-gradient-to-br from-purple-100 to-white text-black border-purple-200/60"
                                 : "bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black border-white/20"
                             }`}
+                            style={{ opacity: 0.95 }}
                             title={displayName}
                           >
                             {isUser ? (
-                              <span className="text-lg">
-                                {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
-                              </span>
+                              <span className="text-lg">{AVATAR_EMOJI[userProfile.avatar] || "🙂"}</span>
                             ) : (
                               <span className="text-sm font-extrabold tracking-tight">N</span>
                             )}
                           </div>
 
-                          <div className="whitespace-pre-wrap leading-snug">
-                            {m.content}
-                          </div>
+                          <div className="whitespace-pre-wrap leading-snug">{m.content}</div>
 
                           <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
-                            <span>{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            <span>{timeLabel}</span>
                             {m.saved ? (
                               <>
                                 <span>•</span>
@@ -967,7 +1004,6 @@ export default function ChatPage() {
                             ) : null}
                           </div>
 
-                          {/* actions */}
                           {m.role === "assistant" ? (
                             <div className="mt-2 flex flex-wrap gap-2">
                               <button
@@ -975,12 +1011,6 @@ export default function ChatPage() {
                                 className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 transition text-[11px]"
                               >
                                 💾 Сохранить объяснение
-                              </button>
-                              <button
-                                onClick={() => handleQuickTestFromMessage(m)}
-                                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 transition text-[11px]"
-                              >
-                                🧪 Мини‑тест
                               </button>
                             </div>
                           ) : null}
@@ -1023,6 +1053,16 @@ export default function ChatPage() {
                     {thinking ? "…" : "Отправить"}
                   </button>
                 </form>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-purple-100/70">
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                    💡 Подсказка: попроси <b>пример</b> и <b>проверку понимания</b> — затем сохрани лучшее в библиотеку.
+                  </span>
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                    ⌘ Совет: в конце напиши “проверь меня” — Noolix задаст 2–3 контрольных вопроса.
+                  </span>
+                </div>
+
                 {error && (
                   <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
                 )}
@@ -1032,5 +1072,6 @@ export default function ChatPage() {
         </main>
       </div>
     </div>
+    </>
   );
 }
