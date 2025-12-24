@@ -144,7 +144,7 @@ export default function ChatPage() {
     const starter = {
       id: Date.now(),
       role: "assistant",
-      content: `Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      content: `Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
       createdAt: new Date().toISOString(),
     };
     setMessages([starter]);
@@ -222,8 +222,7 @@ export default function ChatPage() {
         const starter = {
           id: Date.now(),
           role: "assistant",
-          content:
-            `Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+      content: `Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
           createdAt: new Date().toISOString(),
         };
         setMessages([starter]);
@@ -329,7 +328,7 @@ export default function ChatPage() {
 
     // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
     const assistantCount = Array.isArray(messages)
-      ? messages.filter((m) => m?.role === "assistant").length
+      ? messages.filter((m) => m?.role === "assistant).length
       : 0;
     if (assistantCount > 1) {
       didAutoStartRef.current = true;
