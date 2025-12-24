@@ -327,8 +327,8 @@ export default function ChatPage() {
     }
 
     // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
-    const assistantCount = Array.isArray(messages)
-      ? messages.filter((m) => m?.role === "assistant".length
+    const assistantCount = messages.length
+      ? messages.filter((m) => m?.role === "assistant").length
       : 0;
     if (assistantCount > 1) {
       didAutoStartRef.current = true;
