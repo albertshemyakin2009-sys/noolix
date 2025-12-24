@@ -493,8 +493,8 @@ export default function ProfilePage() {
                 </div>
 
                 
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
+
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => showToast("Сохранено", "success")}
@@ -508,9 +508,8 @@ export default function ProfilePage() {
                   >
                     💬 В диалог
                   </a>
-                  </div>
-                                  </div>
-                )}
+                </div>
+
               </section>
 
               {/* advanced */}
