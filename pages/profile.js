@@ -424,58 +424,6 @@ export default function ProfilePage() {
               {/* context */}
               <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                  Контекст обучения
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Предмет</p>
-                    <select
-                      className="mt-2 w-full text-sm px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                      value={context.subject}
-                      onChange={(e) => setContext((c) => ({ ...c, subject: e.target.value }))}
-                    >
-                      {SUBJECT_OPTIONS.map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Уровень</p>
-                    <select
-                      className="mt-2 w-full text-sm px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                      value={context.level}
-                      onChange={(e) => setContext((c) => ({ ...c, level: e.target.value }))}
-                    >
-                      {LEVEL_OPTIONS.map((l) => (
-                        <option key={l}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {stats ? (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-purple-100/70">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
-                      🧪 тестов: <b className="text-purple-50">{stats.testsInCtx}</b>
-                    </span>
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
-                      📈 тем: <b className="text-purple-50">{stats.topicsTouched}</b>
-                    </span>
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
-                      💬 объяснений: <b className="text-purple-50">{stats.explanationsSaved}</b>
-                    </span>
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
-                      🎯 целей: <b className="text-purple-50">{stats.goalsCount}</b>
-                    </span>
-                  </div>
-                ) : null}
-              </section>
-
-              {/* profile */}
-              <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                   О тебе
                 </p>
 
@@ -581,106 +529,69 @@ export default function ProfilePage() {
 
               </section>
 
-              {/* advanced */}
-              <section className="bg-black/20 border border-white/10 rounded-2xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAdvancedOpen((v) => !v)}
-                    className="ml-auto px-4 py-2 rounded-full border border-white/15 bg-black/20 text-xs text-purple-50 hover:bg-white/5 transition"
-                  >
-                    {advancedOpen ? "Скрыть" : "Показать"}
-                  </button>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                      Дополнительно
-                    </p>
-                    <p className="text-xs text-purple-100/70 mt-1">
-                      Резервная копия и сброс — полезно, если переносишь данные между устройствами или хочешь начать заново. Это для продвинутых.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={resetAll}
-                    className="px-4 py-2 rounded-full border border-red-400/40 bg-black/30 text-xs text-red-100 hover:bg-white/5 transition"
-                    title="Сбросить прогресс/тесты/цели"
-                  >
-                    🧹 Сброс
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={makeExport}
-                    className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
-                  >
-                    📦 Подготовить экспорт
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyExport}
-                    className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                    disabled={!exportText}
-                    title={!exportText ? "Сначала подготовь экспорт" : "Скопировать"}
-                  >
-                    📋 Копировать
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadExport}
-                    className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                    disabled={!exportText}
-                    title={!exportText ? "Сначала подготовь экспорт" : "Скачать JSON"}
-                  >
-                    ⬇️ Скачать
-                  </button>
-                </div>
+              {/* profile */}
+              <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Контекст обучения
+                </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Экспорт (JSON)</p>
-                    <textarea
-                      className="mt-2 w-full min-h-[170px] text-[12px] px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                      value={exportText}
-                      onChange={(e) => setExportText(e.target.value)}
-                      placeholder="Нажми «Подготовить экспорт» — здесь появится JSON"
-                    />
+                    <p className="text-[11px] text-purple-200/80">Предмет</p>
+                    <select
+                      className="mt-2 w-full text-sm px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                      value={context.subject}
+                      onChange={(e) => setContext((c) => ({ ...c, subject: e.target.value }))}
+                    >
+                      {SUBJECT_OPTIONS.map((s) => (
+                        <option key={s}>{s}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Импорт (JSON)</p>
-                    <textarea
-                      className="mt-2 w-full min-h-[170px] text-[12px] px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                      value={importText}
-                      onChange={(e) => setImportText(e.target.value)}
-                      placeholder="Вставь JSON и нажми «Импортировать»"
-                    />
-                    <div className="flex gap-2 flex-wrap mt-2">
-                      <button
-                        type="button"
-                        onClick={applyImport}
-                        className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
-                      >
-                        ⤵️ Импортировать
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setImportText("")}
-                        className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                      >
-                        Очистить
-                      </button>
-                    </div>
+                    <p className="text-[11px] text-purple-200/80">Уровень</p>
+                    <select
+                      className="mt-2 w-full text-sm px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                      value={context.level}
+                      onChange={(e) => setContext((c) => ({ ...c, level: e.target.value }))}
+                    >
+                      {LEVEL_OPTIONS.map((l) => (
+                        <option key={l}>{l}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
+
+                {stats ? (
+                  <div className="flex flex-wrap gap-2 text-[11px] text-purple-100/70">
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                      🧪 тестов: <b className="text-purple-50">{stats.testsInCtx}</b>
+                    </span>
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                      📈 тем: <b className="text-purple-50">{stats.topicsTouched}</b>
+                    </span>
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                      💬 объяснений: <b className="text-purple-50">{stats.explanationsSaved}</b>
+                    </span>
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
+                      🎯 целей: <b className="text-purple-50">{stats.goalsCount}</b>
+                    </span>
+                  </div>
+                ) : null}
               </section>
 
-              <p className="text-[11px] text-purple-100/60">
-                Совет: если переносишь данные между устройствами — сначала экспортируй, затем импортируй на другом устройстве.
-              </p>
-            </div>
+              {/* advanced */}
+              <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Дополнительно
+                </p>
+                <p className="text-xs text-purple-100/70">
+                  Управление данными (экспорт/импорт/сброс) временно убрано из MVP, чтобы не засорять профиль.
+                  Мы вернём этот блок позже, когда понадобится перенос между устройствами и аккаунты.
+                </p>
+              </section>
+</div>
           </main>
         </div>
       </div>
