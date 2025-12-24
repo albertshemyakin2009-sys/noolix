@@ -25,6 +25,21 @@ const GOALS_STORAGE_KEY = "noolixGoals";
 const SUBJECT_OPTIONS = ["Математика", "Физика", "Русский язык", "Английский язык"];
 const LEVEL_OPTIONS = ["Без уровня", "5 класс", "6 класс", "7 класс", "8 класс", "9 класс", "10 класс", "11 класс"];
 
+const AVATAR_OPTIONS = [
+  { key: "panda", label: "Панда", icon: "🐼" },
+  { key: "crab", label: "Крабик", icon: "🦀" },
+  { key: "fox", label: "Лис", icon: "🦊" },
+  { key: "cat", label: "Кот", icon: "🐱" },
+  { key: "dog", label: "Пёс", icon: "🐶" },
+  { key: "owl", label: "Сова", icon: "🦉" },
+  { key: "frog", label: "Лягушка", icon: "🐸" },
+  { key: "koala", label: "Коала", icon: "🐨" },
+  { key: "rabbit", label: "Кролик", icon: "🐰" },
+  { key: "lion", label: "Лев", icon: "🦁" },
+  { key: "monkey", label: "Обезьяна", icon: "🐵" },
+  { key: "tiger", label: "Тигр", icon: "🐯" },
+];
+
 function safeJsonParse(str, fallback) {
   try {
     return JSON.parse(str);
@@ -44,10 +59,11 @@ export default function ProfilePage() {
   };
 
   const [context, setContext] = useState({ subject: SUBJECT_OPTIONS[0], level: LEVEL_OPTIONS[0] });
-  const [profile, setProfile] = useState({ name: "", goal: "", note: "" });
+  const [profile, setProfile] = useState({ avatar: "panda", name: "", goal: "", note: "" });
 
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [stats, setStats] = useState(null);
 
@@ -68,6 +84,7 @@ export default function ProfilePage() {
     const p = pRaw ? safeJsonParse(pRaw, null) : null;
     if (p && typeof p === "object") {
       setProfile({
+        avatar: typeof p.avatar === "string" ? p.avatar : "panda",
         name: typeof p.name === "string" ? p.name : "",
         goal: typeof p.goal === "string" ? p.goal : "",
         note: typeof p.note === "string" ? p.note : "",
@@ -229,7 +246,7 @@ export default function ProfilePage() {
         </div>
       ) : null}
 
-      <div className="min-h-screen bg-gradient-to-br from-black via-[#1b0025] to-[#09010f] text-white flex">
+      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex">
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/70 z-30 md:hidden"
@@ -393,6 +410,56 @@ export default function ProfilePage() {
                   О тебе
                 </p>
 
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-purple-100 to-white text-black flex items-center justify-center text-3xl shadow-md ring-2 ring-purple-200/60">
+                      {AVATAR_OPTIONS.find((a) => a.key === profile.avatar)?.icon || "🐼"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {profile.name ? profile.name : "Твой профиль"}
+                      </p>
+                      <p className="text-xs text-purple-100/70">
+                        Выбери аватар — он будет отображаться в профиле и позже в аккаунте
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 md:justify-end md:flex-1">
+                    {AVATAR_OPTIONS.slice(0, 8).map((a) => (
+                      <button
+                        key={a.key}
+                        type="button"
+                        onClick={() => {
+                          setProfile((p) => ({ ...p, avatar: a.key }));
+                          showToast("Аватар обновлён", "success");
+                        }}
+                        className={`h-10 w-10 rounded-2xl border transition flex items-center justify-center text-xl ${
+                          profile.avatar === a.key
+                            ? "bg-white text-black border-purple-200 ring-2 ring-purple-200/60"
+                            : "bg-black/30 border-white/15 hover:bg-white/5"
+                        }`}
+                        title={a.label}
+                      >
+                        {a.icon}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rest = AVATAR_OPTIONS.slice(8);
+                        const pick = rest[Math.floor(Math.random() * rest.length)];
+                        setProfile((p) => ({ ...p, avatar: pick.key }));
+                        showToast("Случайный аватар", "success");
+                      }}
+                      className="h-10 px-3 rounded-2xl border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                      title="Случайный аватар"
+                    >
+                      🎲
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Имя (необязательно)</p>
@@ -425,7 +492,9 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                {advancedOpen ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => showToast("Сохранено", "success")}
@@ -439,18 +508,30 @@ export default function ProfilePage() {
                   >
                     💬 В диалог
                   </a>
-                </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-purple-200/70 mt-3">
+                    Скрыто. Открой «Показать», если нужно сделать резервную копию или сброс.
+                  </p>
+                )}
               </section>
 
-              {/* data management */}
-              <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
+              {/* advanced */}
+              <section className="bg-black/20 border border-white/10 rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedOpen((v) => !v)}
+                    className="ml-auto px-4 py-2 rounded-full border border-white/15 bg-black/20 text-xs text-purple-50 hover:bg-white/5 transition"
+                  >
+                    {advancedOpen ? "Скрыть" : "Показать"}
+                  </button>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                      Данные и резервная копия
+                      Дополнительно
                     </p>
                     <p className="text-xs text-purple-100/70 mt-1">
-                      Экспорт/импорт работает через localStorage. Удобно для переноса между устройствами.
+                      Резервная копия и сброс — полезно, если переносишь данные между устройствами или хочешь начать заново. Это для продвинутых.
                     </p>
                   </div>
 
