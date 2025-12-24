@@ -21,6 +21,38 @@ function SmartNextSteps() {
   const [repeatedMistakes, setRepeatedMistakes] = useState([]);
   const [plan, setPlan] = useState({ topic: "", steps: [] });
   const [signal, setSignal] = useState(null); // { title, text, ctas: [{label, href}] }
+  const [planModal, setPlanModal] = useState(null); // { topic, text, ctas: [{label, href}] }
+
+  const openPlanModal = (topic) => {
+    const variants = [
+      {
+        title: "План на 10 минут",
+        text:
+          "Давай начнём с мини‑теста на 2 вопроса. Он быстро покажет, что уже уверенно, а что стоит закрепить.",
+      },
+      {
+        title: "План на 10 минут",
+        text:
+          "Сначала — быстрая проверка. Потом разберём один момент в диалоге и закрепим ещё раз.",
+      },
+      {
+        title: "План на 10 минут",
+        text:
+          "Сделаем короткий цикл: тест → разбор → тест. Так прогресс растёт быстрее всего.",
+      },
+    ];
+    const pick = variants[Math.floor(Math.random() * variants.length)];
+    setPlanModal({
+      topic: topic || "",
+      title: pick.title,
+      text: pick.text,
+      ctas: [
+        { label: "🧪 Мини‑тест (2)", href: topic ? `/tests?topic=${encodeURIComponent(topic)}&quick=2` : "/tests?quick=2" },
+        { label: "💬 Разобрать", href: topic ? `/chat?topic=${encodeURIComponent(topic)}` : "/chat" },
+      ],
+    });
+  };
+
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -312,23 +344,98 @@ function SmartNextSteps() {
                 План на 10 минут
               </p>
               <div className="space-y-2">
-                {plan.steps.map((s, i) => (
-                  <a
-                    key={s.title}
-                    href={s.action}
-                    className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
-                  >
-                    <p className="text-sm font-semibold">
-                      {i + 1}. {s.title}
-                    </p>
-                    <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
-                  </a>
-                ))}
+                {plan.steps.map((s, i) =>
+                  i === 0 ? (
+                    <button
+                      key={s.title}
+                      type="button"
+                      onClick={() => openPlanModal(plan.topic)}
+                      className="w-full text-left block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
+                    >
+                      <p className="text-sm font-semibold">
+                        {i + 1}. {s.title}
+                      </p>
+                      <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
+                      <p className="text-[11px] text-purple-200/60 mt-1">Откроется мини‑план</p>
+                    </button>
+                  ) : (
+                    <a
+                      key={s.title}
+                      href={s.action}
+                      className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
+                    >
+                      <p className="text-sm font-semibold">
+                        {i + 1}. {s.title}
+                      </p>
+                      <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
+                    </a>
+                  )
+                )}
               </div>
             </div>
           ) : null}
         </div>
       )}
+
+      {planModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setPlanModal(null)}
+            aria-label="Закрыть"
+          />
+          <div className="relative w-full max-w-lg">
+            <div className="bg-[#0b0b12] border border-white/10 rounded-2xl p-5 shadow-2xl animate-fade-in">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    {planModal.title}
+                  </p>
+                  <p className="text-lg font-semibold mt-1">
+                    {planModal.topic ? planModal.topic : "Быстрый старт"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPlanModal(null)}
+                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm text-purple-100/80 mt-3">
+                {planModal.text}
+              </p>
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                {(planModal.ctas || []).map((c) => (
+                  <a
+                    key={c.href + c.label}
+                    href={c.href}
+                    className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                  >
+                    {c.label}
+                  </a>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPlanModal(null)}
+                  className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </section>
   );
 }
