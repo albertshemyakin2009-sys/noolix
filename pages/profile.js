@@ -21,9 +21,14 @@ const PROFILE_STORAGE_KEY = "noolixProfile";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestHistory";
 const GOALS_STORAGE_KEY = "noolixGoals";
+const LIBRARY_STORAGE_KEY = "noolixLibrary";
+const PROFILE_LIBRARY_IDS = {
+  goal: "profile_goal_v1",
+  note: "profile_note_v1",
+};
 
 const SUBJECT_OPTIONS = ["Математика", "Физика", "Русский язык", "Английский язык"];
-const LEVEL_OPTIONS = ["Без уровня", "5 класс", "6 класс", "7 класс", "8 класс", "9 класс", "10 класс", "11 класс"];
+const LEVEL_OPTIONS = ["7-9 класс", "10-11 класс", "1 курс вуза"];
 
 const AVATAR_OPTIONS = [
   { key: "panda", label: "Панда", icon: "🐼" },
@@ -39,6 +44,17 @@ const AVATAR_OPTIONS = [
   { key: "monkey", label: "Обезьяна", icon: "🐵" },
   { key: "tiger", label: "Тигр", icon: "🐯" },
 ];
+
+
+function upsertLibraryEntry(entry) {
+  if (typeof window === "undefined") return;
+  const raw = window.localStorage.getItem(LIBRARY_STORAGE_KEY);
+  const arr = raw ? safeJsonParse(raw, []) : [];
+  const list = Array.isArray(arr) ? arr : [];
+  const idx = list.findIndex((x) => x && x.id === entry.id);
+  const next = idx >= 0 ? [...list.slice(0, idx), entry, ...list.slice(idx + 1)] : [entry, ...list];
+  window.localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
+}
 
 function safeJsonParse(str, fallback) {
   try {
@@ -104,7 +120,46 @@ export default function ProfilePage() {
     window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   }, [profile]);
 
-  // lightweight stats (non-critical)
+  
+  // sync profile (goal/note) into library as pinned entries
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const subject = context.subject || "Без предмета";
+    const level = context.level || "Без уровня";
+    const now = new Date().toISOString();
+
+    if (profile.goal && profile.goal.trim()) {
+      upsertLibraryEntry({
+        id: PROFILE_LIBRARY_IDS.goal,
+        type: "profile",
+        kind: "goal",
+        subject,
+        level,
+        topic: "Профиль: цель обучения",
+        text: profile.goal.trim(),
+        updatedAt: now,
+        createdAt: now,
+      });
+    }
+
+    if (profile.note && profile.note.trim()) {
+      upsertLibraryEntry({
+        id: PROFILE_LIBRARY_IDS.note,
+        type: "profile",
+        kind: "note",
+        subject,
+        level,
+        topic: "Профиль: заметка для себя",
+        text: profile.note.trim(),
+        updatedAt: now,
+        createdAt: now,
+      });
+    }
+    // note: если поле очищено — не удаляем запись, чтобы не ломать библиотеку (можно добавить позже)
+  }, [profile.goal, profile.note, context.subject, context.level]);
+
+// lightweight stats (non-critical)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -227,6 +282,20 @@ export default function ProfilePage() {
 
   return (
     <>
+
+      <style jsx global>{`
+        @keyframes noxSoftPop {
+          0% { transform: scale(0.96); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-fade-in { animation: noxSoftPop 180ms ease-out both; }
+        @keyframes noxBounceSoft {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-2px); }
+        }
+        .animate-bounce-soft { animation: noxBounceSoft 900ms ease-in-out infinite; }
+      `}</style>
+
       {toast ? (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
           <div
