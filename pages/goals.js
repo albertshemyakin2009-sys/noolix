@@ -200,7 +200,7 @@ function SmartNextSteps() {
           title: "Слабое место",
           text: `Низкий прогресс по теме «${top.topic}». 10 минут практики дадут быстрый эффект.`,
           ctas: [
-            { label: "План на 10 минут", href: `/tests?topic=${encodeURIComponent(top.topic)}&quick=2` },
+            { label: "План на 10 минут", kind: "plan", topic: top.topic },
             { label: "Разобрать", href: `/chat?topic=${encodeURIComponent(top.topic)}` },
           ],
         });
@@ -247,15 +247,26 @@ function SmartNextSteps() {
               <p className="text-xs text-purple-200/80 mt-1">{signal.text}</p>
             </div>
             <div className="flex gap-2 flex-wrap justify-end">
-              {(signal.ctas || []).map((c) => (
-                <a
-                  key={c.href + c.label}
-                  href={c.href}
-                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                >
-                  {c.label}
-                </a>
-              ))}
+              {(signal.ctas || []).map((c) =>
+                c.kind === "plan" ? (
+                  <button
+                    key={(c.topic || "") + c.label}
+                    type="button"
+                    onClick={() => openPlanModal(c.topic)}
+                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                  >
+                    {c.label}
+                  </button>
+                ) : (
+                  <a
+                    key={(c.href || "") + c.label}
+                    href={c.href}
+                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                  >
+                    {c.label}
+                  </a>
+                )
+              )}
             </div>
           </div>
         </div>
