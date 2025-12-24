@@ -97,7 +97,7 @@ function SmartNextSteps() {
 
     const key = mode in packs ? mode : "weak";
     const variants = packs[key];
-    const pick = variants[(Date.now() // 1000) % variants.length];
+    const pick = variants[Math.floor(Date.now() / 1000) % variants.length];
 
     setPlanModal({
       topic: topic || "",
