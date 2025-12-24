@@ -935,15 +935,12 @@ export default function ChatPage() {
                         <div className="mb-1 text-[11px] text-purple-200/70 text-right pr-2">{displayUserName}</div>
                       ) : null}
                       <div
-                      className={`max-w-[100%] relative rounded-2xl px-3 py-2 text-xs md:text-sm border ${
- px-3 py-2 text-xs md:text-sm border
-                        ${
+                        className={`max-w-[100%] relative rounded-2xl px-3 py-2 text-xs md:text-sm border ${
                           m.role === "user"
                             ? "bg-purple-500/80 text-white border-purple-300/60 pr-10"
                             : "bg-black/60 text-purple-50 border-white/10 pl-10"
-                        }
-                      `}
-                    >
+                        }`}
+                      >
                       <div
                         className={`absolute top-2 ${m.role === "user" ? "right-2" : "left-2"} h-8 w-8 rounded-2xl flex items-center justify-center shadow-md border ${
                           m.role === "user"
