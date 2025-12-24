@@ -492,7 +492,7 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                {advancedOpen ? (
+                
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
                   <button
@@ -509,10 +509,7 @@ export default function ProfilePage() {
                     💬 В диалог
                   </a>
                   </div>
-                ) : (
-                  <p className="text-xs text-purple-200/70 mt-3">
-                    Скрыто. Открой «Показать», если нужно сделать резервную копию или сброс.
-                  </p>
+                                  </div>
                 )}
               </section>
 
