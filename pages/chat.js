@@ -223,7 +223,7 @@ export default function ChatPage() {
           id: Date.now(),
           role: "assistant",
           content:
-            "Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+            `Привет${userProfile?.name ? ", " + userProfile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
           createdAt: new Date().toISOString(),
         };
         setMessages([starter]);
