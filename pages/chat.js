@@ -903,69 +903,92 @@ export default function ChatPage() {
               </header>
 
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
-                {messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex items-end gap-2 ${
-                      m.role === "user"
-                        ? "justify-end flex-row-reverse"
-                        : "justify-start"
-                    }`}
-                  >
+                {messages.map((m, i) => {
+                  const prev = i > 0 ? messages[i - 1] : null;
+                  const showName = !prev || prev.role !== m.role;
+
+                  const isUser = m.role === "user";
+                  const displayName = isUser ? (userProfile.name || "Ты") : "NOOLIX";
+
+                  return (
                     <div
-                      className={`h-9 w-9 rounded-2xl flex items-center justify-center text-lg shadow-md border ${
-                        m.role === "user"
-                          ? "bg-gradient-to-br from-purple-100 to-white text-black border-purple-200/60"
-                          : "bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black border-white/20"
-                      }`}
-                      title={m.role === "user" ? (userProfile.name || "Ты") : "NOOLIX"}
+                      key={m.id}
+                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                     >
-                      {m.role === "user"
-                        ? (AVATAR_EMOJI[userProfile.avatar] || "🙂")
-                        : "✨"}
-                    </div>
+                      <div className="max-w-[80%]">
+                        {showName ? (
+                          <div
+                            className={`mb-1 text-[11px] text-purple-200/70 ${
+                              isUser ? "text-right pr-2" : "text-left pl-2"
+                            }`}
+                          >
+                            {displayName}
+                          </div>
+                        ) : null}
 
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
-                        ${
-                          m.role === "user"
-                            ? "bg-purple-500/80 text-white border-purple-300/60"
-                            : "bg-black/60 text-purple-50 border-white/10"
-                        }
-                      `}
-                    >
-                      <div className="whitespace-pre-wrap leading-snug">
-                        {m.content}
-                      </div>
+                        <div
+                          className={`relative rounded-2xl px-3 py-2 text-xs md:text-sm border ${
+                            isUser
+                              ? "bg-purple-500/80 text-white border-purple-300/60"
+                              : "bg-black/60 text-purple-50 border-white/10"
+                          }`}
+                        >
+                          {/* avatar (absolute, does not change alignment) */}
+                          <div
+                            className={`absolute -top-2 ${
+                              isUser ? "-right-2" : "-left-2"
+                            } h-9 w-9 rounded-2xl flex items-center justify-center shadow-md border ${
+                              isUser
+                                ? "bg-gradient-to-br from-purple-100 to-white text-black border-purple-200/60"
+                                : "bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black border-white/20"
+                            }`}
+                            title={displayName}
+                          >
+                            {isUser ? (
+                              <span className="text-lg">
+                                {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
+                              </span>
+                            ) : (
+                              <span className="text-sm font-extrabold tracking-tight">N</span>
+                            )}
+                          </div>
 
-                      <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
-                        <span>{m.role === "user" ? (userProfile.name || "Ты") : "NOOLIX"}</span>
-                        <span>•</span>
-                        <span>{formatTime(m.createdAt)}</span>
-                      </div>
+                          <div className="whitespace-pre-wrap leading-snug">
+                            {m.content}
+                          </div>
 
-                      {m.role === "assistant" && (
-                        <div className="mt-2 flex justify-end">
-                          {savedMessageIds.includes(m.id) ? (
-                            <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%]">
-                              <span>✅</span>
-                              <span>Сохранено</span>
+                          <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
+                            <span>{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            {m.saved ? (
+                              <>
+                                <span>•</span>
+                                <span>сохранено</span>
+                              </>
+                            ) : null}
+                          </div>
+
+                          {/* actions */}
+                          {m.role === "assistant" ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleSaveMessage(m)}
+                                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 transition text-[11px]"
+                              >
+                                💾 Сохранить объяснение
+                              </button>
+                              <button
+                                onClick={() => handleQuickTestFromMessage(m)}
+                                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 transition text-[11px]"
+                              >
+                                🧪 Мини‑тест
+                              </button>
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => saveExplanationToLibrary(m)}
-                              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition"
-                            >
-                              <span>📌</span>
-                              <span>Сохранить в библиотеку</span>
-                            </button>
-                          )}
+                          ) : null}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {thinking && (
                   <div className="flex justify-start">
