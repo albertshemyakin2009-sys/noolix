@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
+const PROFILE_STORAGE_KEY = "noolixProfile";
 
 const SUBJECT_OPTIONS = [
   "Математика",
@@ -13,6 +14,28 @@ const SUBJECT_OPTIONS = [
 
 const TYPE_OPTIONS = ["Экзамен / тест", "Домашка", "Проект", "Свой вариант"];
 
+function inferIntent(profileGoalText = "", goalTypeText = "") {
+  const t = `${profileGoalText || ""} ${goalTypeText || ""}`.toLowerCase();
+  if (/(егэ|огэ|экзам|вступ|контрольн|тест)/i.test(t)) return "exam";
+  if (/(домаш|дз|урок|задан|упражнен)/i.test(t)) return "homework";
+  if (/(проект|олимпиад|исслед|курс|презент)/i.test(t)) return "project";
+  if (/(подтянут|уверен|повтор|закреп)/i.test(t)) return "improve";
+  return "general";
+}
+
+function getPersonaName(name) {
+  const n = (name || "").trim();
+  if (!n) return "";
+  return n.split(/\s+/)[0].slice(0, 16);
+}
+
+function clampText(s, max = 72) {
+  const t = (s || "").trim();
+  if (!t) return "";
+  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+
 
 function SmartNextSteps() {
   const [isClient, setIsClient] = useState(false);
@@ -20,119 +43,8 @@ function SmartNextSteps() {
   const [weakTopics, setWeakTopics] = useState([]);
   const [repeatedMistakes, setRepeatedMistakes] = useState([]);
   const [plan, setPlan] = useState({ topic: "", steps: [] });
-  const [signal, setSignal] = useState(null); // { title, text, ctas: [{label, href}] }
-  const [planModal, setPlanModal] = useState(null); // { topic, text, ctas: [{label, href}] }
-
-  const openPlanModal = (topic, mode = "weak") => {
-    const packs = {
-      start: [
-        {
-          title: "Быстрый старт",
-          text:
-            "Давай начнём с мини‑теста на 2 вопроса. Он быстро покажет, что уже уверенно, а что стоит подтянуть.",
-        },
-        {
-          title: "Быстрый старт",
-          text:
-            "Сделаем короткую проверку и сразу выберем 1 тему для разбора — так прогресс появится уже сегодня.",
-        },
-        {
-          title: "Быстрый старт",
-          text:
-            "Первый шаг — 2 вопроса. Второй — разбор одного момента. Третий — закрепление. Это самый быстрый цикл.",
-        },
-      ],
-      weak: [
-        {
-          title: "План на 10 минут",
-          text:
-            "Сделаем короткий цикл: тест → разбор → тест. Так прогресс растёт быстрее всего.",
-        },
-        {
-          title: "План на 10 минут",
-          text:
-            "Начнём с быстрой проверки. Затем разберём один момент в диалоге и закрепим ещё раз.",
-        },
-        {
-          title: "План на 10 минут",
-          text:
-            "10 минут, без лишнего: 2 вопроса → 1 объяснение → 2 вопроса. Это даёт самый заметный рост уверенности.",
-        },
-      ],
-      mistakes: [
-        {
-          title: "Закрываем повторяющиеся ошибки",
-          text:
-            "Эта тема часто даёт ошибки. Лучше всего работает связка: короткий тест → разбор → повторная проверка.",
-        },
-        {
-          title: "Закрываем повторяющиеся ошибки",
-          text:
-            "Давай уберём повтор: 2 вопроса по теме, затем разбор ошибки, затем закрепление ещё 2 вопросами.",
-        },
-        {
-          title: "Закрываем повторяющиеся ошибки",
-          text:
-            "Уберём ошибку навсегда: сначала найдём слабое место мини‑тестом, потом объясним, и закрепим снова.",
-        },
-      ],
-      stale: [
-        {
-          title: "Освежим знания",
-          text:
-            "Давно не было теста. Быстрая проверка на 2 вопроса вернёт уверенность и обновит прогресс.",
-        },
-        {
-          title: "Освежим знания",
-          text:
-            "Сделаем лёгкий чек‑ап: 2 вопроса. Если где-то провал — сразу разберём один момент.",
-        },
-        {
-          title: "Освежим знания",
-          text:
-            "Быстрый тест — лучший способ не терять форму. 2 вопроса займут меньше минуты.",
-        },
-      ],
-    };
-
-    const key = mode in packs ? mode : "weak";
-    const variants = packs[key];
-    const pick = variants[Math.floor(Date.now() / 1000) % variants.length];
-
-    setPlanModal({
-      topic: topic || "",
-      title: pick.title,
-      text: pick.text,
-      mode: key,
-      steps: [
-        {
-          title: "Мини‑тест (2)",
-          time: "≈ 2 мин",
-          desc: "Быстро выясним, где уверенно, а где провал.",
-          cta: topic
-            ? `/tests?topic=${encodeURIComponent(topic)}&quick=2`
-            : "/tests?quick=2",
-        },
-        {
-          title: "Разбор",
-          time: "≈ 5 мин",
-          desc: "Коротко объясним идею и разберём 1 пример.",
-          cta: topic
-            ? `/chat?topic=${encodeURIComponent(topic)}`
-            : "/chat",
-        },
-        {
-          title: "Закрепить (2)",
-          time: "≈ 3 мин",
-          desc: "Ещё 2 вопроса, чтобы зафиксировать результат.",
-          cta: topic
-            ? `/tests?topic=${encodeURIComponent(topic)}&quick=2`
-            : "/tests?quick=2",
-        },
-      ],
-    });
-  };
-
+  const [profile, setProfile] = useState({ name: "", goal: "", note: "", avatar: "panda" });
+  const [intent, setIntent] = useState("general");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -153,6 +65,27 @@ function SmartNextSteps() {
           : SUBJECT_OPTIONS[0];
       const level = parsedCtx && parsedCtx.level ? parsedCtx.level : "Без уровня";
       setCtx({ subject, level });
+
+      // profile
+      const rawProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+      let parsedProfile = { name: "", goal: "", note: "", avatar: "panda" };
+      if (rawProfile) {
+        try {
+          const p = JSON.parse(rawProfile);
+          if (p && typeof p === "object") {
+            parsedProfile = {
+              name: typeof p.name === "string" ? p.name : "",
+              goal: typeof p.goal === "string" ? p.goal : "",
+              note: typeof p.note === "string" ? p.note : "",
+              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+            };
+          }
+        } catch {}
+      }
+      setProfile(parsedProfile);
+      const intentLocal = inferIntent(parsedProfile.goal, "");
+      setIntent(intentLocal);
+
 
       // progress (knowledge map)
       const rawKM = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
@@ -197,103 +130,55 @@ function SmartNextSteps() {
           : [];
       setRepeatedMistakes(rep);
 
-      // tests history (for "давно не было теста")
-      const rawTH = window.localStorage.getItem("noolixTestHistory");
-      let testHistory = [];
-      if (rawTH) {
-        try {
-          const parsed = JSON.parse(rawTH);
-          testHistory = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          testHistory = [];
-        }
-      }
-      const historyCtx = testHistory.filter(
-        (x) => x?.subject === subject && x?.level === level
-      );
-      const lastTestTsInCtx =
-        historyCtx.length > 0
-          ? historyCtx
-              .map((x) => x?.ts)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      const daysSinceLastTest = lastTestTsInCtx
-        ? Math.floor(
-            (Date.now() - new Date(lastTestTsInCtx).getTime()) / (1000 * 60 * 60 * 24)
-          )
-        : null;
-
-      // "объяснения" считаем по карте знаний (source: dialog_saved / dialog)
-      const explanationsSaved = byLvl && typeof byLvl === "object"
-        ? Object.values(byLvl).filter((d) => d && (d.source === "dialog_saved" || d.source === "dialog")).length
-        : 0;
-
-      const lowData = (historyCtx.length === 0) && explanationsSaved === 0 && weak.length === 0 && rep.length === 0;
-      const staleTests = historyCtx.length > 0 && daysSinceLastTest !== null && daysSinceLastTest >= 7;
-
       const t = weak[0]?.topic || rep[0]?.topic || "";
       setPlan({
         topic: t,
-        steps: [
-          {
-            title: "Закрепить (2 вопроса)",
-            action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests",
-          },
-          {
-            title: "Разобрать в диалоге",
-            action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
-          },
-          {
-            title: "Мини‑тест по теме",
-            action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
-          },
-        ],
+        steps:
+          intentLocal === "homework"
+            ? [
+                {
+                  title: "Разобрать в диалоге",
+                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
+                },
+                {
+                  title: "Мини‑тест (2 вопроса)",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
+                },
+                {
+                  title: "Проверить себя по теме",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
+                },
+              ]
+            : intentLocal === "exam"
+            ? [
+                {
+                  title: "Мини‑тест (3 вопроса)",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=3` : "/tests?quick=3",
+                },
+                {
+                  title: "Разбор ошибок в диалоге",
+                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
+                },
+                {
+                  title: "Закрепить (2 вопроса)",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
+                },
+              ]
+            : [
+                {
+                  title: "Закрепить (2 вопроса)",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
+                },
+                {
+                  title: "Разобрать в диалоге",
+                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
+                },
+                {
+                  title: "Мини‑тест по теме",
+                  action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
+                },
+              ],
       });
-
-
-      // v2: signal (why this recommendation)
-      if (lowData) {
-        setSignal({
-          title: "С чего начать",
-          text: "Данных пока мало. Сделай мини‑тест или сохрани объяснение — и Noolix начнёт подбирать темы точнее.",
-          ctas: [
-            { label: "🧪 Мини‑тест", href: "/tests?quick=2" },
-            { label: "💬 Диалог", href: "/chat" },
-          ],
-        });
-      } else if (rep.length > 0) {
-        const top = rep[0];
-        setSignal({
-          title: "Повторяющиеся ошибки",
-          text: `Тема «${top.topic || "тема"}» ошибается часто — лучше закрепить её коротким тестом и разбором.`,
-          ctas: [
-            { label: "Закрепить (2)", href: `/tests?topic=${encodeURIComponent(top.topic || "")}&quick=2` },
-            { label: "Разобрать", href: `/chat?topic=${encodeURIComponent(top.topic || "")}` },
-          ],
-        });
-      } else if (weak.length > 0) {
-        const top = weak[0];
-        setSignal({
-          title: "Слабое место",
-          text: `Низкий прогресс по теме «${top.topic}». 10 минут практики дадут быстрый эффект.`,
-          ctas: [
-            { label: "План на 10 минут", kind: "plan", topic: top.topic, mode: "weak" },
-            { label: "Разобрать", href: `/chat?topic=${encodeURIComponent(top.topic)}` },
-          ],
-        });
-      } else if (staleTests) {
-        setSignal({
-          title: "Давно не было теста",
-          text: daysSinceLastTest === null ? "Сделай быструю проверку, чтобы обновить прогресс." : `Прошло ${daysSinceLastTest} дн. с последнего теста — быстрая проверка освежит знания.`,
-          ctas: [{ label: "🧪 Быстрый тест (2)", href: "/tests?quick=2" }],
-        });
-      } else {
-        setSignal(null);
-      }
-
     } catch (e) {
       console.warn("SmartNextSteps failed", e);
     }
@@ -314,49 +199,21 @@ function SmartNextSteps() {
           <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
             Что делать дальше
           </p>
-          <p className="text-xs text-purple-100/80">
-            На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}
-          </p>
-        </div>
-      
-      {signal ? (
-        <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">{signal.title}</p>
-              <p className="text-xs text-purple-200/80 mt-1">{signal.text}</p>
-            </div>
-            <div className="flex gap-2 flex-wrap justify-end">
-              {(signal.ctas || []).map((c) =>
-                c.kind === "plan" ? (
-                  <button
-                    key={(c.topic || "") + c.label}
-                    type="button"
-                    onClick={() => openPlanModal(c.topic, c.mode || "weak")}
-                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                  >
-                    {c.label}
-                  </button>
-                ) : (
-                  <a
-                    key={(c.href || "") + c.label}
-                    href={c.href}
-                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                  >
-                    {c.label}
-                  </a>
-                )
-              )}
-            </div>
+          <div className="text-xs text-purple-100/80 space-y-1">
+            <div>На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}</div>
+            {profile.goal ? (
+              <div className="text-[11px] text-purple-200/80">Цель: {clampText(profile.goal, 80)}</div>
+            ) : null}
+            {profile.note ? (
+              <div className="text-[11px] text-purple-200/70">Заметка: {clampText(profile.note, 80)}</div>
+            ) : null}
           </div>
         </div>
-      ) : null}
-
-</div>
+      </div>
 
       {weakTopics.length === 0 && repeatedMistakes.length === 0 ? (
         <p className="text-xs text-purple-100/80">
-          Пока данных мало. Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
+          {getPersonaName(profile.name) ? `${getPersonaName(profile.name)}, пока данных мало.` : "Пока данных мало."} Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
         </p>
       ) : (
         <div className="space-y-3">
@@ -435,137 +292,23 @@ function SmartNextSteps() {
                 План на 10 минут
               </p>
               <div className="space-y-2">
-                {plan.steps.map((s, i) =>
-                  i === 0 ? (
-                    <button
-                      key={s.title}
-                      type="button"
-                      onClick={() => openPlanModal(plan.topic, "weak")}
-                      className="w-full text-left block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
-                    >
-                      <p className="text-sm font-semibold">
-                        {i + 1}. {s.title}
-                      </p>
-                      <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
-                      <p className="text-[11px] text-purple-200/60 mt-1">Откроется мини‑план</p>
-                    </button>
-                  ) : (
-                    <a
-                      key={s.title}
-                      href={s.action}
-                      className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
-                    >
-                      <p className="text-sm font-semibold">
-                        {i + 1}. {s.title}
-                      </p>
-                      <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
-                    </a>
-                  )
-                )}
+                {plan.steps.map((s, i) => (
+                  <a
+                    key={s.title}
+                    href={s.action}
+                    className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition"
+                  >
+                    <p className="text-sm font-semibold">
+                      {i + 1}. {s.title}
+                    </p>
+                    <p className="text-[11px] text-purple-200/80">Тема: {plan.topic}</p>
+                  </a>
+                ))}
               </div>
             </div>
           ) : null}
         </div>
       )}
-
-      {planModal ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setPlanModal(null)}
-            aria-label="Закрыть"
-          />
-          <div className="relative w-full max-w-lg">
-            <div className="bg-[#0b0b12] border border-white/10 rounded-2xl p-5 shadow-2xl animate-fade-in">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    {planModal.title}
-                  </p>
-                  <p className="text-lg font-semibold mt-1">
-                    {planModal.topic ? planModal.topic : "Быстрый старт"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPlanModal(null)}
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <p className="text-sm text-purple-100/80 mt-3">
-                {planModal.text}
-              </p>
-
-              <div className="mt-4 bg-black/30 border border-white/10 rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Сценарий на 10 минут
-                  </p>
-                  <div className="flex items-center gap-2 text-[11px] text-purple-200/70">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 border border-white/10">
-                      ⚡ быстрый цикл
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  {(planModal.steps || []).map((s, idx) => (
-                    <a
-                      key={s.title + idx}
-                      href={s.cta}
-                      className="block bg-black/40 border border-white/10 rounded-2xl p-3 hover:bg-white/5 transition animate-fade-in"
-                      style={{ animationDelay: `${idx * 80}ms` }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">
-                            {idx + 1}. {s.title}
-                          </p>
-                          <p className="text-[11px] text-purple-200/80 mt-1">
-                            {s.desc}
-                          </p>
-                        </div>
-                        <div className="flex-shrink-0 text-[11px] text-purple-200/70">
-                          {s.time}
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-
-                <p className="text-[11px] text-purple-200/70 mt-3">
-                  Подсказка: если на шаге 1 было сложно — удели больше времени разбору (шаг 2).
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2 mt-4">
-                <a
-                  href={(planModal.steps && planModal.steps[0] ? planModal.steps[0].cta : "/tests?quick=2")}
-                  className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
-                >
-                  🚀 Начать сейчас
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPlanModal(null)}
-                  className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                >
-                  Закрыть
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
     </section>
   );
 }
