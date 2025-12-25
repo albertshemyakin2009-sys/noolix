@@ -102,6 +102,27 @@ export default function ChatPage() {
     setIsClient(true);
   }, []);
 
+  // обновляем профиль (имя/аватар) при возврате в вкладку
+  useEffect(() => {
+    const refreshProfile = () => {
+      try {
+        const raw = window.localStorage.getItem("noolixProfile");
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (p && typeof p === "object") {
+          setUserProfile({
+            name: typeof p.name === "string" ? p.name : "",
+            avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+          });
+        }
+      } catch {}
+    };
+
+    window.addEventListener("focus", refreshProfile);
+    return () => window.removeEventListener("focus", refreshProfile);
+  }, []);
+
+
   // Переключение предмета/уровня: сохраняем контекст и подгружаем историю конкретного чата
   const applyContextChange = (patch) => {
     const nextCtx = { ...context, ...patch };
@@ -137,7 +158,7 @@ export default function ChatPage() {
     const starter = {
       id: Date.now(),
       role: "assistant",
-      content: `Привет! Я NOOLIX. Что именно по предмету «${nextCtx.subject}» (${nextCtx.level}) тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
+      content: `Привет${userProfile.name ? ", " + userProfile.name : ""}! Я NOOLIX. Что именно по предмету тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
       createdAt: new Date().toISOString(),
     };
     setMessages([starter]);
@@ -159,23 +180,6 @@ export default function ChatPage() {
         const parsed = JSON.parse(rawContext);
         ctx = { ...ctx, ...parsed };
       }
-
-      let profile = { name: "", avatar: "panda" };
-      if (rawProfile) {
-        try {
-          const p = JSON.parse(rawProfile);
-          if (p && typeof p === "object") {
-            profile = {
-              name: typeof p.name === "string" ? p.name : "",
-              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-            };
-          }
-        } catch (eProfile) {
-          console.warn("Failed to read noolixProfile", eProfile);
-        }
-      }
-      setUserProfile(profile);
-      const profileName = profile.name;
 
       let goalFromStorage = null;
       try {
@@ -208,6 +212,23 @@ export default function ChatPage() {
         }
       }
 
+            // profile (name/avatar) for UI
+      let profile = { name: "", avatar: "panda" };
+      if (rawProfile) {
+        try {
+          const p = JSON.parse(rawProfile);
+          if (p && typeof p === "object") {
+            profile = {
+              name: typeof p.name === "string" ? p.name : "",
+              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+            };
+          }
+        } catch (eProfile) {
+          console.warn("Failed to read noolixProfile", eProfile);
+        }
+      }
+      setUserProfile(profile);
+
       setContext(ctx);
       if (goalFromStorage) setCurrentGoal(goalFromStorage);
 
@@ -217,7 +238,7 @@ export default function ChatPage() {
         const starter = {
           id: Date.now(),
           role: "assistant",
-          content: `Привет${profileName ? ", " + profileName : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
+            content: `Привет${profile.name ? ", " + profile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
           createdAt: new Date().toISOString(),
         };
         setMessages([starter]);
@@ -227,38 +248,6 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  // Профиль может измениться на странице /profile — обновляем имя/аватар в чате
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const readProfile = () => {
-      try {
-        const raw = window.localStorage.getItem("noolixProfile");
-        if (!raw) return;
-        const p = JSON.parse(raw);
-        if (p && typeof p === "object") {
-          setUserProfile({
-            name: typeof p.name === "string" ? p.name : "",
-            avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-          });
-        }
-      } catch (e) {}
-    };
-
-    readProfile();
-
-    const onStorage = (e) => {
-      if (e && e.key === "noolixProfile") readProfile();
-    };
-
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", readProfile);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", readProfile);
-    };
   }, []);
 
   // Читаем тему из URL (?topic=...)
@@ -952,81 +941,69 @@ export default function ChatPage() {
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
                 {messages.map((m, i) => {
                   const prev = i > 0 ? messages[i - 1] : null;
-                  const showUserHeader = m.role === "user" && (userProfile.name || "") && (!prev || prev.role !== "user");
-                  const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
+                  const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
+
                   return (
-                  <div
-                    key={m.id}
-                    className={`flex ${
-                      m.role === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div className="max-w-[80%]">
-                      {showAssistantHeader ? (
-                        <div className="mb-1 flex items-center gap-2 text-[11px] text-purple-200/70">
-                          <span
-                            className="h-6 w-6 rounded-xl flex items-center justify-center shadow-sm border border-white/15 bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black"
-                            title="NOOLIX"
-                          >
-                            <span className="text-[11px] font-extrabold">N</span>
-                          </span>
-                          <span>NOOLIX</span>
-                        </div>
-                      ) : null}
-
-                      {showUserHeader ? (
-                        <div className="mb-1 flex items-center justify-end gap-2 text-[11px] text-purple-200/70">
-                          <span>{userProfile.name}</span>
-                          <span
-                            className="h-6 w-6 rounded-xl flex items-center justify-center shadow-sm border border-white/15 bg-gradient-to-br from-purple-100 to-white text-black"
-                            title={userProfile.name}
-                          >
-                            <span className="text-base leading-none">
-                              {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
-                            </span>
-                          </span>
-                        </div>
-                      ) : null}
-
-                      <div
-                        className={`max-w-[100%] rounded-2xl px-3 py-2 text-xs md:text-sm border
-
-                        ${
-                          m.role === "user"
-                            ? "bg-purple-500/80 text-white border-purple-300/60"
-                            : "bg-black/60 text-purple-50 border-white/10"
-                        }
-                      `}
+                    <div
+                      key={m.id}
+                      className={`flex ${
+                        m.role === "user" ? "justify-end" : "justify-start"
+                      }`}
                     >
-                      <div className="whitespace-pre-wrap leading-snug">
-                        {m.content}
-                      </div>
-
-                      <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
-                        <span>{formatTime(m.createdAt || m.ts || m.time || m.timestamp) || "—"}</span>
-                      </div>
-
-                      {m.role === "assistant" && (
-                        <div className="mt-2 flex justify-end">
-                          {savedMessageIds.includes(m.id) ? (
-                            <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%]">
-                              <span>✅</span>
-                              <span>Сохранено</span>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => saveExplanationToLibrary(m)}
-                              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                      <div>
+                        {showUserHeader ? (
+                          <div className="mb-1 flex items-center justify-end gap-2 text-[11px] text-purple-200/70">
+                            {userProfile.name ? <span>{userProfile.name}</span> : null}
+                            <span
+                              className="h-5 w-5 rounded-lg flex items-center justify-center border border-white/10 bg-white/10 text-white/90"
+                              title={userProfile.name}
                             >
-                              <span>📌</span>
-                              <span>Сохранить в библиотеку</span>
-                            </button>
+                              <span className="text-sm leading-none">
+                                {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
+                              </span>
+                            </span>
+                          </div>
+                        ) : null}
+
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
+                            ${
+                              m.role === "user"
+                                ? "bg-purple-500/80 text-white border-purple-300/60"
+                                : "bg-black/60 text-purple-50 border-white/10"
+                            }
+                          `}
+                        >
+                          <div className="whitespace-pre-wrap leading-snug">
+                            {m.content}
+                          </div>
+
+                          <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
+                            <span>{formatTime(m.createdAt || m.ts || m.time || m.timestamp) || "—"}</span>
+                          </div>
+
+                          {m.role === "assistant" && (
+                            <div className="mt-2 flex justify-end">
+                              {savedMessageIds.includes(m.id) ? (
+                                <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%]">
+                                  <span>✅</span>
+                                  <span>Сохранено</span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => saveExplanationToLibrary(m)}
+                                  className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                                >
+                                  <span>📌</span>
+                                  <span>Сохранить в библиотеку</span>
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
                   );
                 })}
 
