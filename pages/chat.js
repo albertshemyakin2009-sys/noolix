@@ -160,6 +160,23 @@ export default function ChatPage() {
         ctx = { ...ctx, ...parsed };
       }
 
+      let profile = { name: "", avatar: "panda" };
+      if (rawProfile) {
+        try {
+          const p = JSON.parse(rawProfile);
+          if (p && typeof p === "object") {
+            profile = {
+              name: typeof p.name === "string" ? p.name : "",
+              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+            };
+          }
+        } catch (eProfile) {
+          console.warn("Failed to read noolixProfile", eProfile);
+        }
+      }
+      setUserProfile(profile);
+      const profileName = profile.name;
+
       let goalFromStorage = null;
       try {
         const rawGoal = window.localStorage.getItem("noolixCurrentGoal");
@@ -192,24 +209,6 @@ export default function ChatPage() {
       }
 
       setContext(ctx);
-
-      // profile (name/avatar)
-      let profile = { name: "", avatar: "panda" };
-      if (rawProfile) {
-        try {
-          const p = JSON.parse(rawProfile);
-          if (p && typeof p === "object") {
-            profile = {
-              name: typeof p.name === "string" ? p.name : "",
-              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-            };
-          }
-        } catch (eProfile) {
-          console.warn("Failed to read noolixProfile", eProfile);
-        }
-      }
-      setUserProfile(profile);
-
       if (goalFromStorage) setCurrentGoal(goalFromStorage);
 
       if (initialMessages.length > 0) {
@@ -218,8 +217,7 @@ export default function ChatPage() {
         const starter = {
           id: Date.now(),
           role: "assistant",
-          content:
-            "Привет! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?",
+          content: `Привет${profileName ? ", " + profileName : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
           createdAt: new Date().toISOString(),
         };
         setMessages([starter]);
@@ -229,6 +227,38 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Профиль может измениться на странице /profile — обновляем имя/аватар в чате
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const readProfile = () => {
+      try {
+        const raw = window.localStorage.getItem("noolixProfile");
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (p && typeof p === "object") {
+          setUserProfile({
+            name: typeof p.name === "string" ? p.name : "",
+            avatar: typeof p.avatar === "string" ? p.avatar : "panda",
+          });
+        }
+      } catch (e) {}
+    };
+
+    readProfile();
+
+    const onStorage = (e) => {
+      if (e && e.key === "noolixProfile") readProfile();
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", readProfile);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", readProfile);
+    };
   }, []);
 
   // Читаем тему из URL (?topic=...)
@@ -920,56 +950,60 @@ export default function ChatPage() {
               </header>
 
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
-                {messages.map((m, idx) => (
+                {messages.map((m, i) => {
+                  const prev = i > 0 ? messages[i - 1] : null;
+                  const showUserHeader = m.role === "user" && (userProfile.name || "") && (!prev || prev.role !== "user");
+                  const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
+                  return (
                   <div
                     key={m.id}
                     className={`flex ${
                       m.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
-                    {m.role === "user" && userProfile.name && (idx === 0 || messages[idx - 1]?.role !== "user") ? (
-                      <div className="mb-1 text-[11px] text-purple-200/70 text-right pr-2">
-                        {userProfile.name}
-                      </div>
-                    ) : null}
+                    <div className="max-w-[80%]">
+                      {showAssistantHeader ? (
+                        <div className="mb-1 flex items-center gap-2 text-[11px] text-purple-200/70">
+                          <span
+                            className="h-6 w-6 rounded-xl flex items-center justify-center shadow-sm border border-white/15 bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black"
+                            title="NOOLIX"
+                          >
+                            <span className="text-[11px] font-extrabold">N</span>
+                          </span>
+                          <span>NOOLIX</span>
+                        </div>
+                      ) : null}
 
-                    <div
-                      className={`max-w-[80%] relative rounded-2xl px-3 py-2 text-xs md:text-sm border
+                      {showUserHeader ? (
+                        <div className="mb-1 flex items-center justify-end gap-2 text-[11px] text-purple-200/70">
+                          <span>{userProfile.name}</span>
+                          <span
+                            className="h-6 w-6 rounded-xl flex items-center justify-center shadow-sm border border-white/15 bg-gradient-to-br from-purple-100 to-white text-black"
+                            title={userProfile.name}
+                          >
+                            <span className="text-base leading-none">
+                              {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
+                            </span>
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <div
+                        className={`max-w-[100%] rounded-2xl px-3 py-2 text-xs md:text-sm border
+
                         ${
                           m.role === "user"
-                            ? "bg-purple-500/80 text-white border-purple-300/60 pr-10"
-                            : "bg-black/60 text-purple-50 border-white/10 pl-10"
+                            ? "bg-purple-500/80 text-white border-purple-300/60"
+                            : "bg-black/60 text-purple-50 border-white/10"
                         }
                       `}
                     >
-                      <div
-                        className={`absolute top-2 ${m.role === "user" ? "right-2" : "left-2"} h-8 w-8 rounded-2xl flex items-center justify-center shadow-md border ${
-                          m.role === "user"
-                            ? "bg-gradient-to-br from-purple-100 to-white text-black border-purple-200/60"
-                            : "bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black border-white/20"
-                        }`}
-                        title={m.role === "user" ? (userProfile.name || "Ты") : "NOOLIX"}
-                        style={{ opacity: 0.95 }}
-                      >
-                        {m.role === "user" ? (
-                          <span className="text-lg">{AVATAR_EMOJI[userProfile.avatar] || "🙂"}</span>
-                        ) : (
-                          <span className="text-sm font-extrabold tracking-tight">N</span>
-                        )}
-                      </div>
-
                       <div className="whitespace-pre-wrap leading-snug">
                         {m.content}
                       </div>
 
                       <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
-                        {m.role === "assistant" ? (
-                          <>
-                            <span>NOOLIX</span>
-                            <span>•</span>
-                          </>
-                        ) : null}
-                        <span>{formatTime(m.createdAt || m.ts || m.time || m.timestamp)}</span>
+                        <span>{formatTime(m.createdAt || m.ts || m.time || m.timestamp) || "—"}</span>
                       </div>
 
                       {m.role === "assistant" && (
@@ -993,7 +1027,8 @@ export default function ChatPage() {
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 {thinking && (
                   <div className="flex justify-start">
