@@ -484,11 +484,21 @@ export default function ChatPage() {
   }, [messages, context?.subject, context?.level]);
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
+  const normalizeTopicKey = (t) => {
+    const raw = String(t || "").trim();
+    if (!raw) return "Общее";
+    const words = raw.split(/\s+/).filter(Boolean);
+    const tooLong = raw.length > 60;
+    const tooManyWords = words.length > 8;
+    const hasSentenceMarks = /[\?\!\.]/.test(raw);
+    if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+    return raw;
+  };
+
   const touchProgressFromDialogSave = (topicKey) => {
     if (typeof window === "undefined") return;
 
-    const topic = (topicKey || "").trim();
-    if (!topic) return;
+    const topic = normalizeTopicKey(topicKey);
 
     try {
       const raw = window.localStorage.getItem("noolixKnowledgeMap");
@@ -597,7 +607,7 @@ export default function ChatPage() {
       showToast("Сохранено в библиотеку");
 
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
-      const topicKey = (currentTopic && currentTopic.trim()) || title;
+      const topicKey = normalizeTopicKey(currentTopic);
       touchProgressFromDialogSave(topicKey);
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
