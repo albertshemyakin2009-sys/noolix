@@ -93,6 +93,16 @@ export default function ChatPage() {
 
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const [userProfile, setUserProfile] = useState({ name: "", avatar: "panda" });
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  const showToast = (text) => {
+    try {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({ id: Date.now(), text: String(text || "") });
+      toastTimerRef.current = setTimeout(() => setToast(null), 1600);
+    } catch {}
+  };
 
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
@@ -584,6 +594,8 @@ export default function ChatPage() {
         );
       }
 
+      showToast("Сохранено в библиотеку");
+
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
       const topicKey = (currentTopic && currentTopic.trim()) || title;
       touchProgressFromDialogSave(topicKey);
@@ -825,6 +837,23 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
+      {/* toast */}
+      {toast ? (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="noolix-toast px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-purple-50 shadow-lg">
+            {toast.text}
+          </div>
+        </div>
+      ) : null}
+
+      <style jsx global>{`
+        @keyframes noolixToastIn {
+          0% { transform: translateY(-8px) scale(0.98); opacity: 0; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .noolix-toast { animation: noolixToastIn 160ms ease-out both; }
+      `}</style>
+
           <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <aside className="space-y-4">
               <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
@@ -942,6 +971,7 @@ export default function ChatPage() {
                 {messages.map((m, i) => {
                   const prev = i > 0 ? messages[i - 1] : null;
                   const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
+                  const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
 
                   return (
                     <div
@@ -951,14 +981,27 @@ export default function ChatPage() {
                       }`}
                     >
                       <div>
+                        {showAssistantHeader ? (
+                          <div className="mb-1 flex items-center justify-start gap-2 text-[11px] text-purple-200/70">
+                            <span
+                              className="h-8 w-8 rounded-2xl flex items-center justify-center border border-white/10 bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black shadow-md"
+                              title="NOOLIX"
+                            >
+                              <span className="text-sm font-extrabold tracking-tight">N</span>
+                              <span className="text-[10px] ml-0.5 -mt-2">✦</span>
+                            </span>
+                            <span>NOOLIX</span>
+                          </div>
+                        ) : null}
+
                         {showUserHeader ? (
                           <div className="mb-1 flex items-center justify-end gap-2 text-[11px] text-purple-200/70">
                             {userProfile.name ? <span>{userProfile.name}</span> : null}
                             <span
-                              className="h-5 w-5 rounded-lg flex items-center justify-center border border-white/10 bg-white/10 text-white/90"
-                              title={userProfile.name}
+                              className="h-8 w-8 rounded-2xl flex items-center justify-center border border-white/10 bg-white/10 text-white/90 shadow-sm"
+                              title={userProfile.name || "Ты"}
                             >
-                              <span className="text-sm leading-none">
+                              <span className="text-lg leading-none">
                                 {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
                               </span>
                             </span>
