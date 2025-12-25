@@ -86,7 +86,6 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
 
   // init: context + knowledge map
   useEffect(() => {
@@ -125,6 +124,33 @@ export default function ProgressPage() {
 
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
+
+        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Общее"
+        try {
+          const subjObj = migrated?.[subject]?.[level];
+          if (subjObj && typeof subjObj === "object") {
+            let changed = false;
+            const nextLvl = {};
+            Object.entries(subjObj).forEach(([topic, data]) => {
+              const k = normalizeTopicKey(topic);
+              if (k !== topic) changed = true;
+              const score = typeof data?.score === "number" ? data.score : 0;
+              const prev = nextLvl[k];
+              if (!prev) nextLvl[k] = { ...data, score };
+              else {
+                const prevScore = typeof prev.score === "number" ? prev.score : 0;
+                nextLvl[k] = { ...prev, score: Math.min(prevScore, score) };
+              }
+            });
+            if (changed) {
+              migrated[subject][level] = nextLvl;
+              window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
+            }
+          }
+        } catch (eNorm) {
+          console.warn("Topic normalize failed", eNorm);
+        }
+
       }
     } finally {
       setLoading(false);
@@ -150,123 +176,6 @@ export default function ProgressPage() {
       setRecentTests([]);
     }
   }, [context.subject, context.level]);
-
-
-  // analytics (Шаг 1): считаем метрики и кладём в window + console (без UI)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      // 1) тесты
-      const rawHistory = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const historyList = safeJsonParse(rawHistory, []);
-      const historyArr = Array.isArray(historyList) ? historyList : [];
-
-      const testsTotalAll = historyArr.length;
-      const historyCtx = historyArr.filter(
-        (x) => x?.subject === context.subject && x?.level === context.level
-      );
-      const testsInContext = historyCtx.length;
-
-      const lastTestTsAny =
-        historyArr.length > 0
-          ? historyArr
-              .map((x) => x?.ts)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      const lastTestTsInContext =
-        historyCtx.length > 0
-          ? historyCtx
-              .map((x) => x?.ts)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      // 2) темы/прогресс
-      const levelObj = knowledgeMap?.[context.subject]?.[context.level];
-      const topicsObj = levelObj && typeof levelObj === "object" ? levelObj : {};
-      const topics = Object.entries(topicsObj).map(([topic, data]) => ({
-        topic,
-        score: typeof data?.score === "number" ? data.score : 0,
-        updatedAt: data?.updatedAt || null,
-        source: data?.source || null,
-      }));
-
-      const topicsTouched = topics.length;
-      const topicsConfident = topics.filter((t) => (t.score || 0) >= 0.85).length;
-      const weakest = topicsTouched
-        ? topics.slice().sort((a, b) => (a.score || 0) - (b.score || 0))[0]
-        : null;
-
-      const lastTopicUpdate =
-        topicsTouched
-          ? topics
-              .map((t) => t.updatedAt)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      // 3) “объяснения” как источник = dialog
-      const explanationsSaved = topics.filter(
-        (t) => t.source === "dialog_saved" || t.source === "dialog"
-      ).length;
-
-      // 4) ошибки
-      const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
-      const mistakes = safeJsonParse(rawMistakes, {});
-      const mistakesLvl = mistakes?.[context.subject]?.[context.level];
-      const mistakesObj = mistakesLvl && typeof mistakesLvl === "object" ? mistakesLvl : {};
-      const mistakeEntries = Object.values(mistakesObj).filter(Boolean);
-
-      const mistakesTotal = mistakeEntries.reduce((sum, m) => sum + (m?.count || 0), 0);
-      const topMistake =
-        mistakeEntries.length > 0
-          ? mistakeEntries.slice().sort((a, b) => (b?.count || 0) - (a?.count || 0))[0]
-          : null;
-
-      // 5) объединённая “последняя активность”
-      const lastActivity = [lastTestTsInContext || lastTestTsAny, lastTopicUpdate]
-        .filter(Boolean)
-        .sort()
-        .slice(-1)[0] || null;
-
-      const result = {
-        context: { subject: context.subject, level: context.level },
-        tests: {
-          totalAll: testsTotalAll,
-          inContext: testsInContext,
-          lastTestTsInContext: lastTestTsInContext,
-          lastTestTsAny: lastTestTsAny,
-        },
-        topics: {
-          touched: topicsTouched,
-          confident: topicsConfident,
-          weakestTopic: weakest?.topic || null,
-          weakestScore: typeof weakest?.score === "number" ? weakest.score : null,
-          lastTopicUpdate: lastTopicUpdate,
-          explanationsSaved: explanationsSaved,
-        },
-        mistakes: {
-          total: mistakesTotal,
-          topTopic: topMistake?.topic || null,
-          topCount: topMistake?.count || null,
-        },
-        lastActivityTs: lastActivity,
-      };
-
-      setAnalytics(result);
-      window.__noolixAnalytics = result;
-      console.log("[NOOLIX analytics]", result);
-    } catch (e) {
-      console.warn("Analytics compute failed", e);
-    }
-  }, [context.subject, context.level, knowledgeMap]);
-
 
   const applyContextChange = (nextCtx) => {
     setContext(nextCtx);
@@ -536,78 +445,7 @@ export default function ProgressPage() {
               </div>
             </section>
 
-            
-            {/* analytics */}
-            <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Твоя активность
-                  </p>
-                  <p className="text-xs text-purple-100/70">
-                    Короткая сводка по тому, как ты учишься в Noolix
-                  </p>
-                </div>
-                <a
-                  href="/tests"
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                  title="Перейти к тестам"
-                >
-                  🧪
-                </a>
-              </div>
-
-              {!analytics ? (
-                <p className="text-xs text-purple-200/80">Считаю статистику…</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Тестов</p>
-                    <p className="text-xl font-semibold">{analytics.tests?.inContext || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">
-                      всего: {analytics.tests?.totalAll || 0}
-                    </p>
-                    <p className="text-[11px] text-purple-200/70">
-                      последний: {analytics.tests?.lastTestTsInContext ? formatUpdatedAt(analytics.tests.lastTestTsInContext) : (analytics.tests?.lastTestTsAny ? formatUpdatedAt(analytics.tests.lastTestTsAny) : "—")}
-                    </p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Объяснений</p>
-                    <p className="text-xl font-semibold">{analytics.topics?.explanationsSaved || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">сохранено</p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Тем начато</p>
-                    <p className="text-xl font-semibold">{analytics.topics?.touched || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">с прогрессом</p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Фокус</p>
-                    {analytics.topics?.weakestTopic ? (
-                      <>
-                        <a
-                          href={`/chat?topic=${encodeURIComponent(analytics.topics.weakestTopic)}`}
-                          className="text-sm font-semibold truncate block hover:underline"
-                          title="Открыть разбор в диалоге"
-                        >
-                          {analytics.topics.weakestTopic}
-                        </a>
-                        <p className="text-[11px] text-purple-200/70">
-                          низкий прогресс: {Math.round((analytics.topics.weakestScore || 0) * 100)}%
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm font-semibold">—</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-
-{/* weak topics */}
+            {/* weak topics */}
             <section className="space-y-2">
               <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                 Слабые темы
@@ -881,4 +719,15 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}
+}const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+};
+
+
