@@ -45,6 +45,18 @@ const parseTopicsInput = (raw) => {
   return unique;
 };
 
+
+const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+};
+
 const getWeakestTopicFromProgress = (subject, level) => {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
@@ -52,11 +64,19 @@ const getWeakestTopicFromProgress = (subject, level) => {
   const subj = km?.[subject];
   const lvl = subj?.[level];
   if (!lvl || typeof lvl !== "object") return null;
-  const entries = Object.entries(lvl)
-    .map(([topic, data]) => ({
-      topic,
-      score: typeof data?.score === "number" ? data.score : 0,
-    }))
+
+  // нормализуем "битые" темы (когда ключом становилась фраза/сообщение)
+  const merged = {};
+  Object.entries(lvl).forEach(([topic, data]) => {
+    const k = normalizeTopicKey(topic);
+    const score = typeof data?.score === "number" ? data.score : 0;
+    const prev = merged[k];
+    if (!prev) merged[k] = { score };
+    else merged[k].score = Math.min(prev.score, score);
+  });
+
+  const entries = Object.entries(merged)
+    .map(([topic, data]) => ({ topic, score: typeof data?.score === "number" ? data.score : 0 }))
     .sort((a, b) => a.score - b.score);
   return entries[0]?.topic || null;
 };
@@ -166,7 +186,8 @@ const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
 
 const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
   if (typeof window === "undefined") return { ok: false, error: "no-window" };
-  if (!subject || !level || !topic || !totalCount || totalCount <= 0) return { ok: false, error: "missing-context" };
+  const topicKey = normalizeTopicKey(topic);
+  if (!subject || !level || !topicKey || !totalCount || totalCount <= 0) return { ok: false, error: "missing-context" };
 
   try {
     const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
@@ -176,10 +197,10 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
     if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
 
     const newScore = clamp01(correctCount / totalCount);
-    const prev = km[subject][level][topic] || {};
+    const prev = km[subject][level][topicKey] || {};
     const nextScore = blendScore(prev.score, newScore, 0.35);
 
-    km[subject][level][topic] = {
+    km[subject][level][topicKey] = {
       ...prev,
       score: nextScore,
       updatedAt: getToday(),
@@ -193,6 +214,7 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
 };
 
 const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
+  const topicKey = normalizeTopicKey(topic);
   if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
   try {
@@ -204,7 +226,7 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       id: Date.now(),
       subject,
       level,
-      topic,
+      topic: topicKey,
       score,
       correctCount,
       totalCount,
@@ -243,14 +265,7 @@ export default function TestsPage() {
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewing, setReviewing] = useState(false);
-  const [saveInfo, setSaveInfo] = useState(null);
-
-  // A2: micro-feedback toast
-  const [toast, setToast] = useState(null); // { text, tone: 'success'|'warn'|'error' }
-  const showToast = (text, tone = "success") => {
-    setToast({ text, tone });
-    window.setTimeout(() => setToast(null), 2500);
-  }; // {historyCount, kmTouched, ts, error}
+  const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
@@ -310,13 +325,6 @@ export default function TestsPage() {
 
     window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
     setHistoryTick((t) => t + 1);
-      if (hRes?.ok && kmRes?.ok) {
-        showToast(`Тест сохранён • результат: ${scorePercent}%`, "success");
-      } else if (hRes?.ok && !kmRes?.ok) {
-        showToast("Тест сохранён • прогресс не обновился", "warn");
-      } else {
-        showToast("Не удалось сохранить тест", "error");
-      }
   };
 
   const canGenerate = useMemo(() => {
@@ -396,7 +404,7 @@ export default function TestsPage() {
     setResult(null);
 
     try {
-      const manualTopics = parseTopicsInput(topic);
+      const manualTopics = parseTopicsInput(topic).map(normalizeTopicKey).filter(Boolean);
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
       const topicsToSend = manualTopics.length > 0 ? manualTopics : (autoWeakest ? [autoWeakest] : []);
 
@@ -548,13 +556,6 @@ export default function TestsPage() {
 
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
-      if (hRes?.ok && kmRes?.ok) {
-        showToast(`Тест сохранён • результат: ${scorePercent}%`, "success");
-      } else if (hRes?.ok && !kmRes?.ok) {
-        showToast("Тест сохранён • прогресс не обновился", "warn");
-      } else {
-        showToast("Не удалось сохранить тест", "error");
-      }
       try { loadTestHistory(); } catch (_) {}
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
@@ -675,19 +676,6 @@ export default function TestsPage() {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          {toast ? (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-              {/* toast */}
-              <div
-                className={`px-5 py-3 rounded-2xl bg-black/80 border text-sm font-semibold text-white shadow-xl backdrop-blur-md animate-fade-in flex items-center gap-2 ${toast.tone === "error" ? "border-red-400/50" : toast.tone === "warn" ? "border-yellow-400/50" : "border-purple-400/40"}`}
-              >
-                <span className="text-base">
-                  {toast.tone === "error" ? "⚠️" : toast.tone === "warn" ? "🟡" : "✅"}
-                </span>
-                <span>{toast.text}</span>
-              </div>
-            </div>
-          ) : null}
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
@@ -845,35 +833,9 @@ export default function TestsPage() {
               )}
 
               {testHistory.length === 0 ? (
-                <div className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
-                  <p className="text-sm font-semibold">История появится после первой попытки</p>
-                  <p className="text-xs text-purple-200/80">
-                    Сгенерируй мини‑тест по одной теме и нажми «Завершить тест». Noolix сохранит результат и ошибки —
-                    чтобы улучшать рекомендации и прогресс.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        try {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        } catch {}
-                        if (canGenerate) generateTest();
-                        else showToast("Выбери предмет и тему (или оставь тему пустой для авто)", "warn");
-                      }}
-                      className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={generating}
-                    >
-                      🧪 Быстрый мини‑тест
-                    </button>
-                    <a
-                      href="/goals"
-                      className="px-4 py-2 rounded-full border border-white/20 bg-black/30 text-xs text-purple-50 hover:bg-white/5 transition"
-                    >
-                      🎯 Перейти к целям
-                    </a>
-                  </div>
-                </div>
+                <p className="text-xs text-purple-200/80">
+                  Пока нет попыток. Пройди мини-тест — и здесь появится история.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {testHistory.map((h) => {
