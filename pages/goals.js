@@ -5,6 +5,17 @@ const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const PROFILE_STORAGE_KEY = "noolixProfile";
 
+const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+};
+
 const SUBJECT_OPTIONS = [
   "Математика",
   "Физика",
@@ -114,9 +125,36 @@ function SmartNextSteps() {
         }
       }
       const byLvl = km?.[subject]?.[level];
+      let byLvlNorm = byLvl;
+      try {
+        if (byLvlNorm && typeof byLvlNorm === "object") {
+          let changed = false;
+          const nextLvl = {};
+          Object.entries(byLvlNorm).forEach(([topic, data]) => {
+            const k = normalizeTopicKey(topic);
+            if (k !== topic) changed = true;
+            const score = typeof data?.score === "number" ? data.score : 0;
+            const prev = nextLvl[k];
+            if (!prev) nextLvl[k] = { ...data, score };
+            else {
+              const prevScore = typeof prev.score === "number" ? prev.score : 0;
+              nextLvl[k] = { ...prev, score: Math.min(prevScore, score) };
+            }
+          });
+          if (changed) {
+            km[subject] = km[subject] || {};
+            km[subject][level] = nextLvl;
+            window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
+            byLvlNorm = nextLvl;
+          }
+        }
+      } catch (eNorm) {
+        console.warn("Topic normalize failed", eNorm);
+      }
+
       const weak =
-        byLvl && typeof byLvl === "object"
-          ? Object.entries(byLvl)
+        byLvlNorm && typeof byLvlNorm === "object"
+          ? Object.entries(byLvlNorm)
               .map(([topic, data]) => ({
                 topic,
                 score: typeof data?.score === "number" ? data.score : 0,
