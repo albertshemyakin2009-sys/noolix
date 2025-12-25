@@ -14,37 +14,53 @@ const SUBJECT_OPTIONS = [
 
 const TYPE_OPTIONS = ["Экзамен / тест", "Домашка", "Проект", "Свой вариант"];
 
-function inferIntent(profileGoalText = "", goalTypeText = "") {
-  const t = `${profileGoalText || ""} ${goalTypeText || ""}`.toLowerCase();
-  if (/(егэ|огэ|экзам|вступ|контрольн|тест)/i.test(t)) return "exam";
-  if (/(домаш|дз|урок|задан|упражнен)/i.test(t)) return "homework";
-  if (/(проект|олимпиад|исслед|курс|презент)/i.test(t)) return "project";
-  if (/(подтянут|уверен|повтор|закреп)/i.test(t)) return "improve";
-  return "general";
-}
-
-function getPersonaName(name) {
-  const n = (name || "").trim();
-  if (!n) return "";
-  return n.split(/\s+/)[0].slice(0, 16);
-}
-
-function clampText(s, max = 72) {
-  const t = (s || "").trim();
-  if (!t) return "";
-  return t.length > max ? t.slice(0, max - 1) + "…" : t;
-}
-
-
 
 function SmartNextSteps() {
   const [isClient, setIsClient] = useState(false);
   const [ctx, setCtx] = useState({ subject: SUBJECT_OPTIONS[0], level: "Без уровня" });
+  const [profile, setProfile] = useState({ name: "", goal: "", note: "", avatar: "panda" });
   const [weakTopics, setWeakTopics] = useState([]);
   const [repeatedMistakes, setRepeatedMistakes] = useState([]);
   const [plan, setPlan] = useState({ topic: "", steps: [] });
-  const [profile, setProfile] = useState({ name: "", goal: "", note: "", avatar: "panda" });
-  const [intent, setIntent] = useState("general");
+
+  const inferIntentFromGoal = (goalText) => {
+    const g = (goalText || "").toLowerCase();
+    if (!g.trim()) return "general";
+    if (g.includes("егэ") || g.includes("огэ") || g.includes("экзам") || g.includes("тест") || g.includes("контроль")) return "exam";
+    if (g.includes("домаш") || g.includes("дз") || g.includes("урок") || g.includes("классн")) return "homework";
+    if (g.includes("проект") || g.includes("реферат") || g.includes("презентац")) return "project";
+    return "general";
+  };
+
+  const pickPlanSteps = (intent, topic) => {
+    const t = topic || "";
+    const chatLink = t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat";
+    const testsLink = t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests";
+    if (intent === "exam") {
+      return [
+        { title: "Мини‑тест по теме (разогрев)", action: testsLink },
+        { title: "Разобрать ошибки в диалоге", action: chatLink },
+        { title: "Закрепить 2–3 вопроса", action: testsLink },
+      ];
+    }
+    if (intent === "homework") {
+      return [
+        { title: "Разобрать задачу в диалоге", action: chatLink },
+        { title: "Мини‑тест (проверка себя)", action: testsLink },
+        { title: "Сохранить объяснение, чтобы не забыть", action: chatLink },
+      ];
+    }
+    if (intent === "project") {
+      return [
+        { title: "Уточнить план в диалоге", action: chatLink },
+        { title: "Проверить теорию мини‑тестом", action: testsLink },
+      ];
+    }
+    return [
+      { title: "Разобрать в диалоге", action: chatLink },
+      { title: "Мини‑тест по теме", action: testsLink },
+    ];
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -67,24 +83,24 @@ function SmartNextSteps() {
       setCtx({ subject, level });
 
       // profile
-      const rawProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
-      let parsedProfile = { name: "", goal: "", note: "", avatar: "panda" };
-      if (rawProfile) {
-        try {
+      let profileGoalForPlan = "";
+      try {
+        const rawProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+        if (rawProfile) {
           const p = JSON.parse(rawProfile);
           if (p && typeof p === "object") {
-            parsedProfile = {
+            profileGoalForPlan = typeof p.goal === "string" ? p.goal : "";
+            setProfile({
               name: typeof p.name === "string" ? p.name : "",
               goal: typeof p.goal === "string" ? p.goal : "",
               note: typeof p.note === "string" ? p.note : "",
               avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-            };
+            });
           }
-        } catch {}
+        }
+      } catch (eProfile) {
+        console.warn("Failed to read noolixProfile", eProfile);
       }
-      setProfile(parsedProfile);
-      const intentLocal = inferIntent(parsedProfile.goal, "");
-      setIntent(intentLocal);
 
 
       // progress (knowledge map)
@@ -131,55 +147,12 @@ function SmartNextSteps() {
       setRepeatedMistakes(rep);
 
       const t = weak[0]?.topic || rep[0]?.topic || "";
+      const intent = inferIntentFromGoal(profileGoalForPlan);
       setPlan({
-        topic: t,
-        steps:
-          intentLocal === "homework"
-            ? [
-                {
-                  title: "Разобрать в диалоге",
-                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
-                },
-                {
-                  title: "Мини‑тест (2 вопроса)",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
-                },
-                {
-                  title: "Проверить себя по теме",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
-                },
-              ]
-            : intentLocal === "exam"
-            ? [
-                {
-                  title: "Мини‑тест (3 вопроса)",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=3` : "/tests?quick=3",
-                },
-                {
-                  title: "Разбор ошибок в диалоге",
-                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
-                },
-                {
-                  title: "Закрепить (2 вопроса)",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
-                },
-              ]
-            : [
-                {
-                  title: "Закрепить (2 вопроса)",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}&quick=2` : "/tests?quick=2",
-                },
-                {
-                  title: "Разобрать в диалоге",
-                  action: t ? `/chat?topic=${encodeURIComponent(t)}` : "/chat",
-                },
-                {
-                  title: "Мини‑тест по теме",
-                  action: t ? `/tests?topic=${encodeURIComponent(t)}` : "/tests",
-                },
-              ],
+        topic: t || "",
+        steps: pickPlanSteps(intent, t),
       });
-    } catch (e) {
+} catch (e) {
       console.warn("SmartNextSteps failed", e);
     }
   }, []);
@@ -199,21 +172,21 @@ function SmartNextSteps() {
           <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
             Что делать дальше
           </p>
-          <div className="text-xs text-purple-100/80 space-y-1">
-            <div>На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}</div>
+          <p className="text-xs text-purple-100/80">
+            На основе прогресса и ошибок для: {ctx.subject} • {ctx.level}
             {profile.goal ? (
-              <div className="text-[11px] text-purple-200/80">Цель: {clampText(profile.goal, 80)}</div>
+              <span className="block mt-1 text-[11px] text-purple-200/70">🎯 Цель: {profile.goal}</span>
             ) : null}
             {profile.note ? (
-              <div className="text-[11px] text-purple-200/70">Заметка: {clampText(profile.note, 80)}</div>
+              <span className="block mt-1 text-[11px] text-purple-200/60">📝 Заметка: {profile.note}</span>
             ) : null}
-          </div>
+          </p>
         </div>
       </div>
 
       {weakTopics.length === 0 && repeatedMistakes.length === 0 ? (
         <p className="text-xs text-purple-100/80">
-          {getPersonaName(profile.name) ? `${getPersonaName(profile.name)}, пока данных мало.` : "Пока данных мало."} Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
+          {profile.name ? <span className="font-semibold">{profile.name}, </span> : null}Пока данных мало. Пройди мини‑тест или сохрани объяснение в диалоге — и здесь появятся подсказки.
         </p>
       ) : (
         <div className="space-y-3">
