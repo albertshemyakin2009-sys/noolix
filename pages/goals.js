@@ -6,14 +6,43 @@ const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const PROFILE_STORAGE_KEY = "noolixProfile";
 
 const normalizeTopicKey = (t) => {
-  const raw = String(t || "").trim();
+  let raw = String(t || "").trim();
   if (!raw) return "Общее";
+
+  raw = raw.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
+  raw = raw.replace(/\s+/g, " ");
+
+  // Prefer quoted fragment if present
+  const q1 = raw.match(/«([^»]{2,80})»/);
+  const q2 = raw.match(/"([^"]{2,80})"/);
+  if (q1?.[1]) raw = q1[1].trim();
+  else if (q2?.[1]) raw = q2[1].trim();
+
+  // Extract "real topic" from common learning prompts
+  const patterns = [
+    /^(?:что такое|что значит|что означает)\s+(.+)$/i,
+    /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
+    /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
+    /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
+  ];
+  for (const p of patterns) {
+    const m = raw.match(p);
+    if (m?.[1]) {
+      raw = m[1].trim();
+      break;
+    }
+  }
+
+  raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+
+  // If it still looks like a sentence — fall back to "Общее"
   const words = raw.split(/\s+/).filter(Boolean);
   const tooLong = raw.length > 60;
   const tooManyWords = words.length > 8;
   const hasSentenceMarks = /[\?\!\.]/.test(raw);
   if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-  return raw;
+
+  return raw || "Общее";
 };
 
 const SUBJECT_OPTIONS = [
