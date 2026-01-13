@@ -26,6 +26,31 @@ const blendScore = (oldScore, newScore, alpha = 0.35) => {
   const o = typeof oldScore === "number" ? oldScore : 0;
   return clamp01(o * (1 - alpha) + newScore * alpha);
 };
+const updateMasteryFromTest = ({ prevScore, accuracy, confidentWrongRate }) => {
+  const p = 1.9; // diminishing returns exponent for gains
+  const q = 1.2; // exponent for losses (high mastery drops more)
+  const base = 0.55; // base learning rate
+
+  const prev = clamp01(typeof prevScore === "number" ? prevScore : 0.35);
+  const acc = clamp01(typeof accuracy === "number" ? accuracy : 0);
+  const cwr = clamp01(typeof confidentWrongRate === "number" ? confidentWrongRate : 0);
+
+  const diff = acc - prev;
+
+  if (diff >= 0) {
+    // Gains are harder near 1.0
+    let gain = base * diff * Math.pow(1 - prev, p);
+    // Confident wrong answers reduce the effective gain
+    gain *= 1 - 0.4 * cwr;
+    return clamp01(prev + gain);
+  }
+
+  // Losses are stronger when confidence was high and mastery was high
+  let loss = base * (-diff) * Math.pow(prev, q);
+  loss *= 1 + 0.8 * cwr;
+  return clamp01(prev - loss);
+};
+
 
 const parseTopicsInput = (raw) => {
   const txt = typeof raw === "string" ? raw : "";
@@ -47,43 +72,14 @@ const parseTopicsInput = (raw) => {
 
 
 const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
+  const raw = String(t || "").trim();
   if (!raw) return "Общее";
-
-  raw = raw.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
-  raw = raw.replace(/\s+/g, " ");
-
-  // Prefer quoted fragment if present
-  const q1 = raw.match(/«([^»]{2,80})»/);
-  const q2 = raw.match(/"([^"]{2,80})"/);
-  if (q1?.[1]) raw = q1[1].trim();
-  else if (q2?.[1]) raw = q2[1].trim();
-
-  // Extract "real topic" from common learning prompts
-  const patterns = [
-    /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-    /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-    /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-    /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-  ];
-  for (const p of patterns) {
-    const m = raw.match(p);
-    if (m?.[1]) {
-      raw = m[1].trim();
-      break;
-    }
-  }
-
-  raw = raw.replace(/[\?\!\.]+$/g, "").trim();
-
-  // If it still looks like a sentence — fall back to "Общее"
   const words = raw.split(/\s+/).filter(Boolean);
   const tooLong = raw.length > 60;
   const tooManyWords = words.length > 8;
   const hasSentenceMarks = /[\?\!\.]/.test(raw);
   if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-
-  return raw || "Общее";
+  return raw;
 };
 
 const getWeakestTopicFromProgress = (subject, level) => {
@@ -213,7 +209,7 @@ const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
 };
 
 
-const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
+const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount, wrongCount = 0, confidentWrongCount = 0 }) => {
   if (typeof window === "undefined") return { ok: false, error: "no-window" };
   const topicKey = normalizeTopicKey(topic);
   if (!subject || !level || !topicKey || !totalCount || totalCount <= 0) return { ok: false, error: "missing-context" };
@@ -225,11 +221,13 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
     if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
     if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
 
-    const newScore = clamp01(correctCount / totalCount);
+    const accuracy = clamp01(correctCount / Math.max(1, totalCount));
     const prev = km[subject][level][topicKey] || {};
-    const nextScore = blendScore(prev.score, newScore, 0.35);
+    const prevScore = typeof prev.score === "number" ? prev.score : 0.35;
+    const confidentWrongRate = clamp01(confidentWrongCount / Math.max(1, totalCount));
+    const nextScore = updateMasteryFromTest({ prevScore, accuracy, confidentWrongRate });
 
-    km[subject][level][topicKey] = {
+km[subject][level][topicKey] = {
       ...prev,
       score: nextScore,
       updatedAt: getToday(),
@@ -547,6 +545,8 @@ export default function TestsPage() {
         topic: finalTopic,
         correctCount,
         totalCount,
+        wrongCount: mistakes.length,
+        confidentWrongCount: confidentWrong,
       });
 
       // обновляем статистику ошибок
