@@ -1,7 +1,22 @@
 import "../styles/globals.css";
 import { useEffect } from "react";
+import { Inter, Manrope } from "next/font/google";
 
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
+
+// UI / body text
+const uiFont = Inter({
+  subsets: ["latin", "cyrillic"],
+  display: "swap",
+  variable: "--font-ui",
+});
+
+// Headlines / titles
+const displayFont = Manrope({
+  subsets: ["latin", "cyrillic"],
+  display: "swap",
+  variable: "--font-display",
+});
 
 const normalizeTopicKey = (t) => {
   let raw = String(t || "").trim();
@@ -10,11 +25,13 @@ const normalizeTopicKey = (t) => {
   raw = raw.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
   raw = raw.replace(/\s+/g, " ");
 
+  // Prefer quoted fragment if present
   const q1 = raw.match(/«([^»]{2,80})»/);
   const q2 = raw.match(/"([^"]{2,80})"/);
   if (q1?.[1]) raw = q1[1].trim();
   else if (q2?.[1]) raw = q2[1].trim();
 
+  // Extract "real topic" from common learning prompts
   const patterns = [
     /^(?:что такое|что значит|что означает)\s+(.+)$/i,
     /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
@@ -31,6 +48,7 @@ const normalizeTopicKey = (t) => {
 
   raw = raw.replace(/[\?\!\.]+$/g, "").trim();
 
+  // If it still looks like a sentence — fall back to "Общее"
   const words = raw.split(/\s+/).filter(Boolean);
   const tooLong = raw.length > 60;
   const tooManyWords = words.length > 8;
@@ -82,20 +100,15 @@ const migrateKnowledgeMapTopics = () => {
       const lvl = subj[level];
       if (!lvl || typeof lvl !== "object") continue;
 
-      // Detect old structure subject->topic (value has score)
-      const looksLikeTopicLeaf =
-        typeof lvl?.score === "number" || typeof lvl?.updatedAt === "string";
-      if (looksLikeTopicLeaf) continue; // ignore weird edge
-
       const newLvl = { ...lvl };
       for (const topicKey of Object.keys(lvl)) {
         const leaf = lvl[topicKey];
         if (!leaf || typeof leaf !== "object") continue;
 
-        // treat as leaf if it has score or updatedAt OR it is a small object
         const isLeaf =
           typeof leaf.score === "number" ||
           typeof leaf.updatedAt === "string" ||
+          typeof leaf.updated === "string" ||
           Object.keys(leaf).some((k) => ["score", "updatedAt", "updated", "source"].includes(k));
 
         if (!isLeaf) continue;
@@ -122,8 +135,52 @@ const migrateKnowledgeMapTopics = () => {
 
 export default function MyApp({ Component, pageProps }) {
   useEffect(() => {
+    // тихая миграция названий тем: убирает "тема = последнее сообщение"
     migrateKnowledgeMapTopics();
   }, []);
 
-  return <Component {...pageProps} />;
+  return (
+    <div className={`${uiFont.variable} ${displayFont.variable}`}>
+      <style jsx global>{`
+        :root {
+          --font-ui: ${uiFont.style.fontFamily};
+          --font-display: ${displayFont.style.fontFamily};
+        }
+
+        html,
+        body {
+          font-family: var(--font-ui), ui-sans-serif, system-ui, -apple-system,
+            Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        }
+
+        /* ZONE: Display / Headlines */
+        h1,
+        h2,
+        h3,
+        .font-display {
+          font-family: var(--font-display), var(--font-ui);
+          letter-spacing: -0.02em;
+        }
+
+        /* ZONE: UI micro */
+        .ui-micro {
+          font-family: var(--font-ui);
+          letter-spacing: 0;
+        }
+
+        /* ZONE: Buttons/CTA (keep readable) */
+        button,
+        .btn,
+        .cta {
+          font-family: var(--font-ui);
+        }
+
+        .font-ui {
+          font-family: var(--font-ui);
+        }
+      `}</style>
+
+      <Component {...pageProps} />
+    </div>
+  );
 }
