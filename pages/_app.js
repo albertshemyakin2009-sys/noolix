@@ -1,9 +1,9 @@
 import "../styles/globals.css";
 import { useEffect } from "react";
-import { Manrope, Unbounded } from "next/font/google";
+import { Inter, Unbounded } from "next/font/google";
 
 // UI / body text
-const uiFont = Manrope({
+const uiFont = Inter({
   subsets: ["latin", "cyrillic"],
   display: "swap",
   variable: "--font-ui",
@@ -145,6 +145,36 @@ export default function MyApp({ Component, pageProps }) {
         body {
           font-family: var(--font-ui), ui-sans-serif, system-ui, -apple-system,
             Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        }
+
+        /* Premium typography rendering */
+        html {
+          text-rendering: optimizeLegibility;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+        }
+
+        /* Display scale (keeps Unbounded premium, not too shouty) */
+        h1 {
+          font-weight: 700;
+          line-height: 1.12;
+        }
+        h2 {
+          font-weight: 650;
+          line-height: 1.16;
+        }
+        h3 {
+          font-weight: 650;
+          line-height: 1.2;
+        }
+
+        /* Card titles / section labels (optional utility) */
+        .title {
+          font-family: var(--font-display), var(--font-ui);
+          font-weight: 650;
+          letter-spacing: -0.02em;
+          line-height: 1.2;
         }
 
         /* ZONE: Display / Headlines */
