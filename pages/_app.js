@@ -1,8 +1,6 @@
 import "../styles/globals.css";
 import { useEffect } from "react";
-import { Inter, Manrope } from "next/font/google";
-
-const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
+import { Inter, Unbounded } from "next/font/google";
 
 // UI / body text
 const uiFont = Inter({
@@ -11,12 +9,14 @@ const uiFont = Inter({
   variable: "--font-ui",
 });
 
-// Headlines / titles
-const displayFont = Manrope({
+// Headlines / titles (premium display)
+const displayFont = Unbounded({
   subsets: ["latin", "cyrillic"],
   display: "swap",
   variable: "--font-display",
 });
+
+const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 
 const normalizeTopicKey = (t) => {
   let raw = String(t || "").trim();
@@ -25,13 +25,11 @@ const normalizeTopicKey = (t) => {
   raw = raw.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
   raw = raw.replace(/\s+/g, " ");
 
-  // Prefer quoted fragment if present
   const q1 = raw.match(/«([^»]{2,80})»/);
   const q2 = raw.match(/"([^"]{2,80})"/);
   if (q1?.[1]) raw = q1[1].trim();
   else if (q2?.[1]) raw = q2[1].trim();
 
-  // Extract "real topic" from common learning prompts
   const patterns = [
     /^(?:что такое|что значит|что означает)\s+(.+)$/i,
     /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
@@ -48,7 +46,6 @@ const normalizeTopicKey = (t) => {
 
   raw = raw.replace(/[\?\!\.]+$/g, "").trim();
 
-  // If it still looks like a sentence — fall back to "Общее"
   const words = raw.split(/\s+/).filter(Boolean);
   const tooLong = raw.length > 60;
   const tooManyWords = words.length > 8;
@@ -73,7 +70,7 @@ const mergeProgress = (a, b) => {
     if (typeof v === "number" && typeof out[k] === "number") out[k] += v;
     else if (k === "score" && typeof v === "number") {
       const prev = typeof out.score === "number" ? out.score : 1;
-      out.score = Math.min(prev, v); // conservative merge for weakness
+      out.score = Math.min(prev, v);
     } else if (k === "updatedAt" || k === "updated") {
       const prev = out[k] ? new Date(out[k]).getTime() : 0;
       const next = v ? new Date(v).getTime() : 0;
@@ -108,9 +105,7 @@ const migrateKnowledgeMapTopics = () => {
         const isLeaf =
           typeof leaf.score === "number" ||
           typeof leaf.updatedAt === "string" ||
-          typeof leaf.updated === "string" ||
           Object.keys(leaf).some((k) => ["score", "updatedAt", "updated", "source"].includes(k));
-
         if (!isLeaf) continue;
 
         const norm = normalizeTopicKey(topicKey);
@@ -135,7 +130,6 @@ const migrateKnowledgeMapTopics = () => {
 
 export default function MyApp({ Component, pageProps }) {
   useEffect(() => {
-    // тихая миграция названий тем: убирает "тема = последнее сообщение"
     migrateKnowledgeMapTopics();
   }, []);
 
@@ -159,16 +153,20 @@ export default function MyApp({ Component, pageProps }) {
         h3,
         .font-display {
           font-family: var(--font-display), var(--font-ui);
+          letter-spacing: -0.03em;
+        }
+
+        /* Slightly calmer tracking for long Russian headlines */
+        h1 {
           letter-spacing: -0.02em;
         }
 
         /* ZONE: UI micro */
         .ui-micro {
           font-family: var(--font-ui);
-          letter-spacing: 0;
         }
 
-        /* ZONE: Buttons/CTA (keep readable) */
+        /* ZONE: Buttons/CTA */
         button,
         .btn,
         .cta {
