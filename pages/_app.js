@@ -1,9 +1,9 @@
 import "../styles/globals.css";
 import { useEffect } from "react";
-import { Inter, Unbounded } from "next/font/google";
+import { Manrope, Unbounded } from "next/font/google";
 
 // UI / body text
-const uiFont = Inter({
+const uiFont = Manrope({
   subsets: ["latin", "cyrillic"],
   display: "swap",
   variable: "--font-ui",
