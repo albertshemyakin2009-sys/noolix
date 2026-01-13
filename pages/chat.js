@@ -485,37 +485,14 @@ export default function ChatPage() {
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
   const normalizeTopicKey = (t) => {
-    let raw = String(t || "").trim();
+    const raw = String(t || "").trim();
     if (!raw) return "Общее";
-
-    raw = raw.replace(/^['"«]+/, "").replace(/['"»]+$/, "").trim();
-    raw = raw.replace(/\s+/g, " ");
-
-    const q1 = raw.match(/«([^»]{2,80})»/);
-    const q2 = raw.match(/"([^"]{2,80})"/);
-    if (q1?.[1]) raw = q1[1].trim();
-    else if (q2?.[1]) raw = q2[1].trim();
-
-    const patterns = [
-      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-    ];
-    for (const p of patterns) {
-      const mm = raw.match(p);
-      if (mm?.[1]) { raw = mm[1].trim(); break; }
-    }
-
-    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
-
     const words = raw.split(/\s+/).filter(Boolean);
     const tooLong = raw.length > 60;
     const tooManyWords = words.length > 8;
     const hasSentenceMarks = /[\?\!\.]/.test(raw);
     if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-
-    return raw || "Общее";
+    return raw;
   };
 
   const touchProgressFromDialogSave = (topicKey) => {
@@ -557,7 +534,9 @@ export default function ChatPage() {
         lvlEntry[topic] && typeof lvlEntry[topic] === "object" ? lvlEntry[topic] : {};
 
       const prevScore = typeof prev.score === "number" ? prev.score : 0.55;
-      const nextScore = Math.min(1, +(prevScore + 0.03).toFixed(3));
+      // Non‑linear: big gains when low, tiny gains near 1.0
+      const delta = 0.06 * Math.pow(1 - prevScore, 1.8);
+      const nextScore = Math.min(1, +(prevScore + delta).toFixed(3));
       const nowIso = new Date().toISOString();
 
       lvlEntry[topic] = {
