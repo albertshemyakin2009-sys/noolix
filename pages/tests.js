@@ -409,7 +409,19 @@ export default function TestsPage() {
     try {
       const manualTopics = parseTopicsInput(topic).map(normalizeTopicKey).filter(Boolean);
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
-      const topicsToSend = manualTopics.length > 0 ? manualTopics : (autoWeakest ? [autoWeakest] : []);
+      let lastCandidate = "";
+      try {
+        lastCandidate = window.localStorage.getItem("noolixLastTopicCandidate") || "";
+      } catch (_) {}
+      const autoFromDialog = normalizeTopicKey(lastCandidate);
+      const topicsToSend = manualTopics.length > 0
+        ? manualTopics
+        : (autoWeakest ? [autoWeakest] : (autoFromDialog && autoFromDialog !== "Общее" ? [autoFromDialog] : []));
+
+      if (manualTopics.length === 0 && !autoWeakest && autoFromDialog && autoFromDialog !== "Общее") {
+        // show user what topic was auto-picked
+        setTopic(autoFromDialog);
+      }
 
       if (!context.subject) {
         throw new Error("Выбери предмет (subject), чтобы сгенерировать тест.");
