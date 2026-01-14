@@ -414,9 +414,18 @@ export default function TestsPage() {
         lastCandidate = window.localStorage.getItem("noolixLastTopicCandidate") || "";
       } catch (_) {}
       const autoFromDialog = normalizeTopicKey(lastCandidate);
-      const topicsToSend = manualTopics.length > 0
+      let topicsToSend = manualTopics.length > 0
         ? manualTopics
         : (autoWeakest ? [autoWeakest] : (autoFromDialog && autoFromDialog !== "Общее" ? [autoFromDialog] : []));
+
+      // If we still have nothing — allow a 'diagnostic' test (better than blocking the user)
+      if (!Array.isArray(topicsToSend) || topicsToSend.length === 0) {
+        const diag = `Диагностика по ${context.subject}`;
+        topicsToSend = [diag];
+        setTopic(diag);
+        try { window.localStorage.setItem("noolixLastTopicCandidate", diag); } catch (_) {}
+      }
+
 
       if (manualTopics.length === 0 && !autoWeakest && autoFromDialog && autoFromDialog !== "Общее") {
         // show user what topic was auto-picked
@@ -426,9 +435,7 @@ export default function TestsPage() {
       if (!context.subject) {
         throw new Error("Выбери предмет (subject), чтобы сгенерировать тест.");
       }
-      if (!Array.isArray(topicsToSend) || topicsToSend.length === 0) {
-        throw new Error("Введи тему (минимум одну) или сначала получи прогресс по темам (мини‑тест/объяснение).");
-      }
+      // topicsToSend is guaranteed (manual / progress / dialog / diagnostic fallback)
 
       const res = await fetch("/api/generate-test", {
         method: "POST",
