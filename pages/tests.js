@@ -420,10 +420,10 @@ export default function TestsPage() {
 
       // If we still have nothing — allow a 'diagnostic' test (better than blocking the user)
       if (!Array.isArray(topicsToSend) || topicsToSend.length === 0) {
-        const diag = `Диагностика по ${context.subject}`;
+        const diag = `Диагностика по предмету: ${context.subject}`;
         topicsToSend = [diag];
         setTopic(diag);
-        try { window.localStorage.setItem("noolixLastTopicCandidate", diag); } catch (_) {}
+        // do NOT persist diagnostic label as a topic
       }
 
 
@@ -518,7 +518,9 @@ export default function TestsPage() {
 
       setResult({ correctCount, totalCount, scorePercent });
 
-      let finalTopicBase = topic?.trim() || questions?.[0]?.topicTitle || "";
+            const topicRaw = String(topic || "").trim();
+      const isDiag = /^Диагностика/i.test(topicRaw);
+      let finalTopicBase = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || "");
       let finalTopic = normalizeTopicKey(finalTopicBase);
 
       // If still too generic, try a smart candidate from the Dialog
