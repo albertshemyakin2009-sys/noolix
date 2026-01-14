@@ -1,5 +1,5 @@
 // pages/tests.js
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -202,6 +202,8 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
 
     km[subject][level][topicKey] = {
       ...prev,
+      // human-friendly label for UI
+      label: typeof prev.label === "string" && prev.label.trim() ? prev.label : topicKey,
       score: nextScore,
       updatedAt: getToday(),
     };
@@ -213,7 +215,7 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
   }
 };
 
-const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary, durationMs, startedAt, firstActionAt, finishedAt }) => {
+const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
   const topicKey = normalizeTopicKey(topic);
   if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
@@ -227,15 +229,12 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       subject,
       level,
       topic: topicKey,
+      topicLabel: typeof topic === "string" && topic.trim() ? normalizeTopicKey(topic) : topicKey,
       score,
       correctCount,
       totalCount,
       createdAt: new Date().toISOString(),
       mistakesSummary: mistakesSummary || null,
-      durationMs: typeof durationMs === "number" ? durationMs : null,
-      startedAt: startedAt || null,
-      firstActionAt: firstActionAt || null,
-      finishedAt: finishedAt || null,
     });
 
     const trimmed = next.slice(0, 50);
@@ -265,11 +264,6 @@ export default function TestsPage() {
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
   const [confidence, setConfidence] = useState([]); // "low" | "high"
-
-  // Тайминг всего теста: считаем с первого действия пользователя (не с генерации)
-  const [testShownAtMs, setTestShownAtMs] = useState(null); // ms
-  const [firstActionAtMs, setFirstActionAtMs] = useState(null); // ms
-  const firstActionAtRef = useRef(null);
 
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
@@ -398,22 +392,12 @@ export default function TestsPage() {
       setQuestionShownAt(new Array(q.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(q.length).fill(null));
       setConfidence(new Array(q.length).fill("low"));
-      setTestShownAtMs(nowMs);
-      setFirstActionAtMs(null);
-      firstActionAtRef.current = null;
       setTopic(titles[0] || "");
       setGenerating(false);
     } catch (e) {
       setError(e?.message || "Ошибка");
       setGenerating(false);
     }
-  };
-
-  const markFirstAction = () => {
-    if (firstActionAtRef.current) return;
-    const ms = Date.now();
-    firstActionAtRef.current = ms;
-    setFirstActionAtMs(ms);
   };
 
   const generateTest = async () => {
@@ -486,10 +470,6 @@ export default function TestsPage() {
     try {
       const totalCount = questions.length;
 
-      const finishedAtMs = Date.now();
-      const startMs = (typeof firstActionAtRef.current === "number" ? firstActionAtRef.current : null) || (typeof testShownAtMs === "number" ? testShownAtMs : null) || finishedAtMs;
-      const durationMs = Math.max(0, finishedAtMs - startMs);
-
       let correctCount = 0;
       const mistakes = [];
       questions.forEach((q, idx) => {
@@ -519,8 +499,23 @@ export default function TestsPage() {
 
       setResult({ correctCount, totalCount, scorePercent });
 
-      const finalTopic =
-        topic?.trim() || questions?.[0]?.topicTitle || "Тема без названия";
+      let finalTopicBase = topic?.trim() || questions?.[0]?.topicTitle || "";
+      let finalTopic = normalizeTopicKey(finalTopicBase);
+
+      // If still too generic, try a smart candidate from the Dialog
+      if (finalTopic === "Общее") {
+        try {
+          const last = window.localStorage.getItem("noolixLastTopicCandidate");
+          if (last) finalTopic = normalizeTopicKey(last);
+        } catch (_) {}
+      }
+
+      // persist candidate for next runs
+      try {
+        if (finalTopic && finalTopic !== "Общее") {
+          window.localStorage.setItem("noolixLastTopicCandidate", finalTopic);
+        }
+      } catch (_) {}
 
       // агрегаты по ошибкам
       const avgTime =
@@ -557,10 +552,6 @@ export default function TestsPage() {
         level: context.level,
         topic: finalTopic,
         score: clamp01(score),
-        durationMs,
-        startedAt: typeof testShownAtMs === "number" ? new Date(testShownAtMs).toISOString() : null,
-        firstActionAt: typeof firstActionAtRef.current === "number" ? new Date(firstActionAtRef.current).toISOString() : null,
-        finishedAt: new Date(finishedAtMs).toISOString(),
         correctCount,
         totalCount,
         mistakesSummary: _mistakesSummary,
@@ -940,8 +931,7 @@ export default function TestsPage() {
                                 name={`q_${idx}`}
                                 checked={checked}
                                 onChange={() => {
-                                    markFirstAction();
-                                    setTimeToFirstAnswerSec((prev) => {
+                                  setTimeToFirstAnswerSec((prev) => {
                                     const next = Array.isArray(prev) ? [...prev] : [];
                                     if (next[idx] === null || typeof next[idx] !== "number") {
                                       const shown = Array.isArray(questionShownAt) ? questionShownAt[idx] : null;
@@ -976,14 +966,13 @@ export default function TestsPage() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              markFirstAction();
+                            onClick={() =>
                               setConfidence((prev) => {
                                 const next = Array.isArray(prev) ? [...prev] : [];
                                 next[idx] = "low";
                                 return next;
-                              });
-                            }}
+                              })
+                            }
                             className={`px-3 py-2 rounded-full border text-[11px] transition
                               ${
                                 confidence[idx] !== "high"
@@ -996,14 +985,13 @@ export default function TestsPage() {
 
                           <button
                             type="button"
-                            onClick={() => {
-                              markFirstAction();
+                            onClick={() =>
                               setConfidence((prev) => {
                                 const next = Array.isArray(prev) ? [...prev] : [];
                                 next[idx] = "high";
                                 return next;
-                              });
-                            }}
+                              })
+                            }
                             className={`px-3 py-2 rounded-full border text-[11px] transition
                               ${
                                 confidence[idx] === "high"
