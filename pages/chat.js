@@ -375,6 +375,14 @@ export default function ChatPage() {
       content: prompt,
       createdAt: new Date().toISOString(),
     };
+    // Save a smart topic candidate from the user's message for other pages (Tests/Goals/Progress)
+    try {
+      const cand = normalizeTopicKey(text);
+      if (cand && cand !== "Общее") {
+        window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      }
+    } catch (_) {}
+
 
     const newMessages = clampHistory([...(messages || []), userMessage]);
 
@@ -534,9 +542,7 @@ export default function ChatPage() {
         lvlEntry[topic] && typeof lvlEntry[topic] === "object" ? lvlEntry[topic] : {};
 
       const prevScore = typeof prev.score === "number" ? prev.score : 0.55;
-      // Non‑linear: big gains when low, tiny gains near 1.0
-      const delta = 0.06 * Math.pow(1 - prevScore, 1.8);
-      const nextScore = Math.min(1, +(prevScore + delta).toFixed(3));
+      const nextScore = Math.min(1, +(prevScore + 0.03).toFixed(3));
       const nowIso = new Date().toISOString();
 
       lvlEntry[topic] = {
