@@ -17,49 +17,6 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 
-
-const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
-  if (!raw) return "Общее";
-
-  raw = raw.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
-  raw = raw.replace(/\s+/g, " ");
-
-  const q1 = raw.match(/«([^»]{2,80})»/);
-  const q2 = raw.match(/"([^"]{2,80})"/);
-  if (q1?.[1]) raw = q1[1].trim();
-  else if (q2?.[1]) raw = q2[1].trim();
-
-  const patterns = [
-    /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-    /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-    /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-    /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-  ];
-  for (const p of patterns) {
-    const m = raw.match(p);
-    if (m?.[1]) { raw = m[1].trim(); break; }
-  }
-
-  raw = raw.replace(/[\?\!\.]+$/g, "").trim();
-
-  const words = raw.split(/\s+/).filter(Boolean);
-  const tooLong = raw.length > 60;
-  const tooManyWords = words.length > 8;
-  const hasSentenceMarks = /[\?\!\.]/.test(raw);
-  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-
-  return raw || "Общее";
-};
-
-const formatDurationMs = (ms) => {
-  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
-  const totalSec = Math.round(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-};
-
 function safeJsonParse(raw, fallback) {
   try {
     if (!raw) return fallback;
@@ -238,7 +195,7 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic,
+      topic: (data?.label || data?.title || topic) || topic,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
@@ -736,8 +693,6 @@ export default function ProgressPage() {
                         </p>
                         <p className="text-[11px] text-purple-200/80">
                           {t?.subject} • {t?.level}
-                          {t?.score != null ? ` · ${Math.round((t.score || 0) * 100)}%` : ""}
-                          {typeof t?.durationMs === "number" ? ` · ${formatDurationMs(t.durationMs) || ""}` : ""}
                           {t?.createdAt
                             ? ` · ${formatUpdatedAt(t.createdAt)}`
                             : ""}
@@ -764,4 +719,15 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}
+}const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+};
+
+
