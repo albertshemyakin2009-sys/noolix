@@ -23,12 +23,34 @@ export default async function handler(req, res) {
       difficulty = "medium",
     } = req.body || {};
 
-    if (!subject || !Array.isArray(topics) || topics.length === 0) {
+    // Поддержка topics как массива строк (и массива объектов):
+    // - строка => { id: topic_<n>, title: <строка> }
+    // - объект => { id, title }
+    const normalizedTopics = Array.isArray(topics)
+      ? topics
+          .map((t, i) => {
+            if (typeof t === 'string') {
+              const title = t.trim();
+              return { id: `topic_${i + 1}`, title: title || 'Без названия' };
+            }
+            if (t && typeof t === 'object') {
+              const id = (t.id || `topic_${i + 1}`).toString();
+              const title = (t.title || '').toString().trim() || 'Без названия';
+              return { id, title };
+            }
+            return { id: `topic_${i + 1}`, title: 'Без названия' };
+          })
+          .filter((x) => x && x.title)
+      : [];
+
+
+    if (!subject || !Array.isArray(topics) || normalizedTopics.length === 0) {
       return res.status(400).json({
         error:
           "Нужно передать subject и массив topics (минимум одна тема) для генерации теста.",
       });
     }
+
 
     const safeQuestionCount =
       typeof questionCount === "number" &&
@@ -51,7 +73,7 @@ export default async function handler(req, res) {
 
     const difficultyLabel = difficultyLabelMap[difficultyToken];
 
-    const topicsListForPrompt = topics
+    const topicsListForPrompt = normalizedTopics
       .map((t, i) => {
         const id = t.id || `topic_${i + 1}`;
         const title = t.title || "Без названия";
@@ -177,12 +199,12 @@ ${topicsListForPrompt}
         const topicTitle =
           typeof q.topicTitle === "string" && q.topicTitle.trim()
             ? q.topicTitle.trim()
-            : topics[0]?.title || "Тема";
+            : normalizedTopics[0]?.title || "Тема";
 
         const topicId =
           typeof q.topicId === "string" && q.topicId.trim()
             ? q.topicId.trim()
-            : topics[0]?.id || "custom";
+            : normalizedTopics[0]?.id || "custom";
 
         let normalizedDifficulty = q.difficulty;
         if (!["easy", "medium", "hard"].includes(normalizedDifficulty)) {
