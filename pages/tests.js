@@ -17,6 +17,7 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
+const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const getToday = () => new Date().toISOString().slice(0, 10);
@@ -57,15 +58,18 @@ const normalizeTopicKey = (t) => {
   return raw;
 };
 
-const toDativeRu = (s) => {
-  const w = String(s || "").trim();
-  if (!w) return w;
-  if (/ия$/i.test(w)) return w.replace(/ия$/i, "ии");
-  if (/ья$/i.test(w)) return w.replace(/ья$/i, "ье");
-  if (/я$/i.test(w)) return w.replace(/я$/i, "е");
-  if (/а$/i.test(w)) return w.replace(/а$/i, "е");
-  if (/ь$/i.test(w)) return w.replace(/ь$/i, "и");
-  return w;
+const toDativeRu = (subject) => {
+  const s = String(subject || "").trim().toLowerCase();
+  // минимум, но даёт нормальную фразу: "по математике", "по физике"
+  const map = {
+    "математика": "математике",
+    "физика": "физике",
+    "русский": "русскому языку",
+    "русский язык": "русскому языку",
+    "английский": "английскому",
+    "английский язык": "английскому",
+  };
+  return map[s] || (subject ? String(subject) : "предмету");
 };
 
 
@@ -214,8 +218,6 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
 
     km[subject][level][topicKey] = {
       ...prev,
-      // human-friendly label for UI
-      label: typeof prev.label === "string" && prev.label.trim() ? prev.label : topicKey,
       score: nextScore,
       updatedAt: getToday(),
     };
@@ -241,7 +243,6 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       subject,
       level,
       topic: topicKey,
-      topicLabel: typeof topic === "string" && topic.trim() ? normalizeTopicKey(topic) : topicKey,
       score,
       correctCount,
       totalCount,
@@ -268,6 +269,7 @@ export default function TestsPage() {
 
   const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+  const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -385,7 +387,7 @@ export default function TestsPage() {
       if (!context?.subject || !context?.level) throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
       const titles = Array.isArray(forcedTopicTitles) ? forcedTopicTitles.filter(Boolean) : [];
       if (!titles.length) throw new Error("Нет темы для закрепления.");
-      let topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
+      const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
       const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -399,18 +401,7 @@ export default function TestsPage() {
       const q = Array.isArray(data?.questions) ? data.questions : [];
       if (!q.length) throw new Error("Пустой тест. Попробуй ещё раз.");
       resetSession();
-      // Resolve a usable topic title for UI/saving
-      const inferredTopic = normalizeTopicKey(
-        (topic?.trim() && !/^Диагностика\b/i.test(topic.trim()) ? topic.trim() : "") ||
-        q?.[0]?.topicTitle ||
-        sentTopicForGeneration ||
-        ""
-      );
-      const resolvedTopic = inferredTopic === "Общее" ? normalizeTopicKey(`Базовые темы по ${context.subject}`) : inferredTopic;
-      setTopic(resolvedTopic);
-      try { window.localStorage.setItem("noolixLastTopicCandidate", resolvedTopic); } catch (_) {}
-      const qWithTopic = q.map((qq) => ({ ...qq, topicTitle: qq?.topicTitle || resolvedTopic }));
-      setQuestions(qWithTopic);
+      setQuestions(q);
       setUserAnswers(new Array(q.length).fill(null));
       const nowMs = Date.now();
       setQuestionShownAt(new Array(q.length).fill(nowMs));
@@ -433,44 +424,39 @@ export default function TestsPage() {
     try {
       const manualTopics = parseTopicsInput(topic).map(normalizeTopicKey).filter(Boolean);
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
-      let lastCandidate = "";
-      try {
-        lastCandidate = window.localStorage.getItem("noolixLastTopicCandidate") || "";
-      } catch (_) {}
-      const autoFromDialog = normalizeTopicKey(lastCandidate);
-      let topicsToSend = manualTopics.length > 0
-        ? manualTopics
-        : (autoWeakest ? [autoWeakest] : (autoFromDialog && autoFromDialog !== "Общее" ? [autoFromDialog] : []));
-
-      // If we still have nothing — run a diagnostic (UI label) but generate on a neutral topic
-      if (!Array.isArray(topicsToSend) || topicsToSend.length === 0) {
-        const diagnosticLabel = `Диагностика по ${toDativeRu(context.subject)}`;
-        setTopic(diagnosticLabel);
-
-        const generationTopic = `Базовые темы по ${context.subject}`;
-        topicsToSend = [generationTopic];
-      }
-
-      // remember what we actually sent to generation
-      setSentTopicForGeneration(topicsToSend[0] || "");
-
-
-      if (manualTopics.length === 0 && !autoWeakest && autoFromDialog && autoFromDialog !== "Общее") {
-        // show user what topic was auto-picked
-        setTopic(autoFromDialog);
-      }
 
       if (!context.subject) {
         throw new Error("Выбери предмет (subject), чтобы сгенерировать тест.");
       }
-      // topicsToSend is guaranteed (manual / progress / dialog / diagnostic fallback)
+
+      // 1) Тема для генерации (никогда не пустая)
+      let titles = manualTopics.length > 0 ? manualTopics : (autoWeakest ? [autoWeakest] : []);
+
+      // Если нет ни ручной темы, ни слабой — запускаем диагностику.
+      // В UI видим "Диагностика...", но в прогресс сохраняем реальную тему (fallback ниже).
+      if (!titles.length) {
+        const diag = `Диагностика по ${toDativeRu(context.subject)}`;
+        setDiagnosticLabel(diag);
+        setTopic(diag);
+        const gen = `Базовые темы по ${context.subject}`;
+        titles = [gen];
+      } else {
+        setDiagnosticLabel("");
+        if (manualTopics.length > 0) setTopic(manualTopics[0]);
+      }
+
+      setSentTopicForGeneration(titles[0] || "");
+
+      // 2) В API отправляем объекты {id,title}.
+      // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
+      const topicsPayload = titles.map((t) => ({ id: slugifyId(t), title: t }));
 
       const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject: context.subject,
-          topics: topicsToSend,
+          topics: topicsPayload,
           questionCount: 5,
           difficulty: "medium",
         }),
@@ -496,12 +482,40 @@ export default function TestsPage() {
         throw new Error("Сервер вернул пустой тест. Попробуй другую тему.");
       }
 
-      setQuestions(q);
-      setUserAnswers(new Array(q.length).fill(null));
+      // --- определяем и фиксируем финальную тему ---
+      const serverTopicRaw =
+        data?.topicTitle || data?.topic || data?.test?.topicTitle || data?.test?.topic || "";
+
+      let resolvedTopic = normalizeTopicKey(
+        serverTopicRaw || q?.[0]?.topicTitle || sentTopicForGeneration || titles[0] || ""
+      );
+
+      // не даём теме стать пустой/"Общее"
+      if (!resolvedTopic || resolvedTopic === "Общее") {
+        try { resolvedTopic = normalizeTopicKey(window.localStorage.getItem(LAST_TOPIC_KEY) || ""); } catch (_) {}
+      }
+      if (!resolvedTopic || resolvedTopic === "Общее") {
+        resolvedTopic = normalizeTopicKey(`Базовые темы по ${context.subject}`);
+      }
+
+      try { window.localStorage.setItem(LAST_TOPIC_KEY, resolvedTopic); } catch (_) {}
+
+      // Если показывали диагностику — теперь переключаемся на реальную тему
+      setDiagnosticLabel("");
+      setTopic(resolvedTopic);
+
+      const qWithTopic = q.map((qq) => ({
+        ...qq,
+        topicTitle:
+          (typeof qq?.topicTitle === "string" && qq.topicTitle.trim()) ? qq.topicTitle.trim() : resolvedTopic,
+      }));
+
+      setQuestions(qWithTopic);
+      setUserAnswers(new Array(qWithTopic.length).fill(null));
       const nowMs = Date.now();
-      setQuestionShownAt(new Array(q.length).fill(nowMs));
-      setTimeToFirstAnswerSec(new Array(q.length).fill(null));
-      setConfidence(new Array(q.length).fill("low"));
+      setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
+      setTimeToFirstAnswerSec(new Array(qWithTopic.length).fill(null));
+      setConfidence(new Array(qWithTopic.length).fill("low"));
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
@@ -546,37 +560,8 @@ export default function TestsPage() {
 
       setResult({ correctCount, totalCount, scorePercent });
 
-      const topicRaw = String(topic || "").trim();
-      const isDiag = /^Диагностика\b/i.test(topicRaw);
-
-      let finalTopicBase = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
-
-      if (!finalTopicBase) {
-        try {
-          finalTopicBase = window.localStorage.getItem("noolixLastTopicCandidate") || "";
-        } catch (_) {}
-      }
-
-      if (!finalTopicBase) {
-        finalTopicBase = `Базовые темы по ${context.subject}`;
-      }
-
-      let finalTopic = normalizeTopicKey(finalTopicBase);
-
-      // If still too generic, try a smart candidate from the Dialog
-      if (finalTopic === "Общее") {
-        try {
-          const last = window.localStorage.getItem("noolixLastTopicCandidate");
-          if (last) finalTopic = normalizeTopicKey(last);
-        } catch (_) {}
-      }
-
-      // persist candidate for next runs
-      try {
-        if (finalTopic && finalTopic !== "Общее") {
-          window.localStorage.setItem("noolixLastTopicCandidate", finalTopic);
-        }
-      } catch (_) {}
+      const finalTopic =
+        topic?.trim() || questions?.[0]?.topicTitle || `Базовые темы по ${context.subject}`;
 
       // агрегаты по ошибкам
       const avgTime =
@@ -649,7 +634,22 @@ export default function TestsPage() {
     setAnalysis("");
 
     try {
-      const finalTopic = topic?.trim() || questions?.[0]?.topicTitle || "";
+      const topicRaw = String(topic || "").trim();
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
+      let finalTopicBase = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
+      if (!finalTopicBase) {
+        try { finalTopicBase = window.localStorage.getItem(LAST_TOPIC_KEY) || ""; } catch (_) {}
+      }
+      if (!finalTopicBase) finalTopicBase = `Базовые темы по ${context.subject}`;
+      const topicRaw = String(topic || "").trim();
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
+      let finalTopic = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
+      if (!finalTopic) {
+        try { finalTopic = window.localStorage.getItem(LAST_TOPIC_KEY) || ""; } catch (_) {}
+      }
+      if (!finalTopic) finalTopic = `Базовые темы по ${context.subject}`;
+      finalTopic = normalizeTopicKey(finalTopic);
+      try { window.localStorage.setItem(LAST_TOPIC_KEY, finalTopic); } catch (_) {}
 
       const res = await fetch("/api/review-test", {
         method: "POST",
