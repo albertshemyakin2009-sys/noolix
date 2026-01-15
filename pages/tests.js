@@ -635,20 +635,20 @@ export default function TestsPage() {
 
     try {
       const topicRaw = String(topic || "").trim();
-      const isDiag = /^Диагностика\b/i.test(topicRaw);
-      let finalTopicBase = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
-      if (!finalTopicBase) {
-        try { finalTopicBase = window.localStorage.getItem(LAST_TOPIC_KEY) || ""; } catch (_) {}
-      }
-      if (!finalTopicBase) finalTopicBase = `Базовые темы по ${context.subject}`;
-      const topicRaw = String(topic || "").trim();
-      const isDiag = /^Диагностика\b/i.test(topicRaw);
-      let finalTopic = (!isDiag && topicRaw) ? topicRaw : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
+      const isDiag = /^Диагностика/i.test(topicRaw);
+
+      let finalTopic = (!isDiag && topicRaw)
+        ? topicRaw
+        : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
+
       if (!finalTopic) {
         try { finalTopic = window.localStorage.getItem(LAST_TOPIC_KEY) || ""; } catch (_) {}
       }
+
       if (!finalTopic) finalTopic = `Базовые темы по ${context.subject}`;
+
       finalTopic = normalizeTopicKey(finalTopic);
+
       try { window.localStorage.setItem(LAST_TOPIC_KEY, finalTopic); } catch (_) {}
 
       const res = await fetch("/api/review-test", {
