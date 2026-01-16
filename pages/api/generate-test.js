@@ -21,6 +21,8 @@ export default async function handler(req, res) {
       topics,
       questionCount = 5,
       difficulty = "medium",
+      // optional: client may mark diagnostic runs
+      diagnostic = false,
     } = req.body || {};
 
     // Поддержка topics как массива строк (и массива объектов):
@@ -29,26 +31,47 @@ export default async function handler(req, res) {
     const normalizedTopics = Array.isArray(topics)
       ? topics
           .map((t, i) => {
-            if (typeof t === 'string') {
+            if (typeof t === "string") {
               const title = t.trim();
-              return { id: `topic_${i + 1}`, title: title || 'Без названия' };
+              return { id: `topic_${i + 1}`, title: title || "" };
             }
-            if (t && typeof t === 'object') {
+            if (t && typeof t === "object") {
               const id = (t.id || `topic_${i + 1}`).toString();
-              const title = (t.title || '').toString().trim() || 'Без названия';
+              const title = (t.title || "").toString().trim();
               return { id, title };
             }
-            return { id: `topic_${i + 1}`, title: 'Без названия' };
+            return { id: `topic_${i + 1}`, title: "" };
           })
-          .filter((x) => x && x.title)
+          .filter((x) => x && typeof x.title === "string")
       : [];
 
-
-    if (!subject || !Array.isArray(topics) || normalizedTopics.length === 0) {
+    if (!subject) {
       return res.status(400).json({
-        error:
-          "Нужно передать subject и массив topics (минимум одна тема) для генерации теста.",
+        error: "Нужно передать subject для генерации теста.",
       });
+    }
+
+    // If topics are empty/messy, fall back to a safe general topic.
+    // IMPORTANT: never lock in diagnostic UI labels as a real topic.
+    const looksDiagnostic = (s) => /^\s*Диагностика\b/i.test(String(s || "").trim());
+    const looksTooGeneric = (s) => /^\s*Базовые\s+темы\b/i.test(String(s || "").trim());
+
+    let isDiagnosticMode = !!diagnostic;
+    let fallbackTopicTitle = "";
+
+    if (normalizedTopics.length === 0) {
+      isDiagnosticMode = true;
+      fallbackTopicTitle = `Базовые темы по ${subject}`;
+      normalizedTopics.push({ id: "custom", title: fallbackTopicTitle });
+    } else {
+      const firstTitle = normalizedTopics[0]?.title || "";
+      if (looksDiagnostic(firstTitle)) {
+        isDiagnosticMode = true;
+        fallbackTopicTitle = `Базовые темы по ${subject}`;
+        normalizedTopics[0] = { ...normalizedTopics[0], title: fallbackTopicTitle };
+      } else {
+        fallbackTopicTitle = firstTitle || `Базовые темы по ${subject}`;
+      }
     }
 
 
@@ -76,7 +99,7 @@ export default async function handler(req, res) {
     const topicsListForPrompt = normalizedTopics
       .map((t, i) => {
         const id = t.id || `topic_${i + 1}`;
-        const title = t.title || "Без названия";
+        const title = (t.title || "").trim() || `Тема ${i + 1}`;
         return `- topicId: "${id}", title: "${title}"`;
       })
       .join("\n");
@@ -87,6 +110,12 @@ export default async function handler(req, res) {
 
     const userPrompt = `
 Составь тест по предмету: ${subject}.
+
+Если темы слишком общие (например "Базовые темы...") или тест запущен как диагностика, ты ДОЛЖЕН:
+- выбрать ОДНУ конкретную учебную тему сам (например: "Дроби", "Квадратные уравнения", "Причастный оборот"),
+- использовать её как ЕДИНУЮ тему теста,
+- вернуть её в поле "testTitle" (см. формат ниже),
+- и проставить topicTitle в каждом вопросе.
 
 Темы для теста (используй их содержательно, НЕ игнорируй):
 ${topicsListForPrompt}
@@ -107,6 +136,7 @@ ${topicsListForPrompt}
 Обязательный формат ответа (СТРОГО JSON, без текста до или после):
 
 {
+  "testTitle": "короткое название темы теста",
   "questions": [
     {
       "question": "текст вопроса",
@@ -181,7 +211,39 @@ ${topicsListForPrompt}
       });
     }
 
+    const safeString = (x) => (typeof x === "string" ? x.trim() : "");
+    const rawTestTitle = safeString(parsed.testTitle);
     let questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+    // pick a good topic title:
+    // 1) explicit testTitle
+    // 2) most frequent non-generic question.topicTitle
+    // 3) fallbackTopicTitle
+    const isBadTopic = (t) => {
+      const v = safeString(t);
+      if (!v) return true;
+      if (looksDiagnostic(v)) return true;
+      if (looksTooGeneric(v)) return true;
+      if (/^\s*тема\b/i.test(v)) return true;
+      if (/^\s*без\s+названия\b/i.test(v)) return true;
+      return false;
+    };
+
+    let resolvedTopicTitle = rawTestTitle;
+    if (isBadTopic(resolvedTopicTitle)) {
+      const freq = {};
+      for (const q of questions) {
+        const tt = safeString(q?.topicTitle);
+        if (isBadTopic(tt)) continue;
+        freq[tt] = (freq[tt] || 0) + 1;
+      }
+      const best = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+      resolvedTopicTitle = best || fallbackTopicTitle;
+    }
+
+    if (isBadTopic(resolvedTopicTitle)) {
+      resolvedTopicTitle = `Базовые темы по ${subject}`;
+    }
 
     questions = questions
       .filter(
@@ -196,10 +258,9 @@ ${topicsListForPrompt}
       )
       .slice(0, safeQuestionCount)
       .map((q, index) => {
-        const topicTitle =
-          typeof q.topicTitle === "string" && q.topicTitle.trim()
-            ? q.topicTitle.trim()
-            : normalizedTopics[0]?.title || "Тема";
+        const topicTitle = !isBadTopic(q?.topicTitle)
+          ? safeString(q.topicTitle)
+          : resolvedTopicTitle;
 
         const topicId =
           typeof q.topicId === "string" && q.topicId.trim()
@@ -229,7 +290,11 @@ ${topicsListForPrompt}
       });
     }
 
-    return res.status(200).json({ questions });
+    return res.status(200).json({
+      topicTitle: resolvedTopicTitle,
+      diagnostic: isDiagnosticMode,
+      questions,
+    });
   } catch (error) {
     console.error("Error in /api/generate-test:", error);
     return res.status(500).json({
