@@ -118,6 +118,61 @@ const hashString = (s) => {
   return (h >>> 0).toString(16);
 };
 
+// Нужен для /api/generate-test: topicId должен быть стабильным и безопасным
+// (иначе, при передаче строк в topics, сервер может подставлять "Без названия")
+const slugifyId = (s) => {
+  const raw = String(s || "").trim().toLowerCase();
+  if (!raw) return `topic-${Math.random().toString(36).slice(2, 9)}`;
+
+  // минимальная RU->EN транслитерация для стабильных id
+  const map = {
+    а: "a",
+    б: "b",
+    в: "v",
+    г: "g",
+    д: "d",
+    е: "e",
+    ё: "e",
+    ж: "zh",
+    з: "z",
+    и: "i",
+    й: "y",
+    к: "k",
+    л: "l",
+    м: "m",
+    н: "n",
+    о: "o",
+    п: "p",
+    р: "r",
+    с: "s",
+    т: "t",
+    у: "u",
+    ф: "f",
+    х: "h",
+    ц: "ts",
+    ч: "ch",
+    ш: "sh",
+    щ: "sch",
+    ъ: "",
+    ы: "y",
+    ь: "",
+    э: "e",
+    ю: "yu",
+    я: "ya",
+  };
+
+  let out = "";
+  for (const ch of raw) out += map[ch] !== undefined ? map[ch] : ch;
+
+  out = out
+    .replace(/[^a-z0-9\s\-]+/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/\-+/g, "-")
+    .replace(/^\-+|\-+$/g, "");
+
+  return out || `topic-${Math.random().toString(36).slice(2, 9)}`;
+};
+
 const classifyMistake = ({ timeSec, confident, repeats }) => {
   const t = typeof timeSec === "number" ? timeSec : null;
   const r = typeof repeats === "number" ? repeats : 1;
