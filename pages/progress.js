@@ -30,6 +30,20 @@ function normalize(s) {
   return (s || "").toLowerCase().trim();
 }
 
+// Нормализация ключа темы:
+// - не даём ключом стать целому сообщению/предложению
+// - режем слишком длинные/"текстовые" ключи до "Общее"
+function normalizeTopicKey(t) {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+}
+
 function clamp01(x) {
   if (typeof x !== "number" || Number.isNaN(x)) return 0;
   if (x < 0) return 0;
@@ -719,15 +733,4 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}const normalizeTopicKey = (t) => {
-  const raw = String(t || "").trim();
-  if (!raw) return "Общее";
-  const words = raw.split(/\s+/).filter(Boolean);
-  const tooLong = raw.length > 60;
-  const tooManyWords = words.length > 8;
-  const hasSentenceMarks = /[\?\!\.]/.test(raw);
-  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-  return raw;
-};
-
-
+}
