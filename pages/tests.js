@@ -443,7 +443,8 @@ export default function TestsPage() {
       const titles = Array.isArray(forcedTopicTitles) ? forcedTopicTitles.filter(Boolean) : [];
       if (!titles.length) throw new Error("Нет темы для закрепления.");
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      const res = await fetch("/api/generate-test", {
+      const res = await       setSentTopicForGeneration(Array.isArray(topicsToSend) ? (topicsToSend[0]?.title || topicsToSend[0] || "") : "");
+fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject: context.subject, topics: topicsToSend, questionCount: count }),
