@@ -72,6 +72,18 @@ const toDativeRu = (subject) => {
   return map[s] || (subject ? String(subject) : "предмету");
 };
 
+// для диагностики/общих заглушек — не считаем это "реальной темой"
+const looksDiagnostic = (s) => /^\s*Диагностика\b/i.test(String(s || "").trim());
+const looksTooGeneric = (s) => /^\s*Базовые\s+темы\b/i.test(String(s || "").trim());
+const isBadManualTopic = (s) => {
+  const v = String(s || "").trim();
+  if (!v) return true;
+  if (looksDiagnostic(v)) return true;
+  if (looksTooGeneric(v)) return true;
+  if (/^\s*без\s+названия\b/i.test(v)) return true;
+  return false;
+};
+
 
 const getWeakestTopicFromProgress = (subject, level) => {
   if (typeof window === "undefined") return null;
@@ -478,7 +490,10 @@ fetch("/api/generate-test", {
     setResult(null);
 
     try {
-      const manualTopics = parseTopicsInput(topic).map(normalizeTopicKey).filter(Boolean);
+      // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
+      const manualTopics = parseTopicsInput(topic)
+        .map(normalizeTopicKey)
+        .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
 
       if (!context.subject) {
@@ -515,6 +530,7 @@ fetch("/api/generate-test", {
           topics: topicsPayload,
           questionCount: 5,
           difficulty: "medium",
+          diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
       });
 
@@ -691,7 +707,7 @@ fetch("/api/generate-test", {
 
     try {
       const topicRaw = String(topic || "").trim();
-      const isDiag = /^Диагностика/i.test(topicRaw);
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
 
       let finalTopic = (!isDiag && topicRaw)
         ? topicRaw
