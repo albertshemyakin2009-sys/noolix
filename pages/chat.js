@@ -53,6 +53,95 @@ function getSubjectPrepositional(subject) {
 
 const MAX_HISTORY = 40;
 
+// Explain styles: rotate methods so повторные объяснения были разными
+const EXPLAIN_STYLE_KEY = "noolixExplainStyleHistoryV1";
+
+const EXPLAIN_STYLES = [
+  {
+    key: "simple",
+    label: "Коротко",
+    instruction:
+      "Объясни коротко и очень простыми словами. Минимум терминов. 1 маленький пример.",
+  },
+  {
+    key: "steps",
+    label: "По шагам",
+    instruction:
+      "Объясни строго по шагам: 1) идея 2) правило 3) как применять 4) типичная ловушка 5) мини‑пример.",
+  },
+  {
+    key: "analogy",
+    label: "Аналогия",
+    instruction:
+      "Объясни через жизненную аналогию/метафору, затем свяжи аналогию с формальным правилом.",
+  },
+  {
+    key: "example",
+    label: "На примере",
+    instruction:
+      "Сделай объяснение через 2 примера: сначала очень простой, затем чуть сложнее. Покажи ход рассуждений.",
+  },
+  {
+    key: "mistakes",
+    label: "Через ошибки",
+    instruction:
+      "Сфокусируйся на типичных ошибках и как их избегать. Добавь проверку: как понять, что всё сделал(а) правильно.",
+  },
+  {
+    key: "formula",
+    label: "Формула",
+    instruction:
+      "Дай краткую формулу/правило, расшифруй её словами и покажи, где её применять. Без перегруза.",
+  },
+];
+
+const loadExplainStyleHistory = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EXPLAIN_STYLE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const saveExplainStyleHistory = (map) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(EXPLAIN_STYLE_KEY, JSON.stringify(map || {}));
+  } catch (_) {}
+};
+
+const pickNextExplainStyle = (topicKey) => {
+  const key = String(topicKey || "").trim() || "general";
+  const map = loadExplainStyleHistory();
+  const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
+  const used = Array.isArray(entry.used) ? entry.used : [];
+
+  let next = EXPLAIN_STYLES.find((s) => !used.includes(s.key));
+  if (!next) {
+    // all used -> restart cycle
+    next = EXPLAIN_STYLES[0];
+    entry.used = [];
+  }
+  return { next, key, map, entry };
+};
+
+const markExplainStyleUsed = (topicKey, styleKey) => {
+  const key = String(topicKey || "").trim() || "general";
+  const map = loadExplainStyleHistory();
+  const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
+
+  const used = Array.isArray(entry.used) ? entry.used : [];
+  if (styleKey && !used.includes(styleKey)) used.push(styleKey);
+
+  map[key] = { ...entry, used, updatedAt: new Date().toISOString() };
+  saveExplainStyleHistory(map);
+};
+
+
+
 const clampHistory = (list) => {
   if (!Array.isArray(list)) return [];
   return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
@@ -106,6 +195,7 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
+  const pendingExplainRef = useRef(null);
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -275,7 +365,28 @@ export default function ChatPage() {
   }, []);
 
   // --- Вызов backend (объявлен выше автостарта) ---
-  const callBackend = async (userMessages) => {
+  
+  const buildExplainPrompt = ({ topicTitle, style }) => {
+    const t = String(topicTitle || "").trim() || "тему";
+    const subjPrep = getSubjectPrepositional(context.subject);
+
+    const styleLine = style?.label ? `Стиль: ${style.label}.` : "";
+    const styleInstruction = style?.instruction ? style.instruction : "";
+
+    return `Объясни тему «${t}» по ${subjPrep} на уровне «${context.level}».
+${styleLine}
+
+Требования:
+1) Коротко и понятно (без воды).
+2) 1–2 примера (или мини‑пример).
+3) В конце — 2 вопроса для самопроверки.
+4) Не повторяй дословно прошлое объяснение: выбери другой подход.
+
+Доп. указание:
+${styleInstruction}`;
+  };
+
+const callBackend = async (userMessages) => {
     try {
       setError("");
       const res = await fetch("/api/chat", {
@@ -320,6 +431,20 @@ export default function ChatPage() {
         createdAt: new Date().toISOString(),
       };
 
+      // attach explain style meta (for UI badge) + rotate styles
+      if (pendingExplainRef.current) {
+        const p = pendingExplainRef.current;
+        assistantMessage.meta = {
+          explainStyleKey: p.styleKey,
+          explainStyleLabel: p.styleLabel,
+          explainTopicKey: p.topicKey,
+          explainTopicTitle: p.topicTitle,
+        };
+        markExplainStyleUsed(p.topicKey, p.styleKey);
+        pendingExplainRef.current = null;
+      }
+
+
       // обновляем "твои чаты" в библиотеке
       touchContinueItem();
 
@@ -361,13 +486,18 @@ export default function ChatPage() {
       return;
     }
 
-    const subjPrep = getSubjectPrepositional(context.subject);
-    const prompt = `Объясни тему «${topic}» по ${subjPrep} на уровне «${context.level}».
+    const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topic)}`;
+    const picked = pickNextExplainStyle(topicKeyForStyle);
+    const style = picked.next;
 
-Требования:
-1) Коротко и понятно (без воды).
-2) 1–2 примера.
-3) В конце — 2 вопроса для самопроверки.`;
+    pendingExplainRef.current = {
+      topicKey: topicKeyForStyle,
+      styleKey: style.key,
+      styleLabel: style.label,
+      topicTitle: topic,
+    };
+
+    const prompt = buildExplainPrompt({ topicTitle: topic, style });
 
     const userMessage = {
       id: Date.now(),
@@ -375,14 +505,6 @@ export default function ChatPage() {
       content: prompt,
       createdAt: new Date().toISOString(),
     };
-    // Save a smart topic candidate from the user's message for other pages (Tests/Goals/Progress)
-    try {
-      const cand = normalizeTopicKey(text);
-      if (cand && cand !== "Общее") {
-        window.localStorage.setItem("noolixLastTopicCandidate", cand);
-      }
-    } catch (_) {}
-
 
     const newMessages = clampHistory([...(messages || []), userMessage]);
 
@@ -596,6 +718,10 @@ export default function ChatPage() {
         title,
         subject: context.subject,
         level: context.level,
+        topic: message?.meta?.explainTopicTitle || currentTopic || "",
+        explainStyleKey: message?.meta?.explainStyleKey || "",
+        explainStyleLabel: message?.meta?.explainStyleLabel || "",
+
         from: "из диалога",
         savedAt: new Date().toISOString(),
         messageId: msgId,
@@ -615,7 +741,14 @@ export default function ChatPage() {
       showToast("Сохранено в библиотеку");
 
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
-      const topicKey = normalizeTopicKey(currentTopic);
+      const metaTopic = message?.meta?.explainTopicTitle || currentTopic || "";
+      let topicKey = normalizeTopicKey(metaTopic);
+      if (!topicKey || topicKey === "Общее") {
+        try {
+          const last = window.localStorage.getItem("noolixLastTopicCandidate");
+          if (last) topicKey = normalizeTopicKey(last);
+        } catch (_) {}
+      }
       touchProgressFromDialogSave(topicKey);
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
@@ -726,15 +859,33 @@ export default function ChatPage() {
     let text = "";
 
     switch (key) {
-      case "explain":
-        if (currentTopic) {
-          text = `Объясни, пожалуйста, тему «${currentTopic}» по ${subjectPrep} простыми словами и приведи 1–2 базовых примера.`;
-        } else if (currentGoal) {
-          text = `Объясни, пожалуйста, одну из ключевых тем по ${subjectPrep}, которые важны для цели «${currentGoal.title}». Начни с базовых понятий.`;
-        } else {
-          text = `Объясни, пожалуйста, тему по ${subjectPrep}, которая мне сейчас сложна.`;
+      case "explain": {
+        // prefer explicit topic, else last candidate, else goal title
+        let topicTitle = "";
+        if (currentTopic) topicTitle = currentTopic;
+        else if (currentGoal && currentGoal.title) topicTitle = currentGoal.title;
+
+        if (!topicTitle && typeof window !== "undefined") {
+          try {
+            const last = window.localStorage.getItem("noolixLastTopicCandidate");
+            if (last) topicTitle = last;
+          } catch (_) {}
         }
+
+        const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topicTitle)}`;
+        const picked = pickNextExplainStyle(topicKeyForStyle);
+        const style = picked.next;
+
+        pendingExplainRef.current = {
+          topicKey: topicKeyForStyle,
+          styleKey: style.key,
+          styleLabel: style.label,
+          topicTitle: topicTitle || currentTopic || "",
+        };
+
+        text = buildExplainPrompt({ topicTitle: topicTitle || currentTopic || "тему", style });
         break;
+      }
       case "steps":
         text = `Разбери задачу по ${subjectPrep} по шагам. Сначала уточни условия/данные, затем покажи решение и проверку.`;
         break;
