@@ -22,8 +22,8 @@ const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
-const QUESTION_BANK_MAX_PER_TOPIC = 80;
-const QUESTION_AVOID_LIMIT = 12;
+const QUESTION_BANK_MAX_PER_TOPIC = 220;
+const QUESTION_AVOID_LIMIT = 24;
 
 const safeJsonParse = (raw, fallback) => {
   try { return JSON.parse(raw); } catch (_) { return fallback; }
@@ -40,7 +40,30 @@ const getQuestionStem = (q) => {
   const raw = String(q?.question || q?.prompt || "").replace(/\s+/g, " ").trim();
   if (!raw) return "";
   // cut long texts: enough for avoidance, not too big for prompt
-  return raw.length > 140 ? raw.slice(0, 140) + "…" : raw;
+  return raw.length > 220 ? raw.slice(0, 220) + "…" : raw;
+};
+
+const getQuestionSignature = (q) => {
+  const text = String(q?.question || q?.prompt || "").toLowerCase();
+  const cleaned = text
+    .replace(/[^a-z0-9а-яё\s]+/gi, " " )
+    .replace(/\s+/g, " " )
+    .trim();
+  if (!cleaned) return "";
+  const stop = new Set([
+    "и","в","во","на","по","к","ко","из","у","о","об","от","для","что","это","как","какой","какая","какие","сколько","найди","определи","выбери","верно","неверно"
+  ]);
+  const tokens = cleaned.split(" " ).filter(t => t && t.length > 2 && !stop.has(t));
+  // keep first 14 unique tokens to represent 'meaning'
+  const uniq = [];
+  const seen = new Set();
+  for (const t of tokens) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    uniq.push(t);
+    if (uniq.length >= 14) break;
+  }
+  return uniq.join(" " );
 };
 
 const loadQuestionBank = () => {
@@ -69,10 +92,20 @@ const getAvoidStems = ({ subject, level, topicTitle, limit = QUESTION_AVOID_LIMI
   const seen = new Set();
   for (let i = arr.length - 1; i >= 0 && uniq.length < limit; i--) {
     const stem = String(arr[i]?.stem || "").trim();
+    const sig = String(arr[i]?.sig || "").trim();
+    // use signature first (better anti-paraphrase), then stem
+    if (sig) {
+      const k = ("sig:" + sig).toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        uniq.push(`ключевые слова: ${sig}`);
+        if (uniq.length >= limit) break;
+      }
+    }
     if (!stem) continue;
-    const k = stem.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
+    const k2 = stem.toLowerCase();
+    if (seen.has(k2)) continue;
+    seen.add(k2);
     uniq.push(stem);
   }
   return uniq;
@@ -88,7 +121,8 @@ const pushQuestionsToBank = ({ subject, level, topicTitle, questions }) => {
   for (const q of Array.isArray(questions) ? questions : []) {
     const stem = getQuestionStem(q);
     if (!stem) continue;
-    next.push({ stem, ts: now });
+    const sig = getQuestionSignature(q);
+    next.push({ stem, sig, ts: now });
   }
 
   // keep last N
