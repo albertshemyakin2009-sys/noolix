@@ -110,13 +110,15 @@ export default async function handler(req, res) {
       ? avoid
           .map((s) => String(s || "").trim())
           .filter(Boolean)
-          .slice(0, 12)
+          .slice(0, 24)
       : [];
 
     const avoidSection = avoidListForPrompt.length
       ? `\n\nНЕ ПОВТОРЯЙ вопросы, похожие на эти формулировки (уже были):\n${avoidListForPrompt
           .map((s) => `- ${s}`)
-          .join('\n')}\n\nСделай вопросы и типы заданий другими (например: вместо прямого вычисления — задача на применение, сравнение, выбор свойства, контрпример и т.д.).`
+          .join('\n')}\n\nСделай вопросы и типы заданий другими (например: вместо прямого вычисления — задача на применение, сравнение, выбор свойства, контрпример, короткая текстовая задача, интерпретация, подбор примера и т.д.).
+
+ЖЁСТКОЕ ПРАВИЛО: если вопрос по смыслу похож на любой из списка (совпадение ключевых слов/структуры/чисел), он ЗАПРЕЩЁН — придумай другой.`
       : "";
 
     const systemPrompt =
@@ -178,9 +180,56 @@ ${avoidSection}
 Только один корректный JSON-объект.
 `;
 
-    const openaiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
+    
+
+    const normalizeText = (s) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яё\s]+/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const tokenize = (s) => {
+      const t = normalizeText(s);
+      if (!t) return [];
+      const stop = new Set([
+        "и","в","во","на","по","к","ко","с","со","а","но","или","что","это","как","для","от","из","у","о","об","про","при","над","под","до","после","без","же","ли","не","ни",
+      ]);
+      return t.split(" ").filter((w) => w && w.length > 2 && !stop.has(w));
+    };
+
+    const jaccard = (a, b) => {
+      const A = new Set(tokenize(a));
+      const B = new Set(tokenize(b));
+      if (A.size === 0 || B.size === 0) return 0;
+      let inter = 0;
+      for (const x of A) if (B.has(x)) inter += 1;
+      const union = A.size + B.size - inter;
+      return union ? inter / union : 0;
+    };
+
+    const isTooSimilar = (qText, avoidArr) => {
+      for (const a of avoidArr) {
+        if (jaccard(qText, a) >= 0.55) return true;
+      }
+      return false;
+    };
+
+    const hasInternalDuplicates = (qs) => {
+      const arr = Array.isArray(qs) ? qs : [];
+      for (let i = 0; i < arr.length; i++) {
+        for (let j = i + 1; j < arr.length; j++) {
+          const qi = arr[i]?.question;
+          const qj = arr[j]?.question;
+          if (!qi || !qj) continue;
+          if (jaccard(qi, qj) >= 0.72) return true;
+        }
+      }
+      return false;
+    };
+
+    const callOpenAI = async ({ prompt, temperature }) => {
+      const resp = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -190,27 +239,66 @@ ${avoidSection}
           model: "gpt-4o-mini",
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
+            { role: "user", content: prompt },
           ],
-          temperature: difficultyToken === "hard" ? 0.5 : 0.3,
+          temperature,
           max_tokens: 1200,
         }),
-      }
-    );
-
-    if (!openaiResponse.ok) {
-      const errorBody = await openaiResponse.text();
-      console.error("OpenAI API error:", openaiResponse.status, errorBody);
-      return res.status(500).json({
-        error: "Ошибка при обращении к OpenAI API",
-        details: errorBody,
       });
+
+      if (!resp.ok) {
+        const errorBody = await resp.text();
+        console.error("OpenAI API error:", resp.status, errorBody);
+        throw new Error(errorBody || `OpenAI error ${resp.status}`);
+      }
+
+      const completion = await resp.json();
+      const raw = completion.choices?.[0]?.message?.content && String(completion.choices[0].message.content).trim();
+      if (!raw) throw new Error("Модель не вернула контент");
+      return raw;
+    };
+let raw = "";
+
+    // HARD anti-repeat mode: retry once or twice if overlap is high.
+    const avoidHard = avoidListForPrompt;
+    const maxAttempts = 3;
+    const baseTemp = difficultyToken === "hard" ? 0.6 : 0.45;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const temp = baseTemp + (attempt - 1) * 0.12;
+      const attemptPrompt = attempt === 1
+        ? userPrompt
+        : userPrompt + `
+
+ПРЕДЫДУЩАЯ ПОПЫТКА ПОВТОРЯЛАСЬ. Попытка #${attempt}: СДЕЛАЙ СИЛЬНО ИНАЧЕ. Не используй те же числа/шаблоны/типы задач. Сконцентрируйся на других подтипах темы.`;
+
+      try {
+        raw = await callOpenAI({ prompt: attemptPrompt, temperature: temp });
+      } catch (e) {
+        // if OpenAI fails, rethrow on last attempt
+        if (attempt === maxAttempts) throw e;
+        continue;
+      }
+
+      // try parse and early validate repeats
+      let parsedTry = null;
+      try { parsedTry = JSON.parse(raw); } catch (_) { parsedTry = null; }
+      const qsTry = Array.isArray(parsedTry?.questions) ? parsedTry.questions : [];
+
+      const anySimilar = qsTry.some((q) => isTooSimilar(q?.question, avoidHard));
+      const dup = hasInternalDuplicates(qsTry);
+
+      if (!anySimilar && !dup && qsTry.length > 0) {
+        break;
+      }
+
+      if (attempt === maxAttempts) {
+        // keep raw as is, will fall through to normal parsing/cleanup
+        break;
+      }
     }
 
-    const completion = await openaiResponse.json();
-    const raw =
-      completion.choices?.[0]?.message?.content &&
-      String(completion.choices[0].message.content).trim();
+    // parsed will be obtained below from `raw`
 
     if (!raw) {
       return res.status(500).json({
