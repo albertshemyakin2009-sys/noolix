@@ -19,6 +19,83 @@ const TEST_HISTORY_KEY = "noolixTestsHistory";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
+
+// Anti-repeats (MVP): remember recent question stems per subject+level+topic
+const QUESTION_BANK_KEY = "noolixQuestionBankV1";
+const QUESTION_BANK_MAX_PER_TOPIC = 80;
+const QUESTION_AVOID_LIMIT = 12;
+
+const safeJsonParse = (raw, fallback) => {
+  try { return JSON.parse(raw); } catch (_) { return fallback; }
+};
+
+const getTopicScopeKey = (subject, level, topicTitle) => {
+  const s = String(subject || "").trim() || "_";
+  const l = String(level || "").trim() || "_";
+  const t = normalizeTopicKey(topicTitle);
+  return `${s}|${l}|${t}`;
+};
+
+const getQuestionStem = (q) => {
+  const raw = String(q?.question || q?.prompt || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  // cut long texts: enough for avoidance, not too big for prompt
+  return raw.length > 140 ? raw.slice(0, 140) + "…" : raw;
+};
+
+const loadQuestionBank = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(QUESTION_BANK_KEY);
+    return raw ? safeJsonParse(raw, {}) : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const saveQuestionBank = (bank) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(QUESTION_BANK_KEY, JSON.stringify(bank || {}));
+  } catch (_) {}
+};
+
+const getAvoidStems = ({ subject, level, topicTitle, limit = QUESTION_AVOID_LIMIT }) => {
+  const bank = loadQuestionBank();
+  const key = getTopicScopeKey(subject, level, topicTitle);
+  const arr = Array.isArray(bank?.[key]) ? bank[key] : [];
+  // take most recent unique
+  const uniq = [];
+  const seen = new Set();
+  for (let i = arr.length - 1; i >= 0 && uniq.length < limit; i--) {
+    const stem = String(arr[i]?.stem || "").trim();
+    if (!stem) continue;
+    const k = stem.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(stem);
+  }
+  return uniq;
+};
+
+const pushQuestionsToBank = ({ subject, level, topicTitle, questions }) => {
+  const bank = loadQuestionBank();
+  const key = getTopicScopeKey(subject, level, topicTitle);
+  const prev = Array.isArray(bank?.[key]) ? bank[key] : [];
+  const next = prev.slice();
+
+  const now = Date.now();
+  for (const q of Array.isArray(questions) ? questions : []) {
+    const stem = getQuestionStem(q);
+    if (!stem) continue;
+    next.push({ stem, ts: now });
+  }
+
+  // keep last N
+  bank[key] = next.slice(-QUESTION_BANK_MAX_PER_TOPIC);
+  saveQuestionBank(bank);
+};
+
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const getToday = () => new Date().toISOString().slice(0, 10);
 
@@ -451,31 +528,56 @@ export default function TestsPage() {
     setAnalysis("");
     setResult(null);
     try {
-      if (!context?.subject || !context?.level) throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
-      const titles = Array.isArray(forcedTopicTitles) ? forcedTopicTitles.filter(Boolean) : [];
+      if (!context?.subject || !context?.level) {
+        throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
+      }
+      const titles = Array.isArray(forcedTopicTitles)
+        ? forcedTopicTitles.map(normalizeTopicKey).filter(Boolean)
+        : [];
       if (!titles.length) throw new Error("Нет темы для закрепления.");
+
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      const res = await       setSentTopicForGeneration(Array.isArray(topicsToSend) ? (topicsToSend[0]?.title || topicsToSend[0] || "") : "");
-fetch("/api/generate-test", {
+      setSentTopicForGeneration(titles[0] || "");
+
+      const avoid = getAvoidStems({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: titles[0] || "",
+      });
+
+      const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: context.subject, topics: topicsToSend, questionCount: count }),
+        body: JSON.stringify({
+          subject: context.subject,
+          topics: topicsToSend,
+          questionCount: count,
+          difficulty: "medium",
+          avoid,
+        }),
       });
+
       if (!res.ok) {
-        const msg = await res.text();
+        let msg = "";
+        try { msg = (await res.json())?.error || ""; } catch (_) {}
         throw new Error(msg || "Не удалось сгенерировать тест");
       }
+
       const data = await res.json();
       const q = Array.isArray(data?.questions) ? data.questions : [];
       if (!q.length) throw new Error("Пустой тест. Попробуй ещё раз.");
+
+      // Real topic from server
+      const serverTopic = normalizeTopicKey(data?.topicTitle || q?.[0]?.topicTitle || titles[0] || "");
+
       resetSession();
-      setQuestions(q);
+      setQuestions(q.map((qq) => ({ ...qq, topicTitle: qq?.topicTitle || serverTopic })));
       setUserAnswers(new Array(q.length).fill(null));
       const nowMs = Date.now();
       setQuestionShownAt(new Array(q.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(q.length).fill(null));
       setConfidence(new Array(q.length).fill("low"));
-      setTopic(titles[0] || "");
+      setTopic(serverTopic);
       setGenerating(false);
     } catch (e) {
       setError(e?.message || "Ошибка");
@@ -522,6 +624,12 @@ fetch("/api/generate-test", {
       // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
       const topicsPayload = titles.map((t) => ({ id: slugifyId(t), title: t }));
 
+      const avoid = getAvoidStems({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: titles[0] || "",
+      });
+
       const res = await fetch("/api/generate-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -530,6 +638,7 @@ fetch("/api/generate-test", {
           topics: topicsPayload,
           questionCount: 5,
           difficulty: "medium",
+          avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
       });
@@ -632,8 +741,21 @@ fetch("/api/generate-test", {
 
       setResult({ correctCount, totalCount, scorePercent });
 
-      const finalTopic =
-        topic?.trim() || questions?.[0]?.topicTitle || `Базовые темы по ${context.subject}`;
+      const topicRaw = String(topic || "").trim();
+
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
+      const finalTopic = normalizeTopicKey((!isDiag && topicRaw)
+        ? topicRaw
+        : (questions?.[0]?.topicTitle || sentTopicForGeneration || `Базовые темы по ${context.subject}`));
+
+      // Remember questions to avoid repeats in future tests
+      pushQuestionsToBank({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: finalTopic,
+        questions,
+      });
+
 
       // агрегаты по ошибкам
       const avgTime =
@@ -722,6 +844,14 @@ fetch("/api/generate-test", {
       finalTopic = normalizeTopicKey(finalTopic);
 
       try { window.localStorage.setItem(LAST_TOPIC_KEY, finalTopic); } catch (_) {}
+
+      // Remember questions to avoid repeats in future tests
+      pushQuestionsToBank({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: finalTopic,
+        questions,
+      });
 
       const res = await fetch("/api/review-test", {
         method: "POST",
