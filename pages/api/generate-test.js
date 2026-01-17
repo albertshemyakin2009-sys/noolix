@@ -21,6 +21,8 @@ export default async function handler(req, res) {
       topics,
       questionCount = 5,
       difficulty = "medium",
+      // Anti-repeats: recent question stems to avoid
+      avoid = [],
       // optional: client may mark diagnostic runs
       diagnostic = false,
     } = req.body || {};
@@ -104,6 +106,19 @@ export default async function handler(req, res) {
       })
       .join("\n");
 
+    const avoidListForPrompt = Array.isArray(avoid)
+      ? avoid
+          .map((s) => String(s || "").trim())
+          .filter(Boolean)
+          .slice(0, 12)
+      : [];
+
+    const avoidSection = avoidListForPrompt.length
+      ? `\n\nНЕ ПОВТОРЯЙ вопросы, похожие на эти формулировки (уже были):\n${avoidListForPrompt
+          .map((s) => `- ${s}`)
+          .join('\n')}\n\nСделай вопросы и типы заданий другими (например: вместо прямого вычисления — задача на применение, сравнение, выбор свойства, контрпример и т.д.).`
+      : "";
+
     const systemPrompt =
       "Ты — опытный преподаватель и составитель школьных тестов (ЕГЭ, ОГЭ, олимпиадных заданий) по разным предметам. " +
       "Твоя задача — генерировать проверяемые тестовые вопросы с одним правильным ответом и понятной структурой JSON.";
@@ -132,6 +147,9 @@ ${topicsListForPrompt}
 - Варианты ответа должны быть правдоподобными (никаких очевидно шуточных или бессмысленных вариантов).
 - Нельзя повторять один и тот же вопрос.
 - Формулировки должны быть естественными для школьных заданий.
+${avoidSection}
+
+- Дополнительно: НЕ повторяй и НЕ перефразируй вопросы, похожие на список ниже (это уже спрашивали раньше).
 
 Обязательный формат ответа (СТРОГО JSON, без текста до или после):
 
