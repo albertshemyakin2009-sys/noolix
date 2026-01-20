@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { subject, topic, questions, userAnswers } = req.body || {};
+    const { subject, topic, questions, userAnswers, reviewStyleKey, reviewStyleLabel, reviewStyleInstruction } = req.body || {};
 
     if (!Array.isArray(questions) || !Array.isArray(userAnswers)) {
       return res.status(400).json({
@@ -98,11 +98,18 @@ export default async function handler(req, res) {
 
 Пиши по-русски, структурировано, с подзаголовками "Вопрос X", списками и понятным языком.
 Избегай лишней воды, но НЕ будь слишком кратким.
+
+
+Доп. стиль разбора (если задан):
+- Стиль: ${reviewStyleLabel || ""}
+- Указание: ${reviewStyleInstruction || ""}
+Если стиль/указание пустые — используй базовый формат.
 `.trim();
 
     const userPrompt = `
 Предмет: ${subjectText}
 Тема(ы): ${topicText || "не указаны явно"}
+Стиль разбора: ${reviewStyleLabel || "Стандарт"}
 
 Ниже перечислены вопросы, в которых ученик ошибся (с вариантами, его ответом и правильным ответом):
 
@@ -145,7 +152,7 @@ ${mistakesText}
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || "";
 
-    return res.status(200).json({ analysis: content });
+    return res.status(200).json({ analysis: content, styleUsed: { key: reviewStyleKey || "", label: reviewStyleLabel || "" } });
   } catch (error) {
     console.error("review-test API error:", error);
     return res.status(500).json({
