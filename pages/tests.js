@@ -22,6 +22,89 @@ const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
+
+// Review styles: rotate mistake analysis styles so repeated reviews feel different
+const REVIEW_STYLE_KEY = "noolixReviewStyleHistoryV1";
+
+const REVIEW_STYLES = [
+  {
+    key: "standard",
+    label: "Стандарт",
+    instruction:
+      "Сделай разбор по каждому вопросу: где ошибка → почему → как правильно. 1 пример и 1 мини‑упражнение.",
+  },
+  {
+    key: "steps",
+    label: "По шагам",
+    instruction:
+      "Разбор строго по шагам: (1) что нужно было сделать, (2) где свернул не туда, (3) как проверить себя, (4) мини‑пример.",
+  },
+  {
+    key: "traps",
+    label: "Ловушки",
+    instruction:
+      "Фокус на типичных ловушках: почему этот вариант кажется правильным, но это ошибка. Дай чек‑лист проверки.",
+  },
+  {
+    key: "algorithm",
+    label: "Алгоритм",
+    instruction:
+      "Дай короткий алгоритм решения (2–6 пунктов), затем разбор по каждому вопросу через этот алгоритм.",
+  },
+  {
+    key: "training",
+    label: "Мини‑тренировка",
+    instruction:
+      "После разбора добавь 2 похожих мини‑задания (без ответа), чтобы закрепить именно эту ошибку.",
+  },
+];
+
+const loadReviewStyleHistory = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(REVIEW_STYLE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const saveReviewStyleHistory = (map) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REVIEW_STYLE_KEY, JSON.stringify(map || {}));
+  } catch (_) {}
+};
+
+const pickNextReviewStyle = (topicKey) => {
+  const key = String(topicKey || "").trim() || "general";
+  const map = loadReviewStyleHistory();
+  const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
+  const used = Array.isArray(entry.used) ? entry.used : [];
+
+  let next = REVIEW_STYLES.find((s) => !used.includes(s.key));
+  if (!next) {
+    next = REVIEW_STYLES[0];
+    entry.used = [];
+  }
+
+  return { next, key, map, entry };
+};
+
+const markReviewStyleUsed = (topicKey, styleKey) => {
+  const key = String(topicKey || "").trim() || "general";
+  const map = loadReviewStyleHistory();
+  const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
+
+  const used = Array.isArray(entry.used) ? entry.used : [];
+  if (styleKey && !used.includes(styleKey)) used.push(styleKey);
+
+  map[key] = { ...entry, used, updatedAt: new Date().toISOString() };
+  saveReviewStyleHistory(map);
+};
+
+
 const QUESTION_BANK_MAX_PER_TOPIC = 220;
 const QUESTION_AVOID_LIMIT = 24;
 
@@ -460,6 +543,7 @@ export default function TestsPage() {
 
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
+  const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
@@ -879,6 +963,12 @@ export default function TestsPage() {
 
       try { window.localStorage.setItem(LAST_TOPIC_KEY, finalTopic); } catch (_) {}
 
+      const reviewTopicKey = `${context.subject}|${context.level}|${finalTopic}`;
+      const pickedReview = pickNextReviewStyle(reviewTopicKey);
+      const reviewStyle = pickedReview.next;
+      setReviewStyleLabel(reviewStyle.label);
+
+
       // Remember questions to avoid repeats in future tests
       pushQuestionsToBank({
         subject: context.subject,
@@ -895,6 +985,9 @@ export default function TestsPage() {
           topic: finalTopic,
           questions,
           userAnswers,
+          reviewStyleKey: reviewStyle?.key || "",
+          reviewStyleLabel: reviewStyle?.label || "",
+          reviewStyleInstruction: reviewStyle?.instruction || "",
         }),
       });
 
@@ -908,6 +1001,7 @@ export default function TestsPage() {
 
       const data = await res.json();
       setAnalysis(typeof data?.analysis === "string" ? data.analysis : "");
+      try { markReviewStyleUsed(reviewTopicKey, reviewStyle?.key); } catch (_) {}
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка разбора ошибок.");
     } finally {
@@ -1426,6 +1520,12 @@ export default function TestsPage() {
                     <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                       Разбор ошибок
                     </p>
+                    {reviewStyleLabel ? (
+                      <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                        <span>🧠</span>
+                        <span>Разбор: {reviewStyleLabel}</span>
+                      </div>
+                    ) : null}
                     <div className="text-xs md:text-sm text-purple-50 whitespace-pre-wrap leading-relaxed">
                       
               {result && Array.isArray(questions) && Array.isArray(userAnswers) && questions.length > 0 ? (
