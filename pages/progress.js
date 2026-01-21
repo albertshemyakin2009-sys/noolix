@@ -82,6 +82,15 @@ function formatTimeShort(sec) {
   return r ? `${m}м ${r}с` : `${m}м`;
 }
 
+function daysAgo(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const diffMs = Date.now() - d.getTime();
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return days >= 0 ? days : 0;
+}
+
 
 export default function ProgressPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -307,6 +316,46 @@ export default function ProgressPage() {
     arr.sort((a, b) => a.score - b.score);
     return arr;
   }, [knowledgeMap, context.subject, context.level]);
+
+  const recWeak = useMemo(() => {
+    return (subjectTopics || []).slice().sort((a, b) => a.score - b.score).slice(0, 3);
+  }, [subjectTopics]);
+
+  const recFalseConfidence = useMemo(() => {
+    const arr = (subjectTopics || [])
+      .filter((t) => {
+        const s = t?.signals || null;
+        const cw = s?.confidentWrongCount || s?.confidentWrong || 0;
+        const tc = s?.testsCount || 0;
+        if (!cw) return false;
+        // show if at least 1 confident wrong, stronger if 2+
+        if (cw >= 2) return true;
+        // or if ratio is high
+        return tc >= 2 && cw / tc >= 0.35;
+      })
+      .sort((a, b) => {
+        const aw = (a?.signals?.confidentWrongCount || a?.signals?.confidentWrong || 0);
+        const bw = (b?.signals?.confidentWrongCount || b?.signals?.confidentWrong || 0);
+        return bw - aw;
+      })
+      .slice(0, 4);
+    return arr;
+  }, [subjectTopics]);
+
+  const recStale = useMemo(() => {
+    const now = Date.now();
+    const arr = (subjectTopics || [])
+      .map((t) => {
+        const lastTest = t?.signals?.lastTestAt || t?.signals?.lastAt || t?.updatedAt || null;
+        const days = daysAgo(lastTest);
+        return { ...t, _staleDays: days };
+      })
+      .filter((t) => typeof t._staleDays === "number" && t._staleDays >= 10 && (t.score || 0) < 0.95)
+      .sort((a, b) => (b._staleDays || 0) - (a._staleDays || 0))
+      .slice(0, 4);
+    return arr;
+  }, [subjectTopics]);
+
 
   const stats = useMemo(() => {
     const total = subjectTopics.length;
@@ -671,15 +720,13 @@ export default function ProgressPage() {
 
               {subjectTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока рекомендаций нет: пройди мини-тест или сохрани объяснение в диалоге.
+                  Пока рекомендаций нет: пройди мини‑тест или сохрани объяснение в диалоге.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {subjectTopics
-                    .slice()
-                    .sort((a, b) => a.score - b.score)
-                    .slice(0, 3)
-                    .map((t) => (
+                <div className="space-y-3">
+                  {/* 1) Weak topics */}
+                  <div className="space-y-2">
+                    {recWeak.map((t) => (
                       <div
                         key={t.topic}
                         className="bg-black/30 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
@@ -693,8 +740,14 @@ export default function ProgressPage() {
 
                         <div className="flex gap-2 flex-shrink-0">
                           <a
+                            href={`/tests?topic=${encodeURIComponent(t.topic)}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-[11px] font-semibold text-purple-50 hover:bg-white/15 transition"
+                          >
+                            Мини‑тест
+                          </a>
+                          <a
                             href={`/chat?topic=${encodeURIComponent(t.topic)}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-purple-500/80 border border-purple-300/50 text-[11px] font-semibold text-white shadow-md hover:bg-purple-500/90 transition"
                           >
                             Разобрать →
                           </a>
@@ -706,16 +759,67 @@ export default function ProgressPage() {
                                 source: "manual",
                               })
                             }
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-white/10 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Изучено ✓
                           </button>
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* 2) False confidence */}
+                  {recFalseConfidence.length > 0 && (
+                    <div className="bg-black/20 border border-white/10 rounded-2xl p-3">
+                      <p className="text-xs font-semibold text-purple-50 mb-1">
+                        Сейчас важно подтянуть: ложная уверенность
+                      </p>
+                      <p className="text-[11px] text-purple-200/75 mb-2">
+                        Здесь есть уверенные ошибки — лучше быстро перепроверить базу и пройти мини‑тест.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {recFalseConfidence.map((t) => {
+                          const cw = t?.signals?.confidentWrongCount || t?.signals?.confidentWrong || 0;
+                          return (
+                            <a
+                              key={`fc-${t.topic}`}
+                              href={`/tests?topic=${encodeURIComponent(t.topic)}`}
+                              className="px-3 py-1.5 rounded-full bg-amber-300/15 border border-amber-300/35 text-[11px] text-amber-100 hover:bg-amber-300/20 transition"
+                              title="Открыть мини‑тест по теме"
+                            >
+                              {t.topic} · увер. ошибок: {cw}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3) Stale topics */}
+                  {recStale.length > 0 && (
+                    <div className="bg-black/20 border border-white/10 rounded-2xl p-3">
+                      <p className="text-xs font-semibold text-purple-50 mb-1">Давно не повторяли</p>
+                      <p className="text-[11px] text-purple-200/75 mb-2">
+                        Быстрый мини‑тест вернёт уверенность без лишней нагрузки.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {recStale.map((t) => (
+                          <a
+                            key={`st-${t.topic}`}
+                            href={`/tests?topic=${encodeURIComponent(t.topic)}`}
+                            className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-purple-50 hover:bg-white/10 transition"
+                            title="Открыть мини‑тест по теме"
+                          >
+                            {t.topic} · {t._staleDays} дн назад
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </section>
+
+</section>
 
 {/* filters */}
             <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
