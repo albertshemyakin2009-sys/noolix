@@ -461,10 +461,11 @@ const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
 };
 
 
-const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount }) => {
+const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount, signals }) => {
   if (typeof window === "undefined") return { ok: false, error: "no-window" };
   const topicKey = normalizeTopicKey(topic);
-  if (!subject || !level || !topicKey || !totalCount || totalCount <= 0) return { ok: false, error: "missing-context" };
+  if (!subject || !level || !topicKey || !totalCount || totalCount <= 0)
+    return { ok: false, error: "missing-context" };
 
   try {
     const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
@@ -473,13 +474,65 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
     if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
     if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
 
-    const newScore = clamp01(correctCount / totalCount);
+    // base score from correctness
+    let newScore = clamp01(correctCount / totalCount);
+
+    // мягкая корректировка по сигналам (MVP)
+    const sig = signals && typeof signals === "object" ? signals : null;
+    if (sig) {
+      const confidentWrong = typeof sig.confidentWrong === "number" ? sig.confidentWrong : 0;
+      const uncertainCorrect = typeof sig.uncertainCorrect === "number" ? sig.uncertainCorrect : 0;
+      const confidentCorrect = typeof sig.confidentCorrect === "number" ? sig.confidentCorrect : 0;
+      const avgTime = typeof sig.avgTimeSec === "number" ? sig.avgTimeSec : null;
+
+      // уверенные ошибки — сильнее штраф
+      if (confidentWrong > 0) {
+        const frac = confidentWrong / Math.max(1, totalCount);
+        newScore = clamp01(newScore - 0.10 * frac);
+      }
+
+      // уверенные правильные — небольшой бонус (не разгоняем резко)
+      if (confidentCorrect > 0 && newScore < 0.95) {
+        const frac = confidentCorrect / Math.max(1, totalCount);
+        newScore = clamp01(newScore + 0.03 * frac);
+      }
+
+      // неуверенные правильные — маленький бонус, но меньше чем уверенные
+      if (uncertainCorrect > 0 && newScore < 0.95) {
+        const frac = uncertainCorrect / Math.max(1, totalCount);
+        newScore = clamp01(newScore + 0.015 * frac);
+      }
+
+      // слишком быстро + плохой результат => чуть-чуть штраф (невнимательность)
+      if (avgTime !== null && avgTime < 6 && newScore < 0.6) {
+        newScore = clamp01(newScore - 0.04);
+      }
+    }
+
     const prev = km[subject][level][topicKey] || {};
     const nextScore = blendScore(prev.score, newScore, 0.35);
+
+    // накопительная статистика по сигналам
+    const prevSig = prev.signals && typeof prev.signals === "object" ? prev.signals : {};
+    const nextSig = { ...prevSig };
+    nextSig.testsCount = (typeof prevSig.testsCount === "number" ? prevSig.testsCount : 0) + 1;
+
+    if (sig) {
+      const avgTime = typeof sig.avgTimeSec === "number" ? sig.avgTimeSec : null;
+      if (avgTime !== null) {
+        const prevAvg = typeof prevSig.avgTimeSec === "number" ? prevSig.avgTimeSec : null;
+        nextSig.avgTimeSec = prevAvg === null ? avgTime : +(prevAvg * 0.7 + avgTime * 0.3).toFixed(2);
+      }
+      nextSig.confidentWrong = (typeof prevSig.confidentWrong === "number" ? prevSig.confidentWrong : 0) + (sig.confidentWrong || 0);
+      nextSig.uncertainCorrect = (typeof prevSig.uncertainCorrect === "number" ? prevSig.uncertainCorrect : 0) + (sig.uncertainCorrect || 0);
+      nextSig.confidentCorrect = (typeof prevSig.confidentCorrect === "number" ? prevSig.confidentCorrect : 0) + (sig.confidentCorrect || 0);
+      nextSig.lastTestAt = new Date().toISOString();
+    }
 
     km[subject][level][topicKey] = {
       ...prev,
       score: nextScore,
+      signals: nextSig,
       updatedAt: getToday(),
     };
 
@@ -888,12 +941,39 @@ export default function TestsPage() {
       };
 
       // обновляем карту знаний
+            // сигналы для прогресса: уверенность + время
+      let uncertainCorrectCount = 0;
+      let confidentCorrectCount = 0;
+      for (let i = 0; i < questions.length; i++) {
+        const ua = userAnswers[i];
+        const isCorrect = typeof ua === "number" && ua === questions[i].correctIndex;
+        if (!isCorrect) continue;
+        const conf = Array.isArray(confidence) ? confidence[i] : "low";
+        if (conf === "high") confidentCorrectCount += 1;
+        else uncertainCorrectCount += 1;
+      }
+
+      const timeNums = (Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : []).filter(
+        (x) => typeof x === "number" && Number.isFinite(x)
+      );
+      const avgTimeAll =
+        timeNums.length > 0 ? +(timeNums.reduce((s, x) => s + x, 0) / timeNums.length).toFixed(2) : null;
+
+      const signals = {
+        confidentWrong: confidentWrong,
+        uncertainCorrect: uncertainCorrectCount,
+        confidentCorrect: confidentCorrectCount,
+        avgTimeSec: avgTimeAll,
+      };
+
+      // обновляем карту знаний
       const kmRes = updateKnowledgeFromTest({
         subject: context.subject,
         level: context.level,
         topic: finalTopic,
         correctCount,
         totalCount,
+        signals,
       });
 
       // обновляем статистику ошибок
