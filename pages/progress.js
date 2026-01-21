@@ -30,20 +30,6 @@ function normalize(s) {
   return (s || "").toLowerCase().trim();
 }
 
-// Нормализация ключа темы:
-// - не даём ключом стать целому сообщению/предложению
-// - режем слишком длинные/"текстовые" ключи до "Общее"
-function normalizeTopicKey(t) {
-  const raw = String(t || "").trim();
-  if (!raw) return "Общее";
-  const words = raw.split(/\s+/).filter(Boolean);
-  const tooLong = raw.length > 60;
-  const tooManyWords = words.length > 8;
-  const hasSentenceMarks = /[\?\!\.]/.test(raw);
-  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-  return raw;
-}
-
 function clamp01(x) {
   if (typeof x !== "number" || Number.isNaN(x)) return 0;
   if (x < 0) return 0;
@@ -100,6 +86,7 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
+  const [activityStats, setActivityStats] = useState({ tests: 0, avgDurationSec: null, avgTimePerQSec: null, confidentWrong: 0, unsureCorrect: 0 });
 
   // init: context + knowledge map
   useEffect(() => {
@@ -185,6 +172,19 @@ export default function ProgressPage() {
       );
 
       setRecentTests(filtered.slice(0, 5));
+      // activity stats for current context
+      const testsCount = filtered.length;
+      const durations = filtered.map((x) => (typeof x?.durationSec === "number" ? x.durationSec : null)).filter((x) => typeof x === "number" && Number.isFinite(x) && x > 0);
+      const avgDurationSec = durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+
+      const avgT = filtered.map((x) => (typeof x?.avgTimePerQSec === "number" ? x.avgTimePerQSec : null)).filter((x) => typeof x === "number" && Number.isFinite(x) && x > 0);
+      const avgTimePerQSec = avgT.length ? (avgT.reduce((a, b) => a + b, 0) / avgT.length) : null;
+
+      const confidentWrong = filtered.reduce((acc, x) => acc + (Number.isFinite(x?.confidentWrong) ? x.confidentWrong : 0), 0);
+      const unsureCorrect = filtered.reduce((acc, x) => acc + (Number.isFinite(x?.unsureCorrect) ? x.unsureCorrect : 0), 0);
+
+      setActivityStats({ tests: testsCount, avgDurationSec, avgTimePerQSec, confidentWrong, unsureCorrect });
+
     } catch (e) {
       console.warn("Failed to read tests history", e);
       setRecentTests([]);
@@ -528,6 +528,16 @@ export default function ProgressPage() {
                           <p className="text-sm font-semibold truncate">{t.topic}</p>
                           <p className="text-[11px] text-purple-200/80">
                             Сейчас: {Math.round(t.score * 100)}%
+                          {t?.signals?.last ? (
+                            <span className="block text-[10px] text-purple-200/70 mt-1">
+                              Увер. ошибки: {t.signals.last.confidentWrong || 0} • Ср. {t.signals.last.avgTimePerQSec ? `${Math.round(t.signals.last.avgTimePerQSec)}с/в` : "—"}
+                            </span>
+                          ) : null}
+                            {t?.signals?.last ? (
+                              <span className="block text-[10px] text-purple-200/70 mt-1">
+                                Увер. ошибки: {t.signals.last.confidentWrong || 0} • Ср. {t.signals.last.avgTimePerQSec ? `${Math.round(t.signals.last.avgTimePerQSec)}с/в` : "—"}
+                              </span>
+                            ) : null}
                           </p>
                         </div>
 
@@ -690,6 +700,37 @@ export default function ProgressPage() {
             </section>
 
             {/* recent tests (если есть) */}
+            {(activityStats.tests || 0) > 0 && (
+              <section className="space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Активность
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/70">Тестов</p>
+                    <p className="text-lg font-semibold">{activityStats.tests}</p>
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/70">Сред. длительность</p>
+                    <p className="text-lg font-semibold">
+                      {activityStats.avgDurationSec ? `${Math.round(activityStats.avgDurationSec)}с` : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/70">Сред. время/вопрос</p>
+                    <p className="text-lg font-semibold">
+                      {activityStats.avgTimePerQSec ? `${Math.round(activityStats.avgTimePerQSec)}с` : "—"}
+                    </p>
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/70">Уверенные ошибки</p>
+                    <p className="text-lg font-semibold">{activityStats.confidentWrong || 0}</p>
+                    <p className="text-[10px] text-purple-200/60">(+ шатко верно: {activityStats.unsureCorrect || 0})</p>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {recentTests.length > 0 && (
               <section className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -733,4 +774,15 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}
+}const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  return raw;
+};
+
+
