@@ -358,7 +358,10 @@ export default function ProgressPage() {
       .sort((a, b) => (b._staleDays || 0) - (a._staleDays || 0))
       .slice(0, 4);
     return arr;
-  }, [subjectTopics]);
+  }, [eligibleForRecs]);
+
+  const hasAnyRecs = (recWeak.length + recFalseConfidence.length + recStale.length) > 0;
+
 
 
   const stats = useMemo(() => {
