@@ -141,6 +141,55 @@ const markExplainStyleUsed = (topicKey, styleKey) => {
 };
 
 
+// Need-launcher (умная навигация по потребностям) — компактная панель в /chat
+const getKnowledgeMapSafe = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("noolixKnowledgeMap");
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const getWeakTopicsForContext = (subject, level, limit = 3) => {
+  const km = getKnowledgeMapSafe();
+  if (!km || typeof km !== "object") return [];
+  const subj = String(subject || "").trim();
+  const lvl = String(level || "").trim();
+  const bucket = km?.[subj]?.[lvl];
+  if (!bucket || typeof bucket !== "object") return [];
+
+  const arr = Object.keys(bucket)
+    .map((topicKey) => {
+      const node = bucket[topicKey] || {};
+      const score = typeof node.score === "number" ? node.score : 0;
+      const signals = node.signals || {};
+      const confidentWrong = Number(signals.confidentWrong || 0);
+      return { topic: topicKey, score, confidentWrong };
+    })
+    .filter((x) => x.topic && x.score < 0.8);
+
+  // Prefer "ложная уверенность" first, then lowest score
+  arr.sort((a, b) => {
+    if (b.confidentWrong !== a.confidentWrong) return b.confidentWrong - a.confidentWrong;
+    return a.score - b.score;
+  });
+
+  return arr.slice(0, limit);
+};
+
+const getLastTopicCandidateSafe = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.localStorage.getItem("noolixLastTopicCandidate") || "").trim();
+  } catch (_) {
+    return "";
+  }
+};
+
+
+
 
 const clampHistory = (list) => {
   if (!Array.isArray(list)) return [];
@@ -183,6 +232,9 @@ export default function ChatPage() {
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const [userProfile, setUserProfile] = useState({ name: "", avatar: "panda" });
   const [toast, setToast] = useState(null);
+  const [needPanelOpen, setNeedPanelOpen] = useState(true);
+  const [planModal, setPlanModal] = useState(null);
+
   const toastTimerRef = useRef(null);
 
   const showToast = (text) => {
@@ -931,6 +983,75 @@ const callBackend = async (userMessages) => {
     );
   }
 
+  // Need-launcher computed picks
+  const userMsgCount = (messages || []).filter((m) => m?.role === "user").length;
+  const weakPicks = isClient ? getWeakTopicsForContext(context.subject, context.level, 3) : [];
+  const primaryTopic =
+    (String(currentTopic || "").trim() || "") ||
+    (weakPicks?.[0]?.topic ? String(weakPicks[0].topic).trim() : "") ||
+    (isClient ? getLastTopicCandidateSafe() : "");
+  const showNeedPanel = Boolean(
+    needPanelOpen && !thinking && (userMsgCount >= 1 || (weakPicks && weakPicks.length > 0))
+  );
+
+  const goToTests = (topic) => {
+    const subj = encodeURIComponent(context.subject || "");
+    const lvl = encodeURIComponent(context.level || "");
+    const t = String(topic || "").trim();
+    if (t) {
+      window.location.href = `/tests?subject=${subj}&level=${lvl}&topic=${encodeURIComponent(t)}`;
+    } else {
+      window.location.href = `/tests?subject=${subj}&level=${lvl}`;
+    }
+  };
+
+  const goToProgress = () => {
+    window.location.href = "/progress";
+  };
+
+  const openPlan10 = () => {
+    const variants = [
+      {
+        title: "План на 10 минут",
+        text:
+          "Соберём быстрый прогресс: 1 мини‑тест → 1 разбор ошибок → короткое закрепление.",
+        steps: [
+          { t: "2–3 мин", d: "Мини‑тест по теме" },
+          { t: "3–4 мин", d: "Разбор ошибок (без воды)" },
+          { t: "2–3 мин", d: "Сохраним короткое объяснение" },
+        ],
+      },
+      {
+        title: "Быстрый разгон",
+        text:
+          "Сейчас лучше всего: проверить базу и сразу закрыть слабое место.",
+        steps: [
+          { t: "3 мин", d: "Мини‑тест (база)" },
+          { t: "3 мин", d: "Ошибки → правильный ход" },
+          { t: "4 мин", d: "Мини‑закрепление (пример)" },
+        ],
+      },
+      {
+        title: "Точечная прокачка",
+        text:
+          "Сделаем один точный цикл, чтобы тема поднялась в прогрессе.",
+        steps: [
+          { t: "3 мин", d: "Мини‑тест" },
+          { t: "4 мин", d: "Разбор ошибок" },
+          { t: "3 мин", d: "Объяснение другим способом" },
+        ],
+      },
+    ];
+    const pick = variants[Math.floor(Math.random() * variants.length)];
+    setPlanModal({
+      ...pick,
+      topic: primaryTopic || "",
+      ts: Date.now(),
+    });
+  };
+
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
@@ -1230,6 +1351,81 @@ const callBackend = async (userMessages) => {
 
                 <div ref={messagesEndRef} />
               </div>
+
+              {planModal ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                  <div
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setPlanModal(null)}
+                  />
+                  <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-black/80 shadow-xl">
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-purple-200/80">
+                            {planModal.title}
+                          </p>
+                          <h3 className="text-base font-semibold mt-1">
+                            {planModal.topic ? `Тема: ${planModal.topic}` : "Стартуем"}
+                          </h3>
+                          <p className="text-sm text-purple-100/90 mt-2">
+                            {planModal.text}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setPlanModal(null)}
+                          className="text-xs px-3 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition"
+                        >
+                          Закрыть
+                        </button>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        {(planModal.steps || []).map((s, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2"
+                          >
+                            <div className="text-xs text-purple-100">
+                              {s.d}
+                            </div>
+                            <div className="text-[11px] text-purple-200/80">
+                              {s.t}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const t = planModal.topic || primaryTopic || "";
+                            setPlanModal(null);
+                            goToTests(t);
+                          }}
+                          className="rounded-2xl border border-purple-300/30 bg-purple-500/20 hover:bg-purple-500/25 transition px-3 py-2 text-xs font-semibold"
+                        >
+                          Начать мини‑тест
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPlanModal(null);
+                            handleQuickAction("explain");
+                          }}
+                          className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 text-xs font-semibold"
+                        >
+                          Короткое объяснение
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-purple-200/70 mt-3">
+                        Совет: после теста нажми “Разбор ошибок” — так прогресс растёт быстрее.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
 
               <footer className="border-t border-white/10 px-3 py-2">
                 <form
