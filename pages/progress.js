@@ -312,6 +312,8 @@ export default function ProgressPage() {
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
       label: data?.label || null,
+      manual: data?.manual || null,
+      signals: data?.signals || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
@@ -431,6 +433,54 @@ export default function ProgressPage() {
       return next;
     });
   };
+
+  const toggleManualComplete = (topicKey) => {
+    const topic = (topicKey || "").trim();
+    if (!topic) return;
+
+    const subject = context.subject;
+    const level = context.level;
+    const entry = knowledgeMap?.[subject]?.[level]?.[topic] || {};
+    const isCompleted = !!(entry?.manual?.completed || (entry?.source === "manual" && entry?.label === "Изучено"));
+
+    if (!isCompleted) {
+      const prevScore = clamp01(entry?.score ?? 0);
+      setTopicState(topic, {
+        score: 1,
+        label: "Изучено",
+        source: "manual",
+        manual: {
+          completed: true,
+          completedAt: new Date().toISOString(),
+          prevScore,
+        },
+      });
+      return;
+    }
+
+    const restore = clamp01(entry?.manual?.prevScore ?? entry?.score ?? 0.6);
+    setTopicState(topic, {
+      score: restore,
+      label: null,
+      source: entry?.source === "manual" ? null : entry?.source || null,
+      manual: null,
+    });
+  };
+
+  const resetTopicProgress = (topicKey) => {
+    const topic = (topicKey || "").trim();
+    if (!topic) return;
+
+    // мягкий сброс: оставляем только updatedAt
+    setTopicState(topic, {
+      score: 0,
+      label: null,
+      source: "manual",
+      manual: null,
+      signals: null,
+    });
+  };
+
 
   const hasAnyData = subjectTopics.length > 0;
 
@@ -749,6 +799,13 @@ export default function ProgressPage() {
                           >
                             Мини‑тест
                           </a>
+                          <button
+                            onClick={() => toggleManualComplete(t.topic)}
+                            className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                            title="Отметить тему как изученную (или снять отметку)"
+                          >
+                            {t?.manual?.completed || (t.source === "manual" && t.label === "Изучено") ? "Снять" : "Изучено"}
+                          </button>
                           <a
                             href={`/chat?topic=${encodeURIComponent(t.topic)}`}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-purple-500/80 border border-purple-300/50 text-[11px] font-semibold text-white shadow-md hover:bg-purple-500/90 transition"
@@ -756,16 +813,10 @@ export default function ProgressPage() {
                             Разобрать →
                           </a>
                           <button
-                            onClick={() =>
-                              setTopicState(t.topic, {
-                                score: 1,
-                                label: "Изучено",
-                                source: "manual",
-                              })
-                            }
+                            onClick={() => toggleManualComplete(t.topic)}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-white/10 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
-                            Изучено ✓
+                            {t?.manual?.completed || (t.source === "manual" && t.label === "Изучено") ? "Снять" : "Изучено ✓"}
                           </button>
                         </div>
                       </div>
@@ -950,25 +1001,13 @@ export default function ProgressPage() {
                             Мини-тест
                           </a>
                           <button
-                            onClick={() =>
-                              setTopicState(t.topic, {
-                                score: 1,
-                                label: "Изучено",
-                                source: "manual",
-                              })
-                            }
+                            onClick={() => toggleManualComplete(t.topic)}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Изучено ✓
                           </button>
                           <button
-                            onClick={() =>
-                              setTopicState(t.topic, {
-                                score: 0,
-                                label: null,
-                                source: "manual_reset",
-                              })
-                            }
+                            onClick={() => resetTopicProgress(t.topic)}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Сброс
