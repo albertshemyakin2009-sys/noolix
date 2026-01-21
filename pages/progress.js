@@ -317,16 +317,12 @@ export default function ProgressPage() {
     return arr;
   }, [knowledgeMap, context.subject, context.level]);
 
-  const eligibleForRecs = useMemo(() => {
-    return (subjectTopics || []).filter((t) => (t?.score ?? 0) < 0.8);
-  }, [eligibleForRecs]);
-
   const recWeak = useMemo(() => {
-    return (eligibleForRecs || []).slice().sort((a, b) => a.score - b.score).slice(0, 3);
-  }, [eligibleForRecs]);
+    return (subjectTopics || []).filter((t) => (t?.score ?? 0) < 0.8).slice().sort((a, b) => a.score - b.score).slice(0, 3);
+  }, [subjectTopics]);
 
   const recFalseConfidence = useMemo(() => {
-    const arr = (eligibleForRecs || [])
+    const arr = (subjectTopics || []).filter((t) => (t?.score ?? 0) < 0.8).filter((t) => (t?.score ?? 0) < 0.8)
       .filter((t) => {
         const s = t?.signals || null;
         const cw = s?.confidentWrongCount || s?.confidentWrong || 0;
@@ -344,11 +340,11 @@ export default function ProgressPage() {
       })
       .slice(0, 4);
     return arr;
-  }, [eligibleForRecs]);
+  }, [subjectTopics]);
 
   const recStale = useMemo(() => {
     const now = Date.now();
-    const arr = (eligibleForRecs || [])
+    const arr = (subjectTopics || [])
       .map((t) => {
         const lastTest = t?.signals?.lastTestAt || t?.signals?.lastAt || t?.updatedAt || null;
         const days = daysAgo(lastTest);
@@ -358,10 +354,7 @@ export default function ProgressPage() {
       .sort((a, b) => (b._staleDays || 0) - (a._staleDays || 0))
       .slice(0, 4);
     return arr;
-  }, [eligibleForRecs]);
-
-  const hasAnyRecs = (recWeak.length + recFalseConfidence.length + recStale.length) > 0;
-
+  }, [subjectTopics]);
 
 
   const stats = useMemo(() => {
@@ -586,19 +579,19 @@ export default function ProgressPage() {
 
             {/* stats */}
             <section className="grid md:grid-cols-4 gap-3">
-              <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                 <p className="text-[11px] text-purple-200/80">Всего тем</p>
                 <p className="text-xl font-semibold mt-0.5">{stats.total}</p>
               </div>
-              <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                 <p className="text-[11px] text-purple-200/80">Слабые</p>
                 <p className="text-xl font-semibold mt-0.5">{stats.weak}</p>
               </div>
-              <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                 <p className="text-[11px] text-purple-200/80">Средние</p>
                 <p className="text-xl font-semibold mt-0.5">{stats.mid}</p>
               </div>
-              <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+              <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                 <p className="text-[11px] text-purple-200/80">Сильные</p>
                 <p className="text-xl font-semibold mt-0.5">{stats.strong}</p>
               </div>
@@ -629,7 +622,7 @@ export default function ProgressPage() {
                 <p className="text-xs text-purple-200/80">Считаю статистику…</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Тестов</p>
                     <p className="text-xl font-semibold">{analytics.tests?.inContext || 0}</p>
                     <p className="text-[11px] text-purple-200/70">
@@ -640,19 +633,19 @@ export default function ProgressPage() {
                     </p>
                   </div>
 
-                  <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Объяснений</p>
                     <p className="text-xl font-semibold">{analytics.topics?.explanationsSaved || 0}</p>
                     <p className="text-[11px] text-purple-200/70">сохранено</p>
                   </div>
 
-                  <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Тем начато</p>
                     <p className="text-xl font-semibold">{analytics.topics?.touched || 0}</p>
                     <p className="text-[11px] text-purple-200/70">с прогрессом</p>
                   </div>
 
-                  <div className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
                     <p className="text-[11px] text-purple-200/80">Фокус</p>
                     {analytics.topics?.weakestTopic ? (
                       <>
@@ -676,7 +669,7 @@ export default function ProgressPage() {
             </section>
 
 {/* weak topics */}
-            <section className="space-y-2">
+            <section className="space-y-3 bg-gradient-to-br from-purple-500/10 via-black/20 to-black/10 border border-purple-300/20 rounded-2xl p-4">
               <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                 Слабые темы
               </p>
@@ -721,15 +714,15 @@ export default function ProgressPage() {
             
             {/* recommendations */}
             <section className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] uppercase tracking-wide text-purple-300/80 flex items-center gap-2">
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">✨</span>
                   Рекомендации
                 </p>
-                <span className="text-[11px] text-purple-200/70">Показываем только темы ниже 80%</span>
+                <span className="text-[11px] text-purple-200/70">Только темы ниже 80%</span>
               </div>
 
-              {!hasAnyRecs ? (
+              {(recWeak.length + recFalseConfidence.length + recStale.length) === 0 ? (
                 <p className="text-xs text-purple-200/80">
                   Пока рекомендаций нет: пройди мини‑тест или сохрани объяснение в диалоге.
                 </p>
@@ -781,7 +774,7 @@ export default function ProgressPage() {
 
                   {/* 2) False confidence */}
                   {recFalseConfidence.length > 0 && (
-                    <div className="bg-black/20 border border-white/10 rounded-2xl p-3">
+                    <div className="bg-gradient-to-br from-purple-500/10 via-black/20 to-black/10 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
                       <p className="text-xs font-semibold text-purple-50 mb-1">
                         Сейчас важно подтянуть: ложная уверенность
                       </p>
