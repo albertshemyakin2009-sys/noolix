@@ -798,15 +798,7 @@ export default function ProgressPage() {
                             className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-[11px] font-semibold text-purple-50 hover:bg-white/15 transition"
                           >
                             Мини‑тест
-                          </a>
-                          <button
-                            onClick={() => toggleManualComplete(t.topic)}
-                            className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                            title="Отметить тему как изученную (или снять отметку)"
-                          >
-                            {t?.manual?.completed || (t.source === "manual" && t.label === "Изучено") ? "Снять" : "Изучено"}
-                          </button>
-                          <a
+                          </a>                          <a
                             href={`/chat?topic=${encodeURIComponent(t.topic)}`}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-purple-500/80 border border-purple-300/50 text-[11px] font-semibold text-white shadow-md hover:bg-purple-500/90 transition"
                           >
