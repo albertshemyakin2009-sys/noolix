@@ -182,11 +182,112 @@ export default function ProfilePage() {
       ? th.filter((x) => x?.subject === context.subject && x?.level === context.level).length
       : 0;
 
+        const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    const parseTime = (v) => {
+      if (!v) return 0;
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const testsAll = Array.isArray(th) ? th : [];
+    const tests7d = testsAll.filter((x) => now - parseTime(x?.ts || x?.createdAt) <= 7 * DAY).length;
+    const tests30d = testsAll.filter((x) => now - parseTime(x?.ts || x?.createdAt) <= 30 * DAY).length;
+
+    const tests7dCtx = testsAll.filter(
+      (x) =>
+        x?.subject === context.subject &&
+        x?.level === context.level &&
+        now - parseTime(x?.ts || x?.createdAt) <= 7 * DAY
+    ).length;
+
+    const tests30dCtx = testsAll.filter(
+      (x) =>
+        x?.subject === context.subject &&
+        x?.level === context.level &&
+        now - parseTime(x?.ts || x?.createdAt) <= 30 * DAY
+    ).length;
+
+    const libRaw = window.localStorage.getItem(LIBRARY_STORAGE_KEY);
+    const libArr = libRaw ? safeJsonParse(libRaw, []) : [];
+    const library = Array.isArray(libArr) ? libArr : [];
+
+    const isLearningNote = (id) => id === PROFILE_LIBRARY_IDS.goal || id === PROFILE_LIBRARY_IDS.note;
+
+    const explains = library.filter(
+      (e) =>
+        e &&
+        !isLearningNote(e.id) &&
+        typeof e.content === "string" &&
+        e.content.trim().length > 10 &&
+        typeof e.subject === "string" &&
+        typeof e.level === "string"
+    );
+
+    const explains7d = explains.filter((e) => now - parseTime(e?.createdAt || e?.ts) <= 7 * DAY).length;
+    const explains30d = explains.filter((e) => now - parseTime(e?.createdAt || e?.ts) <= 30 * DAY).length;
+
+    const explains7dCtx = explains.filter(
+      (e) =>
+        e?.subject === context.subject &&
+        e?.level === context.level &&
+        now - parseTime(e?.createdAt || e?.ts) <= 7 * DAY
+    ).length;
+
+    const explains30dCtx = explains.filter(
+      (e) =>
+        e?.subject === context.subject &&
+        e?.level === context.level &&
+        now - parseTime(e?.createdAt || e?.ts) <= 30 * DAY
+    ).length;
+
+    // signals from knowledge map (avgTime + false confidence)
+    const topicsObj = bySubject && typeof bySubject === "object" ? bySubject : {};
+    let totalTests = 0;
+    let sumTime = 0;
+    let confidentWrongTotal = 0;
+    let topFalseTopic = "";
+    let topFalseCount = 0;
+
+    Object.entries(topicsObj).forEach(([k, v]) => {
+      const testsCount = Number(v?.signals?.testsCount ?? v?.testsCount ?? 0);
+      const avgTimeSec = Number(v?.signals?.avgTimeSec ?? v?.avgTimeSec ?? 0);
+      const cw = Number(v?.signals?.confidentWrongCount ?? v?.confidentWrongCount ?? 0);
+
+      if (Number.isFinite(testsCount) && testsCount > 0) {
+        totalTests += testsCount;
+        if (Number.isFinite(avgTimeSec) && avgTimeSec > 0) sumTime += avgTimeSec * testsCount;
+      }
+      if (Number.isFinite(cw) && cw > 0) confidentWrongTotal += cw;
+
+      if (Number.isFinite(cw) && cw > topFalseCount) {
+        topFalseCount = cw;
+        topFalseTopic = k;
+      }
+    });
+
+    const avgTimeSecCtx = totalTests > 0 ? Math.round(sumTime / totalTests) : 0;
+
     setStats({
       testsInCtx,
       topicsTouched,
       explanationsSaved,
       goalsCount: Array.isArray(goals) ? goals.length : 0,
+
+      tests7d,
+      tests30d,
+      tests7dCtx,
+      tests30dCtx,
+
+      explains7d,
+      explains30d,
+      explains7dCtx,
+      explains30dCtx,
+
+      avgTimeSecCtx,
+      confidentWrongTotal,
+      topFalseTopic,
+      topFalseCount,
     });
   }, [context.subject, context.level]);
 
@@ -420,6 +521,110 @@ export default function ProfilePage() {
                   </a>
                 </div>
               </div>
+
+              
+              {/* analytics */}
+              <section className="bg-gradient-to-br from-purple-500/10 via-black/20 to-black/20 border border-purple-300/15 rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80 flex items-center gap-2">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">
+                        📊
+                      </span>
+                      Мини‑аналитика
+                    </p>
+                    <p className="text-xs text-purple-100/70 mt-1">
+                      Сводка активности и сигналов (по текущему контексту: {context.subject}, {context.level})
+                    </p>
+                  </div>
+
+                  <a
+                    href="/progress"
+                    className="px-4 py-2 rounded-full bg-white text-black text-xs font-semibold shadow-md hover:bg-purple-100 transition"
+                  >
+                    Открыть прогресс →
+                  </a>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Тесты</p>
+                    <div className="mt-2 flex items-end justify-between">
+                      <div>
+                        <p className="text-2xl font-extrabold tracking-tight">
+                          {stats?.tests7dCtx ?? 0}
+                        </p>
+                        <p className="text-[11px] text-purple-100/70">за 7 дней (контекст)</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold">{stats?.tests30dCtx ?? 0}</p>
+                        <p className="text-[11px] text-purple-100/60">за 30 дней</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-[11px] text-purple-100/70">
+                      Всего: <span className="text-purple-50">{stats?.tests7d ?? 0}</span> /{" "}
+                      <span className="text-purple-50">{stats?.tests30d ?? 0}</span> (7/30 дней)
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Сохранённые объяснения</p>
+                    <div className="mt-2 flex items-end justify-between">
+                      <div>
+                        <p className="text-2xl font-extrabold tracking-tight">
+                          {stats?.explains7dCtx ?? 0}
+                        </p>
+                        <p className="text-[11px] text-purple-100/70">за 7 дней (контекст)</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold">{stats?.explains30dCtx ?? 0}</p>
+                        <p className="text-[11px] text-purple-100/60">за 30 дней</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-[11px] text-purple-100/70">
+                      Всего: <span className="text-purple-50">{stats?.explains7d ?? 0}</span> /{" "}
+                      <span className="text-purple-50">{stats?.explains30d ?? 0}</span> (7/30 дней)
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                    <p className="text-[11px] text-purple-200/80">Сигналы качества</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div className="rounded-2xl bg-black/25 border border-white/10 p-2">
+                        <p className="text-[11px] text-purple-100/70">⏱ ср. время/вопрос</p>
+                        <p className="text-sm font-semibold mt-1">
+                          {stats?.avgTimeSecCtx ? `${stats.avgTimeSecCtx}с` : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-black/25 border border-white/10 p-2">
+                        <p className="text-[11px] text-purple-100/70">⚠️ увер. ошибок</p>
+                        <p className="text-sm font-semibold mt-1">{stats?.confidentWrongTotal ?? 0}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-[11px] text-purple-100/70">
+                      {stats?.topFalseCount > 0 ? (
+                        <>
+                          Самая “опасная” тема:{" "}
+                          <span className="text-purple-50 font-semibold">{stats.topFalseTopic}</span>{" "}
+                          <span className="text-purple-200/80">({stats.topFalseCount})</span>
+                        </>
+                      ) : (
+                        <>Ложная уверенность пока не обнаружена — отлично 👍</>
+                      )}
+                    </div>
+
+                    <div className="mt-3 text-[11px] text-purple-100/70">
+                      Совет:{" "}
+                      <span className="text-purple-50">
+                        {stats?.topFalseCount > 0
+                          ? "сделай мини‑тест и разбор ошибок именно по этой теме."
+                          : "поддерживай темп: 1 мини‑тест в день даст стабильный рост."}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
               {/* context */}
               <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
