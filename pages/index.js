@@ -486,19 +486,7 @@ export default function Home() {
               )}
             </section>
 
-            {/* Блок: Roadmap / что будет дальше */}
-            <section className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 md:p-5 space-y-2">
-              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                Что появится дальше в NOOLIX
-              </p>
-              <p className="text-xs md:text-sm text-purple-100/90">
-                В ближайших обновлениях: более подробная карта знаний, история
-                мини-тестов с разбором ошибок и личная статистика по предметам.
-                Всё это будет работать поверх тех функций, которые уже есть
-                сейчас.
-              </p>
-            </section>
-          </div>
+</div>
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
