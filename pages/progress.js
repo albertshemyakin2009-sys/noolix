@@ -72,26 +72,6 @@ function formatUpdatedAt(value) {
   });
 }
 
-function formatTimeShort(sec) {
-  const s = typeof sec === "number" ? sec : 0;
-  if (!isFinite(s) || s <= 0) return "—";
-  const rounded = Math.round(s);
-  if (rounded < 60) return `${rounded}с`;
-  const m = Math.floor(rounded / 60);
-  const r = rounded % 60;
-  return r ? `${m}м ${r}с` : `${m}м`;
-}
-
-function daysAgo(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const diffMs = Date.now() - d.getTime();
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  return days >= 0 ? days : 0;
-}
-
-
 export default function ProgressPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -106,7 +86,6 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
 
   // init: context + knowledge map
   useEffect(() => {
@@ -145,6 +124,33 @@ export default function ProgressPage() {
 
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
+
+        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Общее"
+        try {
+          const subjObj = migrated?.[subject]?.[level];
+          if (subjObj && typeof subjObj === "object") {
+            let changed = false;
+            const nextLvl = {};
+            Object.entries(subjObj).forEach(([topic, data]) => {
+              const k = normalizeTopicKey(topic);
+              if (k !== topic) changed = true;
+              const score = typeof data?.score === "number" ? data.score : 0;
+              const prev = nextLvl[k];
+              if (!prev) nextLvl[k] = { ...data, score };
+              else {
+                const prevScore = typeof prev.score === "number" ? prev.score : 0;
+                nextLvl[k] = { ...prev, score: Math.min(prevScore, score) };
+              }
+            });
+            if (changed) {
+              migrated[subject][level] = nextLvl;
+              window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
+            }
+          }
+        } catch (eNorm) {
+          console.warn("Topic normalize failed", eNorm);
+        }
+
       }
     } finally {
       setLoading(false);
@@ -171,124 +177,6 @@ export default function ProgressPage() {
     }
   }, [context.subject, context.level]);
 
-
-  // analytics (Шаг 1): считаем метрики и кладём в window + console (без UI)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      // 1) тесты
-      const rawHistory = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const historyList = safeJsonParse(rawHistory, []);
-      const historyArr = Array.isArray(historyList) ? historyList : [];
-
-      const testsTotalAll = historyArr.length;
-      const historyCtx = historyArr.filter(
-        (x) => x?.subject === context.subject && x?.level === context.level
-      );
-      const testsInContext = historyCtx.length;
-
-      const lastTestTsAny =
-        historyArr.length > 0
-          ? historyArr
-              .map((x) => x?.ts)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      const lastTestTsInContext =
-        historyCtx.length > 0
-          ? historyCtx
-              .map((x) => x?.ts)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      // 2) темы/прогресс
-      const levelObj = knowledgeMap?.[context.subject]?.[context.level];
-      const topicsObj = levelObj && typeof levelObj === "object" ? levelObj : {};
-      const topics = Object.entries(topicsObj).map(([topic, data]) => ({
-        topic,
-        score: typeof data?.score === "number" ? data.score : 0,
-        updatedAt: data?.updatedAt || null,
-        source: data?.source || null,
-        signals: data?.signals && typeof data.signals === "object" ? data.signals : null,
-      }));
-
-      const topicsTouched = topics.length;
-      const topicsConfident = topics.filter((t) => (t.score || 0) >= 0.85).length;
-      const weakest = topicsTouched
-        ? topics.slice().sort((a, b) => (a.score || 0) - (b.score || 0))[0]
-        : null;
-
-      const lastTopicUpdate =
-        topicsTouched
-          ? topics
-              .map((t) => t.updatedAt)
-              .filter(Boolean)
-              .sort()
-              .slice(-1)[0] || null
-          : null;
-
-      // 3) “объяснения” как источник = dialog
-      const explanationsSaved = topics.filter(
-        (t) => t.source === "dialog_saved" || t.source === "dialog"
-      ).length;
-
-      // 4) ошибки
-      const rawMistakes = window.localStorage.getItem("noolixMistakeStats");
-      const mistakes = safeJsonParse(rawMistakes, {});
-      const mistakesLvl = mistakes?.[context.subject]?.[context.level];
-      const mistakesObj = mistakesLvl && typeof mistakesLvl === "object" ? mistakesLvl : {};
-      const mistakeEntries = Object.values(mistakesObj).filter(Boolean);
-
-      const mistakesTotal = mistakeEntries.reduce((sum, m) => sum + (m?.count || 0), 0);
-      const topMistake =
-        mistakeEntries.length > 0
-          ? mistakeEntries.slice().sort((a, b) => (b?.count || 0) - (a?.count || 0))[0]
-          : null;
-
-      // 5) объединённая “последняя активность”
-      const lastActivity = [lastTestTsInContext || lastTestTsAny, lastTopicUpdate]
-        .filter(Boolean)
-        .sort()
-        .slice(-1)[0] || null;
-
-      const result = {
-        context: { subject: context.subject, level: context.level },
-        tests: {
-          totalAll: testsTotalAll,
-          inContext: testsInContext,
-          lastTestTsInContext: lastTestTsInContext,
-          lastTestTsAny: lastTestTsAny,
-        },
-        topics: {
-          touched: topicsTouched,
-          confident: topicsConfident,
-          weakestTopic: weakest?.topic || null,
-          weakestScore: typeof weakest?.score === "number" ? weakest.score : null,
-          lastTopicUpdate: lastTopicUpdate,
-          explanationsSaved: explanationsSaved,
-        },
-        mistakes: {
-          total: mistakesTotal,
-          topTopic: topMistake?.topic || null,
-          topCount: topMistake?.count || null,
-        },
-        lastActivityTs: lastActivity,
-      };
-
-      setAnalytics(result);
-      window.__noolixAnalytics = result;
-      console.log("[NOOLIX analytics]", result);
-    } catch (e) {
-      console.warn("Analytics compute failed", e);
-    }
-  }, [context.subject, context.level, knowledgeMap]);
-
-
   const applyContextChange = (nextCtx) => {
     setContext(nextCtx);
     if (typeof window !== "undefined") {
@@ -307,57 +195,15 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic,
+      topic: (data?.label || data?.title || topic) || topic,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
       label: data?.label || null,
-      manual: data?.manual || null,
-      signals: data?.signals || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
   }, [knowledgeMap, context.subject, context.level]);
-
-  const recWeak = useMemo(() => {
-    return (subjectTopics || []).filter((t) => (t?.score ?? 0) < 0.8).slice().sort((a, b) => a.score - b.score).slice(0, 3);
-  }, [subjectTopics]);
-
-  const recFalseConfidence = useMemo(() => {
-    const arr = (subjectTopics || []).filter((t) => (t?.score ?? 0) < 0.8).filter((t) => (t?.score ?? 0) < 0.8)
-      .filter((t) => {
-        const s = t?.signals || null;
-        const cw = s?.confidentWrongCount || s?.confidentWrong || 0;
-        const tc = s?.testsCount || 0;
-        if (!cw) return false;
-        // show if at least 1 confident wrong, stronger if 2+
-        if (cw >= 2) return true;
-        // or if ratio is high
-        return tc >= 2 && cw / tc >= 0.35;
-      })
-      .sort((a, b) => {
-        const aw = (a?.signals?.confidentWrongCount || a?.signals?.confidentWrong || 0);
-        const bw = (b?.signals?.confidentWrongCount || b?.signals?.confidentWrong || 0);
-        return bw - aw;
-      })
-      .slice(0, 4);
-    return arr;
-  }, [subjectTopics]);
-
-  const recStale = useMemo(() => {
-    const now = Date.now();
-    const arr = (subjectTopics || [])
-      .map((t) => {
-        const lastTest = t?.signals?.lastTestAt || t?.signals?.lastAt || t?.updatedAt || null;
-        const days = daysAgo(lastTest);
-        return { ...t, _staleDays: days };
-      })
-      .filter((t) => typeof t._staleDays === "number" && t._staleDays >= 10 && (t.score || 0) < 0.95)
-      .sort((a, b) => (b._staleDays || 0) - (a._staleDays || 0))
-      .slice(0, 4);
-    return arr;
-  }, [subjectTopics]);
-
 
   const stats = useMemo(() => {
     const total = subjectTopics.length;
@@ -433,54 +279,6 @@ export default function ProgressPage() {
       return next;
     });
   };
-
-  const toggleManualComplete = (topicKey) => {
-    const topic = (topicKey || "").trim();
-    if (!topic) return;
-
-    const subject = context.subject;
-    const level = context.level;
-    const entry = knowledgeMap?.[subject]?.[level]?.[topic] || {};
-    const isCompleted = !!(entry?.manual?.completed || (entry?.source === "manual" && entry?.label === "Изучено"));
-
-    if (!isCompleted) {
-      const prevScore = clamp01(entry?.score ?? 0);
-      setTopicState(topic, {
-        score: 1,
-        label: "Изучено",
-        source: "manual",
-        manual: {
-          completed: true,
-          completedAt: new Date().toISOString(),
-          prevScore,
-        },
-      });
-      return;
-    }
-
-    const restore = clamp01(entry?.manual?.prevScore ?? entry?.score ?? 0.6);
-    setTopicState(topic, {
-      score: restore,
-      label: null,
-      source: entry?.source === "manual" ? null : entry?.source || null,
-      manual: null,
-    });
-  };
-
-  const resetTopicProgress = (topicKey) => {
-    const topic = (topicKey || "").trim();
-    if (!topic) return;
-
-    // мягкий сброс: оставляем только updatedAt
-    setTopicState(topic, {
-      score: 0,
-      label: null,
-      source: "manual",
-      manual: null,
-      signals: null,
-    });
-  };
-
 
   const hasAnyData = subjectTopics.length > 0;
 
@@ -647,79 +445,8 @@ export default function ProgressPage() {
               </div>
             </section>
 
-            
-            {/* analytics */}
-            <section className="bg-black/20 border border-white/10 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Твоя активность
-                  </p>
-                  <p className="text-xs text-purple-100/70">
-                    Короткая сводка по тому, как ты учишься в Noolix
-                  </p>
-                </div>
-                <a
-                  href="/tests"
-                  className="px-3 py-2 rounded-full border border-white/15 bg-black/20 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                  title="Перейти к тестам"
-                >
-                  🧪
-                </a>
-              </div>
-
-              {!analytics ? (
-                <p className="text-xs text-purple-200/80">Считаю статистику…</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Тестов</p>
-                    <p className="text-xl font-semibold">{analytics.tests?.inContext || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">
-                      всего: {analytics.tests?.totalAll || 0}
-                    </p>
-                    <p className="text-[11px] text-purple-200/70">
-                      последний: {analytics.tests?.lastTestTsInContext ? formatUpdatedAt(analytics.tests.lastTestTsInContext) : (analytics.tests?.lastTestTsAny ? formatUpdatedAt(analytics.tests.lastTestTsAny) : "—")}
-                    </p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Объяснений</p>
-                    <p className="text-xl font-semibold">{analytics.topics?.explanationsSaved || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">сохранено</p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Тем начато</p>
-                    <p className="text-xl font-semibold">{analytics.topics?.touched || 0}</p>
-                    <p className="text-[11px] text-purple-200/70">с прогрессом</p>
-                  </div>
-
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-3">
-                    <p className="text-[11px] text-purple-200/80">Фокус</p>
-                    {analytics.topics?.weakestTopic ? (
-                      <>
-                        <a
-                          href={`/chat?topic=${encodeURIComponent(analytics.topics.weakestTopic)}`}
-                          className="text-sm font-semibold truncate block hover:underline"
-                          title="Открыть разбор в диалоге"
-                        >
-                          {analytics.topics.weakestTopic}
-                        </a>
-                        <p className="text-[11px] text-purple-200/70">
-                          низкий прогресс: {Math.round((analytics.topics.weakestScore || 0) * 100)}%
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm font-semibold">—</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-
-{/* weak topics */}
-            <section className="space-y-3 bg-gradient-to-br from-purple-500/10 via-black/20 to-black/10 border border-purple-300/20 rounded-2xl p-4">
+            {/* weak topics */}
+            <section className="space-y-2">
               <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
                 Слабые темы
               </p>
@@ -764,26 +491,24 @@ export default function ProgressPage() {
             
             {/* recommendations */}
             <section className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">✨</span>
-                  Рекомендации
-                </p>
-                <span className="text-[11px] text-purple-200/70">Только темы ниже 80%</span>
-              </div>
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Рекомендации
+              </p>
 
-              {(recWeak.length + recFalseConfidence.length + recStale.length) === 0 ? (
+              {subjectTopics.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока рекомендаций нет: пройди мини‑тест или сохрани объяснение в диалоге.
+                  Пока рекомендаций нет: пройди мини-тест или сохрани объяснение в диалоге.
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {/* 1) Weak topics */}
-                  <div className="space-y-2">
-                    {recWeak.map((t) => (
+                <div className="space-y-2">
+                  {subjectTopics
+                    .slice()
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3)
+                    .map((t) => (
                       <div
                         key={t.topic}
-                        className="bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 border border-purple-300/20 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-sm"
+                        className="bg-black/30 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-2"
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-semibold truncate">{t.topic}</p>
@@ -794,79 +519,29 @@ export default function ProgressPage() {
 
                         <div className="flex gap-2 flex-shrink-0">
                           <a
-                            href={`/tests?topic=${encodeURIComponent(t.topic)}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-[11px] font-semibold text-purple-50 hover:bg-white/15 transition"
-                          >
-                            Мини‑тест
-                          </a>                          <a
                             href={`/chat?topic=${encodeURIComponent(t.topic)}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-purple-500/80 border border-purple-300/50 text-[11px] font-semibold text-white shadow-md hover:bg-purple-500/90 transition"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                           >
                             Разобрать →
                           </a>
                           <button
-                            onClick={() => toggleManualComplete(t.topic)}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-white/10 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 1,
+                                label: "Изучено",
+                                source: "manual",
+                              })
+                            }
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
-                            {t?.manual?.completed || (t.source === "manual" && t.label === "Изучено") ? "Снять" : "Изучено ✓"}
+                            Изучено ✓
                           </button>
                         </div>
                       </div>
                     ))}
-                  </div>
-
-                  {/* 2) False confidence */}
-                  {recFalseConfidence.length > 0 && (
-                    <div className="bg-gradient-to-br from-purple-500/10 via-black/20 to-black/10 border border-purple-300/20 rounded-2xl p-3 shadow-sm">
-                      <p className="text-xs font-semibold text-purple-50 mb-1">
-                        Сейчас важно подтянуть: ложная уверенность
-                      </p>
-                      <p className="text-[11px] text-purple-200/75 mb-2">
-                        Здесь есть уверенные ошибки — лучше быстро перепроверить базу и пройти мини‑тест.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {recFalseConfidence.map((t) => {
-                          const cw = t?.signals?.confidentWrongCount || t?.signals?.confidentWrong || 0;
-                          return (
-                            <a
-                              key={`fc-${t.topic}`}
-                              href={`/tests?topic=${encodeURIComponent(t.topic)}`}
-                              className="px-3 py-1.5 rounded-full bg-amber-300/15 border border-amber-300/35 text-[11px] text-amber-100 hover:bg-amber-300/20 transition"
-                              title="Открыть мини‑тест по теме"
-                            >
-                              {t.topic} · увер. ошибок: {cw}
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 3) Stale topics */}
-                  {recStale.length > 0 && (
-                    <div className="bg-black/20 border border-white/10 rounded-2xl p-3">
-                      <p className="text-xs font-semibold text-purple-50 mb-1">Давно не повторяли</p>
-                      <p className="text-[11px] text-purple-200/75 mb-2">
-                        Быстрый мини‑тест вернёт уверенность без лишней нагрузки.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {recStale.map((t) => (
-                          <a
-                            key={`st-${t.topic}`}
-                            href={`/tests?topic=${encodeURIComponent(t.topic)}`}
-                            className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-purple-50 hover:bg-white/10 transition"
-                            title="Открыть мини‑тест по теме"
-                          >
-                            {t.topic} · {t._staleDays} дн назад
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
-
-</section>
+            </section>
 
 {/* filters */}
             <section className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -947,30 +622,6 @@ export default function ProgressPage() {
                               : ""}
                           </p>
 
-                          {t.signals ? (
-                            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-purple-100/90">
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                                🧪 тестов: {t.signals.testsCount || 0}
-                              </span>
-                              {typeof t.signals.avgTimeSec === "number" ? (
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                                  ⏱ ср.: {formatTimeShort(t.signals.avgTimeSec)}
-                                </span>
-                              ) : null}
-                              {typeof t.signals.confidentWrong === "number" && t.signals.confidentWrong > 0 ? (
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                                  ⚠️ увер. ошибок: {t.signals.confidentWrong}
-                                </span>
-                              ) : null}
-                              {typeof t.signals.uncertainCorrect === "number" && t.signals.uncertainCorrect > 0 ? (
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                                  ✅ неувер. верных: {t.signals.uncertainCorrect}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-
                           <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-purple-300 to-purple-500"
@@ -993,13 +644,25 @@ export default function ProgressPage() {
                             Мини-тест
                           </a>
                           <button
-                            onClick={() => toggleManualComplete(t.topic)}
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 1,
+                                label: "Изучено",
+                                source: "manual",
+                              })
+                            }
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Изучено ✓
                           </button>
                           <button
-                            onClick={() => resetTopicProgress(t.topic)}
+                            onClick={() =>
+                              setTopicState(t.topic, {
+                                score: 0,
+                                label: null,
+                                source: "manual_reset",
+                              })
+                            }
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Сброс
@@ -1056,4 +719,42 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}
+}const normalizeTopicKey = (t) => {
+  let raw = String(t || "").trim();
+  if (!raw) return "Общее";
+
+  // remove quotes
+  raw = raw.replace(/[«»"]/g, "").trim();
+
+  // drop diagnostic / generic prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
+  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
+
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  // try to extract "topic" from common phrasing
+  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
+  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
+  raw = raw.replace(/^объясни\s+/i, "").trim();
+
+  // normalize spaces
+  raw = raw.replace(/\s+/g, " ").trim();
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (!raw) return "Общее";
+
+  // If still looks like a sentence, shorten
+  const tooLong = raw.length > 80;
+  const tooManyWords = words.length > 12;
+  if (tooLong || tooManyWords) {
+    return words.slice(0, 8).join(" ").trim() || "Общее";
+  }
+
+  return raw;
+};
+
+
+
