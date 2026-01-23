@@ -172,6 +172,25 @@ export default function LibraryPage() {
     return `${y} г назад`;
   };
 
+  const formatSavedAt = (value) => {
+    const s = safeString(value).trim();
+    if (!s) return "";
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return s;
+    try {
+      return dt.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (_) {
+      return s;
+    }
+  };
+
+
   const titleFromSaved = (item) => {
     const t = safeString(item?.title).trim();
     const topic = safeString(item?.topic).trim();
@@ -540,12 +559,13 @@ export default function LibraryPage() {
                       </div>
                       <div className="flex flex-col items-start md:items-end gap-1 text-[11px]">
                         <span className="text-purple-200/80">
-                          Сохранено: {formatRelativeTime(item.savedAt || item.ts || item.createdAt)}
+                          Сохранено: {formatSavedAt(item.savedAt || item.ts || item.createdAt)}
+                          {item.savedAt || item.ts || item.createdAt ? (
+                            <span className="text-[10px] text-purple-200/60"> • {formatRelativeTime(item.savedAt || item.ts || item.createdAt)}</span>
+                          ) : null}
                         </span>
                         <a
-                          href={`/chat?topic=${encodeURIComponent(
-                            item.title
-                          )}`}
+                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.id || ""))}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
