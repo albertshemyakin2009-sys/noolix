@@ -557,6 +557,15 @@ const callBackend = async (userMessages) => {
     }
 
     const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topic)}`;
+
+    // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
+    try {
+      const cand = normalizeTopicKey(topic);
+      if (cand && cand !== "Общее") {
+        window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      }
+    } catch (_) {}
+
     const picked = pickNextExplainStyle(topicKeyForStyle);
     const style = picked.next;
 
@@ -685,15 +694,42 @@ const callBackend = async (userMessages) => {
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
   const normalizeTopicKey = (t) => {
-    const raw = String(t || "").trim();
+    let raw = String(t || "").trim();
     if (!raw) return "Общее";
+
+    raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
+    raw = raw.replace(/\s+/g, " ");
+
+    const q1 = raw.match(/«([^»]{2,80})»/);
+    const q2 = raw.match(/"([^"]{2,80})"/);
+    if (q1?.[1]) raw = q1[1].trim();
+    else if (q2?.[1]) raw = q2[1].trim();
+
+    const patterns = [
+      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
+      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
+      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
+      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
+    ];
+    for (const p of patterns) {
+      const m = raw.match(p);
+      if (m?.[1]) {
+        raw = m[1].trim();
+        break;
+      }
+    }
+
+    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+
     const words = raw.split(/\s+/).filter(Boolean);
     const tooLong = raw.length > 60;
     const tooManyWords = words.length > 8;
     const hasSentenceMarks = /[\?\!\.]/.test(raw);
     if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-    return raw;
+
+    return raw || "Общее";
   };
+
 
   const touchProgressFromDialogSave = (topicKey) => {
     if (typeof window === "undefined") return;
@@ -887,6 +923,15 @@ const callBackend = async (userMessages) => {
       content: text,
       createdAt: new Date().toISOString(),
     };
+
+    // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
+    try {
+      const cand = normalizeTopicKey(text);
+      if (cand && cand !== "Общее") {
+        window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      }
+    } catch (_) {}
+
 
     const newMessages = clampHistory([...(messages || []), userMessage]);
     setMessages(newMessages);
@@ -1285,10 +1330,9 @@ const callBackend = async (userMessages) => {
                   <button
                     type="button"
                     onClick={() => setNeedPanelOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-purple-300/25 bg-gradient-to-r from-purple-500/25 via-purple-500/10 to-transparent px-3 py-2 text-[13px] text-purple-50 shadow-sm hover:from-purple-500/35 hover:border-purple-300/40 hover:shadow transition active:scale-[0.99]">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">✨</span>
-                    <span className="font-semibold">Показать быстрые действия</span>
-                    <span className="text-purple-200/70 text-[12px]">(тест • объяснение • план)</span>
+                    className="text-[11px] text-purple-200/70 hover:text-purple-100 transition"
+                  >
+                    Показать быстрые действия ✨
                   </button>
                 </div>
               )}
