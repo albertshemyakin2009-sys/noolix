@@ -146,6 +146,53 @@ export default function LibraryPage() {
 
   const normalize = (s) => (s || "").toLowerCase();
 
+  const safeString = (v) => (v == null ? "" : String(v));
+
+  const formatRelativeTime = (value) => {
+    const s = safeString(value).trim();
+    // If already human text like "3 дня назад" — keep it
+    if (!s) return "";
+    if (/[а-яА-Я]/.test(s) && /назад|вчера|сегодня|дн|час|мин/.test(s)) return s;
+
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return s;
+
+    const diffMs = Date.now() - dt.getTime();
+    const min = Math.round(diffMs / 60000);
+    if (min < 1) return "только что";
+    if (min < 60) return `${min} мин назад`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `${h} ч назад`;
+    const d = Math.round(h / 24);
+    if (d === 1) return "вчера";
+    if (d < 30) return `${d} дн назад`;
+    const mo = Math.round(d / 30);
+    if (mo < 12) return `${mo} мес назад`;
+    const y = Math.round(mo / 12);
+    return `${y} г назад`;
+  };
+
+  const titleFromSaved = (item) => {
+    const t = safeString(item?.title).trim();
+    const topic = safeString(item?.topic).trim();
+    if (t && t.toLowerCase() !== "без названия") return t;
+    if (topic) return topic;
+    return "Сохранённое объяснение";
+  };
+
+  const topicFromSaved = (item) => {
+    const topic = safeString(item?.topic).trim();
+    if (topic) return topic;
+
+    // fallback: try parse from title
+    const t = safeString(item?.title).trim();
+    if (!t) return "";
+    // remove typical prefixes like "Диагностика по ..." etc
+    return t.replace(/^диагностика\s+по\s+/i, "").trim();
+  };
+
+
+
   const matchesFilters = (item) => {
     const bySubject =
       subjectFilter === "Все предметы" || item.subject === subjectFilter;
@@ -190,7 +237,14 @@ export default function LibraryPage() {
     savedFromStorage.length > 0
       ? savedFromStorage
       : mockSaved;
-  const filteredSaved = baseSaved.filter(matchesFilters);
+  const filteredSaved = baseSaved
+    .slice()
+    .sort((a, b) => {
+      const da = new Date(a?.savedAt || a?.ts || a?.createdAt || 0).getTime();
+      const db = new Date(b?.savedAt || b?.ts || b?.createdAt || 0).getTime();
+      return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+    })
+    .filter(matchesFilters);
   const savedCount = baseSaved.length;
 
   const filteredCollections = mockCollections.filter(matchesFilters);
@@ -448,7 +502,7 @@ export default function LibraryPage() {
               ) : filteredSaved.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
                   Пока здесь пусто. Сохрани первое объяснение из диалога —
-                  например, разбор сложной задачи или мини-конспект.
+                  например, мини‑конспект по теме. NOOLIX сохранит тему и стиль объяснения.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -459,18 +513,34 @@ export default function LibraryPage() {
                     >
                       <div>
                         <p className="font-semibold text-sm mb-0.5">
-                          {item.title}
+                          {titleFromSaved(item)}
                         </p>
                         <p className="text-[11px] text-purple-200/80">
                           {item.subject} • {item.level}
                         </p>
-                        <p className="text-[11px] text-purple-200/80">
-                          Источник: {item.from}
-                        </p>
+
+                        {/* chips */}
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {topicFromSaved(item) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                              🏷 {topicFromSaved(item)}
+                            </span>
+                          ) : null}
+
+                          {item?.explainStyleLabel ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-300/20 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-100/90">
+                              🎛 {item.explainStyleLabel}
+                            </span>
+                          ) : null}
+
+                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                            📌 {item?.from || "из диалога"}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex flex-col items-start md:items-end gap-1 text-[11px]">
                         <span className="text-purple-200/80">
-                          Сохранено: {item.savedAt}
+                          Сохранено: {formatRelativeTime(item.savedAt || item.ts || item.createdAt)}
                         </span>
                         <a
                           href={`/chat?topic=${encodeURIComponent(
