@@ -1,5 +1,5 @@
-// pages/chat.js
-import React, { useEffect, useRef, useState  } from "react";
+// pages/tests.js
+import React, { useEffect, useMemo, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -13,92 +13,56 @@ const secondaryMenuItems = [
   { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-const AVATAR_EMOJI = {
-  panda: "🐼",
-  crab: "🦀",
-  fox: "🦊",
-  cat: "🐱",
-  dog: "🐶",
-  owl: "🦉",
-  turtle: "🐢",
-  octopus: "🐙",
-  bear: "🐻",
-  koala: "🐨",
-};
+const CONTEXT_STORAGE_KEY = "noolixContext";
+const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
+const TEST_HISTORY_KEY = "noolixTestsHistory";
+const MISTAKE_STATS_KEY = "noolixMistakeStats";
+const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 
-function formatTime(dateString) {
-  if (!dateString) return "";
-  const d = new Date(dateString);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-}
+// Anti-repeats (MVP): remember recent question stems per subject+level+topic
+const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
-function getSubjectPrepositional(subject) {
-  if (!subject) return "";
-  const s = subject.toLowerCase();
-  switch (s) {
-    case "математика":
-      return "математике";
-    case "физика":
-      return "физике";
-    case "русский язык":
-      return "русскому языку";
-    case "английский язык":
-      return "английскому языку";
-    default:
-      return s;
-  }
-}
+// Review styles: rotate mistake analysis styles so repeated reviews feel different
+const REVIEW_STYLE_KEY = "noolixReviewStyleHistoryV1";
 
-const MAX_HISTORY = 40;
-
-// Explain styles: rotate methods so повторные объяснения были разными
-const EXPLAIN_STYLE_KEY = "noolixExplainStyleHistoryV1";
-
-const EXPLAIN_STYLES = [
+const REVIEW_STYLES = [
   {
-    key: "simple",
-    label: "Коротко",
+    key: "standard",
+    label: "Стандарт",
     instruction:
-      "Объясни коротко и очень простыми словами. Минимум терминов. 1 маленький пример.",
+      "Сделай разбор по каждому вопросу: где ошибка → почему → как правильно. 1 пример и 1 мини‑упражнение.",
   },
   {
     key: "steps",
     label: "По шагам",
     instruction:
-      "Объясни строго по шагам: 1) идея 2) правило 3) как применять 4) типичная ловушка 5) мини‑пример.",
+      "Разбор строго по шагам: (1) что нужно было сделать, (2) где свернул не туда, (3) как проверить себя, (4) мини‑пример.",
   },
   {
-    key: "analogy",
-    label: "Аналогия",
+    key: "traps",
+    label: "Ловушки",
     instruction:
-      "Объясни через жизненную аналогию/метафору, затем свяжи аналогию с формальным правилом.",
+      "Фокус на типичных ловушках: почему этот вариант кажется правильным, но это ошибка. Дай чек‑лист проверки.",
   },
   {
-    key: "example",
-    label: "На примере",
+    key: "algorithm",
+    label: "Алгоритм",
     instruction:
-      "Сделай объяснение через 2 примера: сначала очень простой, затем чуть сложнее. Покажи ход рассуждений.",
+      "Дай короткий алгоритм решения (2–6 пунктов), затем разбор по каждому вопросу через этот алгоритм.",
   },
   {
-    key: "mistakes",
-    label: "Через ошибки",
+    key: "training",
+    label: "Мини‑тренировка",
     instruction:
-      "Сфокусируйся на типичных ошибках и как их избегать. Добавь проверку: как понять, что всё сделал(а) правильно.",
-  },
-  {
-    key: "formula",
-    label: "Формула",
-    instruction:
-      "Дай краткую формулу/правило, расшифруй её словами и покажи, где её применять. Без перегруза.",
+      "После разбора добавь 2 похожих мини‑задания (без ответа), чтобы закрепить именно эту ошибку.",
   },
 ];
 
-const loadExplainStyleHistory = () => {
+const loadReviewStyleHistory = () => {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(EXPLAIN_STYLE_KEY);
+    const raw = window.localStorage.getItem(REVIEW_STYLE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (_) {
@@ -106,61 +70,537 @@ const loadExplainStyleHistory = () => {
   }
 };
 
-const saveExplainStyleHistory = (map) => {
+const saveReviewStyleHistory = (map) => {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(EXPLAIN_STYLE_KEY, JSON.stringify(map || {}));
+    window.localStorage.setItem(REVIEW_STYLE_KEY, JSON.stringify(map || {}));
   } catch (_) {}
 };
 
-const pickNextExplainStyle = (topicKey) => {
+const pickNextReviewStyle = (topicKey) => {
   const key = String(topicKey || "").trim() || "general";
-  const map = loadExplainStyleHistory();
+  const map = loadReviewStyleHistory();
   const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
   const used = Array.isArray(entry.used) ? entry.used : [];
 
-  let next = EXPLAIN_STYLES.find((s) => !used.includes(s.key));
+  let next = REVIEW_STYLES.find((s) => !used.includes(s.key));
   if (!next) {
-    // all used -> restart cycle
-    next = EXPLAIN_STYLES[0];
+    next = REVIEW_STYLES[0];
     entry.used = [];
   }
+
   return { next, key, map, entry };
 };
 
-const markExplainStyleUsed = (topicKey, styleKey) => {
+const markReviewStyleUsed = (topicKey, styleKey) => {
   const key = String(topicKey || "").trim() || "general";
-  const map = loadExplainStyleHistory();
+  const map = loadReviewStyleHistory();
   const entry = map[key] && typeof map[key] === "object" ? map[key] : { used: [] };
 
   const used = Array.isArray(entry.used) ? entry.used : [];
   if (styleKey && !used.includes(styleKey)) used.push(styleKey);
 
   map[key] = { ...entry, used, updatedAt: new Date().toISOString() };
-  saveExplainStyleHistory(map);
+  saveReviewStyleHistory(map);
 };
 
 
+const QUESTION_BANK_MAX_PER_TOPIC = 220;
+const QUESTION_AVOID_LIMIT = 24;
 
-const clampHistory = (list) => {
-  if (!Array.isArray(list)) return [];
-  return list.length > MAX_HISTORY ? list.slice(-MAX_HISTORY) : list;
+const safeJsonParse = (raw, fallback) => {
+  try { return JSON.parse(raw); } catch (_) { return fallback; }
 };
 
-// отдельный ключ истории под каждую пару (предмет + уровень)
-const getHistoryKey = (subject, level) => {
-  const safe = (s) =>
-    (s || "unknown")
-      .toString()
-      .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^a-z0-9_а-яё\-–]/gi, "");
-  return `noolixChatHistory__${safe(subject)}__${safe(level)}`;
+const getTopicScopeKey = (subject, level, topicTitle) => {
+  const s = String(subject || "").trim() || "_";
+  const l = String(level || "").trim() || "_";
+  const t = normalizeTopicKey(topicTitle);
+  return `${s}|${l}|${t}`;
 };
 
-export default function ChatPage() {
+const getQuestionStem = (q) => {
+  const raw = String(q?.question || q?.prompt || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  // cut long texts: enough for avoidance, not too big for prompt
+  return raw.length > 220 ? raw.slice(0, 220) + "…" : raw;
+};
+
+const getQuestionSignature = (q) => {
+  const text = String(q?.question || q?.prompt || "").toLowerCase();
+  const cleaned = text
+    .replace(/[^a-z0-9а-яё\s]+/gi, " " )
+    .replace(/\s+/g, " " )
+    .trim();
+  if (!cleaned) return "";
+  const stop = new Set([
+    "и","в","во","на","по","к","ко","из","у","о","об","от","для","что","это","как","какой","какая","какие","сколько","найди","определи","выбери","верно","неверно"
+  ]);
+  const tokens = cleaned.split(" " ).filter(t => t && t.length > 2 && !stop.has(t));
+  // keep first 14 unique tokens to represent 'meaning'
+  const uniq = [];
+  const seen = new Set();
+  for (const t of tokens) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    uniq.push(t);
+    if (uniq.length >= 14) break;
+  }
+  return uniq.join(" " );
+};
+
+const loadQuestionBank = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(QUESTION_BANK_KEY);
+    return raw ? safeJsonParse(raw, {}) : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const saveQuestionBank = (bank) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(QUESTION_BANK_KEY, JSON.stringify(bank || {}));
+  } catch (_) {}
+};
+
+const getAvoidStems = ({ subject, level, topicTitle, limit = QUESTION_AVOID_LIMIT }) => {
+  const bank = loadQuestionBank();
+  const key = getTopicScopeKey(subject, level, topicTitle);
+  const arr = Array.isArray(bank?.[key]) ? bank[key] : [];
+  // take most recent unique
+  const uniq = [];
+  const seen = new Set();
+  for (let i = arr.length - 1; i >= 0 && uniq.length < limit; i--) {
+    const stem = String(arr[i]?.stem || "").trim();
+    const sig = String(arr[i]?.sig || "").trim();
+    // use signature first (better anti-paraphrase), then stem
+    if (sig) {
+      const k = ("sig:" + sig).toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        uniq.push(`ключевые слова: ${sig}`);
+        if (uniq.length >= limit) break;
+      }
+    }
+    if (!stem) continue;
+    const k2 = stem.toLowerCase();
+    if (seen.has(k2)) continue;
+    seen.add(k2);
+    uniq.push(stem);
+  }
+  return uniq;
+};
+
+const pushQuestionsToBank = ({ subject, level, topicTitle, questions }) => {
+  const bank = loadQuestionBank();
+  const key = getTopicScopeKey(subject, level, topicTitle);
+  const prev = Array.isArray(bank?.[key]) ? bank[key] : [];
+  const next = prev.slice();
+
+  const now = Date.now();
+  for (const q of Array.isArray(questions) ? questions : []) {
+    const stem = getQuestionStem(q);
+    if (!stem) continue;
+    const sig = getQuestionSignature(q);
+    next.push({ stem, sig, ts: now });
+  }
+
+  // keep last N
+  bank[key] = next.slice(-QUESTION_BANK_MAX_PER_TOPIC);
+  saveQuestionBank(bank);
+};
+
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const getToday = () => new Date().toISOString().slice(0, 10);
+
+// Сглаживание: новый результат не перетирает старый резко
+const blendScore = (oldScore, newScore, alpha = 0.35) => {
+  const o = typeof oldScore === "number" ? oldScore : 0;
+  return clamp01(o * (1 - alpha) + newScore * alpha);
+};
+
+const parseTopicsInput = (raw) => {
+  const txt = typeof raw === "string" ? raw : "";
+  const parts = txt
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // убираем дубликаты сохраняя порядок
+  const seen = new Set();
+  const unique = [];
+  for (const p of parts) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(p);
+  }
+  return unique;
+};
+
+
+const normalizeTopicKey = (t) => {
+  let raw = String(t || "").trim();
+  if (!raw) return "Общее";
+
+  raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
+  raw = raw.replace(/\s+/g, " ");
+
+  const q1 = raw.match(/«([^»]{2,80})»/);
+  const q2 = raw.match(/"([^"]{2,80})"/);
+  if (q1?.[1]) raw = q1[1].trim();
+  else if (q2?.[1]) raw = q2[1].trim();
+
+  const patterns = [
+    /^(?:что такое|что значит|что означает)\s+(.+)$/i,
+    /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
+    /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
+    /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
+  ];
+  for (const p of patterns) {
+    const m = raw.match(p);
+    if (m?.[1]) {
+      raw = m[1].trim();
+      break;
+    }
+  }
+
+  raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  const tooLong = raw.length > 60;
+  const tooManyWords = words.length > 8;
+  const hasSentenceMarks = /[\?\!\.]/.test(raw);
+  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+
+  return raw || "Общее";
+};
+
+
+const toDativeRu = (subject) => {
+  const s = String(subject || "").trim().toLowerCase();
+  // минимум, но даёт нормальную фразу: "по математике", "по физике"
+  const map = {
+    "математика": "математике",
+    "физика": "физике",
+    "русский": "русскому языку",
+    "русский язык": "русскому языку",
+    "английский": "английскому",
+    "английский язык": "английскому",
+  };
+  return map[s] || (subject ? String(subject) : "предмету");
+};
+
+// для диагностики/общих заглушек — не считаем это "реальной темой"
+const looksDiagnostic = (s) => /^\s*Диагностика\b/i.test(String(s || "").trim());
+const looksTooGeneric = (s) => /^\s*Базовые\s+темы\b/i.test(String(s || "").trim());
+const isBadManualTopic = (s) => {
+  const v = String(s || "").trim();
+  if (!v) return true;
+  if (looksDiagnostic(v)) return true;
+  if (looksTooGeneric(v)) return true;
+  if (/^\s*без\s+названия\b/i.test(v)) return true;
+  return false;
+};
+
+
+const getWeakestTopicFromProgress = (subject, level) => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+  const km = safeParse(raw, {});
+  const subj = km?.[subject];
+  const lvl = subj?.[level];
+  if (!lvl || typeof lvl !== "object") return null;
+
+  // нормализуем "битые" темы (когда ключом становилась фраза/сообщение)
+  const merged = {};
+  Object.entries(lvl).forEach(([topic, data]) => {
+    const k = normalizeTopicKey(topic);
+    const score = typeof data?.score === "number" ? data.score : 0;
+    const prev = merged[k];
+    if (!prev) merged[k] = { score };
+    else merged[k].score = Math.min(prev.score, score);
+  });
+
+  const entries = Object.entries(merged)
+    .map(([topic, data]) => ({ topic, score: typeof data?.score === "number" ? data.score : 0 }))
+    .sort((a, b) => a.score - b.score);
+  return entries[0]?.topic || null;
+};
+
+
+const safeParse = (raw, fallback) => {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+};
+
+
+const hashString = (s) => {
+  let h = 2166136261;
+  const str = String(s || "");
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+};
+
+// Нужен для /api/generate-test: topicId должен быть стабильным и безопасным
+// (иначе, при передаче строк в topics, сервер может подставлять "Без названия")
+const slugifyId = (s) => {
+  const raw = String(s || "").trim().toLowerCase();
+  if (!raw) return `topic-${Math.random().toString(36).slice(2, 9)}`;
+
+  // минимальная RU->EN транслитерация для стабильных id
+  const map = {
+    а: "a",
+    б: "b",
+    в: "v",
+    г: "g",
+    д: "d",
+    е: "e",
+    ё: "e",
+    ж: "zh",
+    з: "z",
+    и: "i",
+    й: "y",
+    к: "k",
+    л: "l",
+    м: "m",
+    н: "n",
+    о: "o",
+    п: "p",
+    р: "r",
+    с: "s",
+    т: "t",
+    у: "u",
+    ф: "f",
+    х: "h",
+    ц: "ts",
+    ч: "ch",
+    ш: "sh",
+    щ: "sch",
+    ъ: "",
+    ы: "y",
+    ь: "",
+    э: "e",
+    ю: "yu",
+    я: "ya",
+  };
+
+  let out = "";
+  for (const ch of raw) out += map[ch] !== undefined ? map[ch] : ch;
+
+  out = out
+    .replace(/[^a-z0-9\s\-]+/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/\-+/g, "-")
+    .replace(/^\-+|\-+$/g, "");
+
+  return out || `topic-${Math.random().toString(36).slice(2, 9)}`;
+};
+
+const classifyMistake = ({ timeSec, confident, repeats }) => {
+  const t = typeof timeSec === "number" ? timeSec : null;
+  const r = typeof repeats === "number" ? repeats : 1;
+  const c = !!confident;
+
+  if (r >= 3) return "повторяется";
+  if (c && r >= 2) return "путаю понятия";
+  if (c) return "уверенно ошибся";
+  if (t !== null && t < 7 && r <= 1) return "скорее невнимательность";
+  if (t !== null && t >= 12 && r >= 2) return "пробел в знании";
+  if (r >= 2) return "нужно закрепить";
+  return "разобрать и закрепить";
+};
+
+const readMistakeStats = () => {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem(MISTAKE_STATS_KEY);
+  return safeParse(raw, {});
+};
+
+const writeMistakeStats = (stats) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MISTAKE_STATS_KEY, JSON.stringify(stats || {}));
+};
+
+const updateMistakeStats = ({ subject, level, topic, mistakes }) => {
+  if (typeof window === "undefined") return;
+  if (!subject || !level || !Array.isArray(mistakes) || mistakes.length === 0) return;
+
+  const stats = readMistakeStats();
+  if (!stats[subject] || typeof stats[subject] !== "object") stats[subject] = {};
+  if (!stats[subject][level] || typeof stats[subject][level] !== "object") stats[subject][level] = {};
+
+  const lvl = stats[subject][level];
+  const now = new Date().toISOString();
+
+  for (const m of mistakes) {
+    const qHash = hashString(m.question || "");
+    const key = `${topic || ""}::${qHash}::${m.correctIndex}::${m.userIndex}`;
+    const prev = lvl[key] && typeof lvl[key] === "object" ? lvl[key] : {};
+    const prevCount = typeof prev.count === "number" ? prev.count : 0;
+    const nextCount = prevCount + 1;
+
+    const prevAvgTime = typeof prev.avgTimeSec === "number" ? prev.avgTimeSec : null;
+    const t = typeof m.timeSec === "number" ? m.timeSec : null;
+    const nextAvgTime =
+      t === null ? prevAvgTime : prevAvgTime === null ? t : +(prevAvgTime * 0.7 + t * 0.3).toFixed(2);
+
+    const prevConfWrong = typeof prev.confidentWrongCount === "number" ? prev.confidentWrongCount : 0;
+    const nextConfWrong = prevConfWrong + (m.confident ? 1 : 0);
+
+    lvl[key] = {
+      key,
+      subject,
+      level,
+      topic: topic || "",
+      question: m.question || "",
+      correctIndex: m.correctIndex,
+      userIndex: m.userIndex,
+      count: nextCount,
+      avgTimeSec: nextAvgTime,
+      confidentWrongCount: nextConfWrong,
+      lastAt: now,
+    };
+  }
+
+  stats[subject][level] = lvl;
+  writeMistakeStats(stats);
+};
+
+const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
+  if (typeof window === "undefined") return [];
+  const stats = readMistakeStats();
+  const lvl = stats?.[subject]?.[level];
+  if (!lvl || typeof lvl !== "object") return [];
+  return Object.values(lvl)
+    .filter((x) => x && typeof x === "object" && typeof x.count === "number" && x.count >= 2)
+    .sort((a, b) => (b.count - a.count) || ((b.confidentWrongCount || 0) - (a.confidentWrongCount || 0)))
+    .slice(0, limit);
+};
+
+
+const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCount, signals }) => {
+  if (typeof window === "undefined") return { ok: false, error: "no-window" };
+  const topicKey = normalizeTopicKey(topic);
+  if (!subject || !level || !topicKey || !totalCount || totalCount <= 0)
+    return { ok: false, error: "missing-context" };
+
+  try {
+    const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+    const km = safeParse(raw, {});
+
+    if (!km[subject] || typeof km[subject] !== "object") km[subject] = {};
+    if (!km[subject][level] || typeof km[subject][level] !== "object") km[subject][level] = {};
+
+    // base score from correctness
+    let newScore = clamp01(correctCount / totalCount);
+
+    // мягкая корректировка по сигналам (MVP)
+    const sig = signals && typeof signals === "object" ? signals : null;
+    if (sig) {
+      const confidentWrong = typeof sig.confidentWrong === "number" ? sig.confidentWrong : 0;
+      const uncertainCorrect = typeof sig.uncertainCorrect === "number" ? sig.uncertainCorrect : 0;
+      const confidentCorrect = typeof sig.confidentCorrect === "number" ? sig.confidentCorrect : 0;
+      const avgTime = typeof sig.avgTimeSec === "number" ? sig.avgTimeSec : null;
+
+      // уверенные ошибки — сильнее штраф
+      if (confidentWrong > 0) {
+        const frac = confidentWrong / Math.max(1, totalCount);
+        newScore = clamp01(newScore - 0.10 * frac);
+      }
+
+      // уверенные правильные — небольшой бонус (не разгоняем резко)
+      if (confidentCorrect > 0 && newScore < 0.95) {
+        const frac = confidentCorrect / Math.max(1, totalCount);
+        newScore = clamp01(newScore + 0.03 * frac);
+      }
+
+      // неуверенные правильные — маленький бонус, но меньше чем уверенные
+      if (uncertainCorrect > 0 && newScore < 0.95) {
+        const frac = uncertainCorrect / Math.max(1, totalCount);
+        newScore = clamp01(newScore + 0.015 * frac);
+      }
+
+      // слишком быстро + плохой результат => чуть-чуть штраф (невнимательность)
+      if (avgTime !== null && avgTime < 6 && newScore < 0.6) {
+        newScore = clamp01(newScore - 0.04);
+      }
+    }
+
+    const prev = km[subject][level][topicKey] || {};
+    const nextScore = blendScore(prev.score, newScore, 0.35);
+
+    // накопительная статистика по сигналам
+    const prevSig = prev.signals && typeof prev.signals === "object" ? prev.signals : {};
+    const nextSig = { ...prevSig };
+    nextSig.testsCount = (typeof prevSig.testsCount === "number" ? prevSig.testsCount : 0) + 1;
+
+    if (sig) {
+      const avgTime = typeof sig.avgTimeSec === "number" ? sig.avgTimeSec : null;
+      if (avgTime !== null) {
+        const prevAvg = typeof prevSig.avgTimeSec === "number" ? prevSig.avgTimeSec : null;
+        nextSig.avgTimeSec = prevAvg === null ? avgTime : +(prevAvg * 0.7 + avgTime * 0.3).toFixed(2);
+      }
+      nextSig.confidentWrong = (typeof prevSig.confidentWrong === "number" ? prevSig.confidentWrong : 0) + (sig.confidentWrong || 0);
+      nextSig.uncertainCorrect = (typeof prevSig.uncertainCorrect === "number" ? prevSig.uncertainCorrect : 0) + (sig.uncertainCorrect || 0);
+      nextSig.confidentCorrect = (typeof prevSig.confidentCorrect === "number" ? prevSig.confidentCorrect : 0) + (sig.confidentCorrect || 0);
+      nextSig.lastTestAt = new Date().toISOString();
+    }
+
+    km[subject][level][topicKey] = {
+      ...prev,
+      score: nextScore,
+      signals: nextSig,
+      updatedAt: getToday(),
+    };
+
+    window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e?.message || "km-write-failed" };
+  }
+};
+
+const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
+  const topicKey = normalizeTopicKey(topic);
+  if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
+
+  try {
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const list = safeParse(raw, []);
+    const next = Array.isArray(list) ? list : [];
+
+    next.unshift({
+      id: Date.now(),
+      subject,
+      level,
+      topic: topicKey,
+      score,
+      correctCount,
+      totalCount,
+      createdAt: new Date().toISOString(),
+      mistakesSummary: mistakesSummary || null,
+    });
+
+    const trimmed = next.slice(0, 50);
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(trimmed));
+    return { ok: true, count: trimmed.length, error: null };
+  } catch (e) {
+    return { ok: false, count: 0, error: e?.message || "history-write-failed" };
+  }
+};
+
+export default function TestsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isClient, setIsClient] = useState(false);
 
   const [context, setContext] = useState({
     subject: "Математика",
@@ -168,308 +608,236 @@ export default function ChatPage() {
     mode: "exam_prep",
   });
 
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [topic, setTopic] = useState("");
+  const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+  const [diagnosticLabel, setDiagnosticLabel] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const [currentTopic, setCurrentTopic] = useState("");
-  const [currentGoal, setCurrentGoal] = useState(null);
+  const [questions, setQuestions] = useState([]); // [{question, options, correctIndex, topicTitle?}]
+  const [userAnswers, setUserAnswers] = useState([]); // number|null
+  const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
+  const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
+  const [confidence, setConfidence] = useState([]); // "low" | "high"
 
-  const [hasWeakTopics, setHasWeakTopics] = useState(false);
-  const [weakTopicsCount, setWeakTopicsCount] = useState(0);
+  const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
+  const [analysis, setAnalysis] = useState("");
+  const [reviewStyleLabel, setReviewStyleLabel] = useState("");
+  const [reviewing, setReviewing] = useState(false);
+  const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
-  // Need-launcher (умная навигация по потребности) — можно свернуть
-  const [needPanelOpen, setNeedPanelOpen] = useState(true);
+  const [testHistory, setTestHistory] = useState([]);
+  const [historyTick, setHistoryTick] = useState(0);
+  const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
 
-  // План на 10 минут (внутри чата)
-  const [plan10Modal, setPlan10Modal] = useState(null);
-
-  const getLastTopicCandidateSafe = () => {
-    if (typeof window === "undefined") return "";
-    try {
-      const v = window.localStorage.getItem("noolixLastTopicCandidate");
-      return v ? String(v).trim() : "";
-    } catch (_) {
-      return "";
-    }
-  };
-
-  const primaryTopicForNeeds = String(currentTopic || "").trim() || getLastTopicCandidateSafe();
-
-  const openPlan10Modal = () => {
-    const variants = [
-      {
-        title: "План на 10 минут",
-        text: "Быстро и технологично: мини‑тест → разбор ошибок → короткое закрепление.",
-        steps: [
-          { t: "2–3 мин", d: "Мини‑тест по теме" },
-          { t: "3–4 мин", d: "Разбор ошибок (без воды)" },
-          { t: "2–3 мин", d: "Короткое объяснение и сохранение" },
-        ],
-      },
-      {
-        title: "План на 10 минут",
-        text: "Соберём уверенность: 1 тест → 1 объяснение другим способом → контроль.",
-        steps: [
-          { t: "3 мин", d: "Мини‑тест (проверка)" },
-          { t: "4 мин", d: "Объяснение (другой стиль)" },
-          { t: "3 мин", d: "Самопроверка (2 вопроса)" },
-        ],
-      },
-      {
-        title: "План на 10 минут",
-        text: "Закроем слабое место: точечная практика и закрепление.",
-        steps: [
-          { t: "3 мин", d: "Мини‑тест по слабой теме" },
-          { t: "4 мин", d: "Разбор ошибок + ловушки" },
-          { t: "3 мин", d: "Короткий конспект в библиотеку" },
-        ],
-      },
-    ];
-    const pick = variants[Math.floor(Math.random() * variants.length)];
-    setPlan10Modal(pick);
-  };
-
-  const goToTests = (topic) => {
-    const subj = encodeURIComponent(context.subject || "");
-    const lvl = encodeURIComponent(context.level || "");
-    const t = String(topic || "").trim();
-
-    if (t) {
-      window.location.href = `/tests?subject=${subj}&level=${lvl}&topic=${encodeURIComponent(t)}`;
-    } else {
-      // Пустая тема → диагностика/автовыбор темы на странице тестов
-      window.location.href = `/tests?subject=${subj}&level=${lvl}`;
-    }
-  };
-
-  const goToProgress = () => {
-    window.location.href = "/progress";
-  };
-
-
-  const [savedMessageIds, setSavedMessageIds] = useState([]);
-  const [userProfile, setUserProfile] = useState({ name: "", avatar: "panda" });
-  const [toast, setToast] = useState(null);
-  const toastTimerRef = useRef(null);
-
-  const showToast = (text) => {
-    try {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      setToast({ id: Date.now(), text: String(text || "") });
-      toastTimerRef.current = setTimeout(() => setToast(null), 1600);
-    } catch {}
-  };
-
-  const messagesEndRef = useRef(null);
-  const didAutoStartRef = useRef(false);
-  const pendingExplainRef = useRef(null);
-
-  // Client-only guard (фикс для prerender/export на Vercel)
+  // init context
   useEffect(() => {
-    setIsClient(true);
+    if (typeof window === "undefined") return;
+    const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
+    const parsed = safeParse(rawCtx, null);
+    if (parsed && typeof parsed === "object") {
+      setContext((prev) => ({ ...prev, ...parsed }));
+    }
   }, []);
 
-  // обновляем профиль (имя/аватар) при возврате в вкладку
-  useEffect(() => {
-    const refreshProfile = () => {
-      try {
-        const raw = window.localStorage.getItem("noolixProfile");
-        if (!raw) return;
-        const p = JSON.parse(raw);
-        if (p && typeof p === "object") {
-          setUserProfile({
-            name: typeof p.name === "string" ? p.name : "",
-            avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-          });
-        }
-      } catch {}
-    };
-
-    window.addEventListener("focus", refreshProfile);
-    return () => window.removeEventListener("focus", refreshProfile);
-  }, []);
-
-
-  // Переключение предмета/уровня: сохраняем контекст и подгружаем историю конкретного чата
-  const applyContextChange = (patch) => {
-    const nextCtx = { ...context, ...patch };
+  const applyContextChange = (nextCtx) => {
     setContext(nextCtx);
-
-    try {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("noolixContext", JSON.stringify(nextCtx));
-      }
-    } catch (e) {
-      console.warn("Failed to save noolixContext", e);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(nextCtx));
     }
-
-    // Подгружаем историю для (subject + level)
-    try {
-      if (typeof window === "undefined") return;
-
-      const historyKey = getHistoryKey(nextCtx.subject, nextCtx.level);
-      const rawHistory = window.localStorage.getItem(historyKey);
-
-      if (rawHistory) {
-        const arr = JSON.parse(rawHistory);
-        if (Array.isArray(arr) && arr.length > 0) {
-          setMessages(clampHistory(arr));
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to load history for new context", e);
-    }
-
-    // Если истории нет — мягкий старт
-    const starter = {
-      id: Date.now(),
-      role: "assistant",
-      content: `Привет${userProfile.name ? ", " + userProfile.name : ""}! Я NOOLIX. Что именно по предмету тебе сейчас нужно — объяснение темы, разбор задачи или мини-тест?`,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages([starter]);
   };
 
-  // --- Инициализация: контекст, цель, история чата (по предмету+уровню) ---
-  useEffect(() => {
+  const loadTestHistory = () => {
     if (typeof window === "undefined") return;
 
-    try {
-      const rawContext = window.localStorage.getItem("noolixContext");
-      const rawProfile = window.localStorage.getItem("noolixProfile");
-      let ctx = {
-        subject: "Математика",
-        level: "10–11 класс",
-        mode: "exam_prep",
-      };
-      if (rawContext) {
-        const parsed = JSON.parse(rawContext);
-        ctx = { ...ctx, ...parsed };
-      }
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
 
-      let goalFromStorage = null;
-      try {
-        const rawGoal = window.localStorage.getItem("noolixCurrentGoal");
-        if (rawGoal) {
-          const parsedGoal = JSON.parse(rawGoal);
-          if (parsedGoal && typeof parsedGoal === "object") {
-            goalFromStorage = parsedGoal;
-            if (parsedGoal.subject) {
-              ctx = { ...ctx, subject: parsedGoal.subject };
-            }
-          }
-        }
-      } catch (eGoal) {
-        console.warn("Failed to read noolixCurrentGoal", eGoal);
-      }
+    let scoped = list;
 
-      const historyKey = getHistoryKey(ctx.subject, ctx.level);
-
-      const rawHistory = window.localStorage.getItem(historyKey);
-      let initialMessages = [];
-      if (rawHistory) {
-        try {
-          const arr = JSON.parse(rawHistory);
-          if (Array.isArray(arr) && arr.length > 0) {
-            initialMessages = clampHistory(arr);
-          }
-        } catch (eHistory) {
-          console.warn("Failed to parse chat history", eHistory);
-        }
-      }
-
-            // profile (name/avatar) for UI
-      let profile = { name: "", avatar: "panda" };
-      if (rawProfile) {
-        try {
-          const p = JSON.parse(rawProfile);
-          if (p && typeof p === "object") {
-            profile = {
-              name: typeof p.name === "string" ? p.name : "",
-              avatar: typeof p.avatar === "string" ? p.avatar : "panda",
-            };
-          }
-        } catch (eProfile) {
-          console.warn("Failed to read noolixProfile", eProfile);
-        }
-      }
-      setUserProfile(profile);
-
-      setContext(ctx);
-      if (goalFromStorage) setCurrentGoal(goalFromStorage);
-
-      if (initialMessages.length > 0) {
-        setMessages(initialMessages);
-      } else {
-        const starter = {
-          id: Date.now(),
-          role: "assistant",
-            content: `Привет${profile.name ? ", " + profile.name : ""}! Я NOOLIX. Давай разберёмся с предметом. Скажи, что именно тебе сейчас сложно или что хочешь повторить?`,
-          createdAt: new Date().toISOString(),
-        };
-        setMessages([starter]);
-      }
-    } catch (e) {
-      console.warn("Failed to init chat context/history", e);
-    } finally {
-      setLoading(false);
+    if (historyScope === "current") {
+      scoped = list.filter(
+        (x) => x?.subject === context.subject && x?.level === context.level
+      );
     }
-  }, []);
 
-  // Читаем тему из URL (?topic=...)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const topicFromQuery = params.get("topic");
-      if (topicFromQuery && topicFromQuery.trim()) {
-        setCurrentTopic(topicFromQuery.trim());
-      }
-    } catch (e) {
-      console.warn("Failed to parse topic from URL", e);
-    }
-  }, []);
-
-  // --- Вызов backend (объявлен выше автостарта) ---
-  
-  const buildExplainPrompt = ({ topicTitle, style }) => {
-    const t = String(topicTitle || "").trim() || "тему";
-    const subjPrep = getSubjectPrepositional(context.subject);
-
-    const styleLine = style?.label ? `Стиль: ${style.label}.` : "";
-    const styleInstruction = style?.instruction ? style.instruction : "";
-
-    return `Объясни тему «${t}» по ${subjPrep} на уровне «${context.level}».
-${styleLine}
-
-Требования:
-1) Коротко и понятно (без воды).
-2) 1–2 примера (или мини‑пример).
-3) В конце — 2 вопроса для самопроверки.
-4) Не повторяй дословно прошлое объяснение: выбери другой подход.
-
-Доп. указание:
-${styleInstruction}`;
+    setTestHistory(scoped.slice(0, 20));
   };
 
-const callBackend = async (userMessages) => {
+  const clearTestHistory = () => {
+    if (typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
+
+    let next = list;
+
+    if (historyScope === "current") {
+      next = list.filter(
+        (x) => !(x?.subject === context.subject && x?.level === context.level)
+      );
+    } else {
+      next = [];
+    }
+
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
+    setHistoryTick((t) => t + 1);
+  };
+
+  const canGenerate = useMemo(() => {
+    return !generating && context.subject && context.level;
+  }, [generating, context.subject, context.level]);
+
+  const topRepeatedMistakes = useMemo(() => {
+    if (typeof window === "undefined") return [];
+    return getTopRepeatedMistakes({ subject: context.subject, level: context.level, limit: 3 });
+  }, [context.subject, context.level, historyTick]);
+
+  const canSubmit = useMemo(() => {
+    if (!questions.length) return false;
+    if (submitting) return false;
+    // разрешаем отправить даже если не все ответы выбраны — это MVP
+    return true;
+  }, [questions.length, submitting]);
+
+  useEffect(() => {
+    loadTestHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level, historyScope, historyTick]);
+
+  const resetSession = () => {
+    setError("");
+    setQuestions([]);
+    setUserAnswers([]);
+    setQuestionShownAt([]);
+    setTimeToFirstAnswerSec([]);
+    setConfidence([]);
+    setResult(null);
+    setAnalysis("");
+    setReviewing(false);
+  };
+
+  const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
+    setError("");
+    setGenerating(true);
+    setAnalysis("");
+    setResult(null);
     try {
-      setError("");
-      const res = await fetch("/api/chat", {
+      if (!context?.subject || !context?.level) {
+        throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
+      }
+      const titles = Array.isArray(forcedTopicTitles)
+        ? forcedTopicTitles.map(normalizeTopicKey).filter(Boolean)
+        : [];
+      if (!titles.length) throw new Error("Нет темы для закрепления.");
+
+      const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
+      setSentTopicForGeneration(titles[0] || "");
+
+      const avoid = getAvoidStems({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: titles[0] || "",
+      });
+
+      const res = await fetch("/api/generate-test", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: userMessages.map(({ role, content }) => ({
-            role,
-            content,
-          })),
-          context: { ...context, currentTopic },
+          subject: context.subject,
+          topics: topicsToSend,
+          questionCount: count,
+          difficulty: "medium",
+          avoid,
+        }),
+      });
+
+      if (!res.ok) {
+        let msg = "";
+        try { msg = (await res.json())?.error || ""; } catch (_) {}
+        throw new Error(msg || "Не удалось сгенерировать тест");
+      }
+
+      const data = await res.json();
+      const q = Array.isArray(data?.questions) ? data.questions : [];
+      if (!q.length) throw new Error("Пустой тест. Попробуй ещё раз.");
+
+      // Real topic from server
+      const serverTopic = normalizeTopicKey(data?.topicTitle || q?.[0]?.topicTitle || titles[0] || "");
+
+      resetSession();
+      setQuestions(q.map((qq) => ({ ...qq, topicTitle: qq?.topicTitle || serverTopic })));
+      setUserAnswers(new Array(q.length).fill(null));
+      const nowMs = Date.now();
+      setQuestionShownAt(new Array(q.length).fill(nowMs));
+      setTimeToFirstAnswerSec(new Array(q.length).fill(null));
+      setConfidence(new Array(q.length).fill("low"));
+      setTopic(serverTopic);
+      setGenerating(false);
+    } catch (e) {
+      setError(e?.message || "Ошибка");
+      setGenerating(false);
+    }
+  };
+
+  const generateTest = async () => {
+    setError("");
+    setGenerating(true);
+    setAnalysis("");
+    setResult(null);
+
+    try {
+      // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
+      const manualTopics = parseTopicsInput(topic)
+        .map(normalizeTopicKey)
+        .filter((t) => t && !isBadManualTopic(t));
+      const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
+
+      if (!context.subject) {
+        throw new Error("Выбери предмет (subject), чтобы сгенерировать тест.");
+      }
+
+      // 1) Тема для генерации (никогда не пустая)
+      let titles = manualTopics.length > 0 ? manualTopics : (autoWeakest ? [autoWeakest] : []);
+
+      // Если нет ни ручной темы, ни слабой — запускаем диагностику.
+      // В UI видим "Диагностика...", но в прогресс сохраняем реальную тему (fallback ниже).
+      if (!titles.length) {
+        const diag = `Диагностика по ${toDativeRu(context.subject)}`;
+        setDiagnosticLabel(diag);
+        setTopic(diag);
+        const gen = `Базовые темы по ${context.subject}`;
+        titles = [gen];
+      } else {
+        setDiagnosticLabel("");
+        if (manualTopics.length > 0) setTopic(manualTopics[0]);
+      }
+
+      setSentTopicForGeneration(titles[0] || "");
+
+      // 2) В API отправляем объекты {id,title}.
+      // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
+      const topicsPayload = titles.map((t) => ({ id: slugifyId(t), title: t }));
+
+      const avoid = getAvoidStems({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: titles[0] || "",
+      });
+
+      const res = await fetch("/api/generate-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: context.subject,
+          topics: topicsPayload,
+          questionCount: 5,
+          difficulty: "medium",
+          avoid,
+          diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
       });
 
@@ -477,574 +845,276 @@ const callBackend = async (userMessages) => {
         let data = {};
         try {
           data = await res.json();
-        } catch (_) {
-          data = {};
-        }
-        console.error("API /api/chat error:", data);
-        throw new Error(
-          data?.error?.message ||
-            data?.message ||
-            "Не получилось получить ответ от ИИ. Попробуй ещё раз."
-        );
+        } catch (_) {}
+        throw new Error(data?.error || data?.message || "Не удалось сгенерировать тест.");
       }
 
       const data = await res.json();
-      const replyText =
-        typeof data.reply === "string"
-          ? data.reply
-          : "У меня не получилось получить ответ от ИИ. Попробуй ещё раз.";
 
-      const assistantMessage = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: replyText,
-        createdAt: new Date().toISOString(),
-      };
+      const q =
+        Array.isArray(data?.questions) ? data.questions :
+        Array.isArray(data?.test?.questions) ? data.test.questions :
+        Array.isArray(data) ? data :
+        [];
 
-      // attach explain style meta (for UI badge) + rotate styles
-      if (pendingExplainRef.current) {
-        const p = pendingExplainRef.current;
-        assistantMessage.meta = {
-          explainStyleKey: p.styleKey,
-          explainStyleLabel: p.styleLabel,
-          explainTopicKey: p.topicKey,
-          explainTopicTitle: p.topicTitle,
-        };
-        markExplainStyleUsed(p.topicKey, p.styleKey);
-        pendingExplainRef.current = null;
+      if (!Array.isArray(q) || q.length === 0) {
+        throw new Error("Сервер вернул пустой тест. Попробуй другую тему.");
       }
 
+      // --- определяем и фиксируем финальную тему ---
+      const serverTopicRaw =
+        data?.topicTitle || data?.topic || data?.test?.topicTitle || data?.test?.topic || "";
 
-      // обновляем "твои чаты" в библиотеке
-      touchContinueItem();
-
-      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
-    } catch (err) {
-      console.error(err);
-      setError(
-        err?.message ||
-          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
+      let resolvedTopic = normalizeTopicKey(
+        serverTopicRaw || q?.[0]?.topicTitle || sentTopicForGeneration || titles[0] || ""
       );
+
+      // не даём теме стать пустой/"Общее"
+      if (!resolvedTopic || resolvedTopic === "Общее") {
+        try { resolvedTopic = normalizeTopicKey(window.localStorage.getItem(LAST_TOPIC_KEY) || ""); } catch (_) {}
+      }
+      if (!resolvedTopic || resolvedTopic === "Общее") {
+        resolvedTopic = normalizeTopicKey(`Базовые темы по ${context.subject}`);
+      }
+
+      try { window.localStorage.setItem(LAST_TOPIC_KEY, resolvedTopic); } catch (_) {}
+
+      // Если показывали диагностику — теперь переключаемся на реальную тему
+      setDiagnosticLabel("");
+      setTopic(resolvedTopic);
+
+      const qWithTopic = q.map((qq) => ({
+        ...qq,
+        topicTitle:
+          (typeof qq?.topicTitle === "string" && qq.topicTitle.trim()) ? qq.topicTitle.trim() : resolvedTopic,
+      }));
+
+      setQuestions(qWithTopic);
+      setUserAnswers(new Array(qWithTopic.length).fill(null));
+      const nowMs = Date.now();
+      setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
+      setTimeToFirstAnswerSec(new Array(qWithTopic.length).fill(null));
+      setConfidence(new Array(qWithTopic.length).fill("low"));
+    } catch (e) {
+      setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
-      setThinking(false);
+      setGenerating(false);
     }
   };
 
-  // Авто-старт: если пришли с ?topic=..., автоматически отправляем запрос в /api/chat
-  useEffect(() => {
-    if (!isClient) return;
-    if (loading) return;
-
-    const topic = (currentTopic || "").trim();
-    if (!topic) return;
-    if (didAutoStartRef.current) return;
-
-    // если пользователь уже писал в этом чате — не вмешиваемся
-    const hasUser =
-      Array.isArray(messages) && messages.some((m) => m?.role === "user");
-    if (hasUser) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
-    const assistantCount = Array.isArray(messages)
-      ? messages.filter((m) => m?.role === "assistant").length
-      : 0;
-    if (assistantCount > 1) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topic)}`;
-
-    // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
-    try {
-      const cand = normalizeTopicKey(topic);
-      if (cand && cand !== "Общее") {
-        window.localStorage.setItem("noolixLastTopicCandidate", cand);
-      }
-    } catch (_) {}
-
-    const picked = pickNextExplainStyle(topicKeyForStyle);
-    const style = picked.next;
-
-    pendingExplainRef.current = {
-      topicKey: topicKeyForStyle,
-      styleKey: style.key,
-      styleLabel: style.label,
-      topicTitle: topic,
-    };
-
-    const prompt = buildExplainPrompt({ topicTitle: topic, style });
-
-    const userMessage = {
-      id: Date.now(),
-      role: "user",
-      content: prompt,
-      createdAt: new Date().toISOString(),
-    };
-
-    const newMessages = clampHistory([...(messages || []), userMessage]);
-
-    // фиксируем, что авто-старт уже был (чтобы не повторялось)
-    didAutoStartRef.current = true;
-
-    setMessages(newMessages);
-    setThinking(true);
-    setInput("");
-
-    callBackend(newMessages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, loading, currentTopic]);
-
-  // --- Слабые темы по предмету ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const submitTest = async () => {
+    setSubmitting(true);
+    setError("");
+    setAnalysis("");
 
     try {
-      const rawKnowledge = window.localStorage.getItem("noolixKnowledgeMap");
-      if (!rawKnowledge) {
-        setHasWeakTopics(false);
-        setWeakTopicsCount(0);
-        return;
-      }
+      const totalCount = questions.length;
 
-      const parsed = JSON.parse(rawKnowledge);
-      if (!parsed || typeof parsed !== "object") {
-        setHasWeakTopics(false);
-        setWeakTopicsCount(0);
-        return;
-      }
-
-      const subjEntry = parsed[context.subject];
-      if (!subjEntry || typeof subjEntry !== "object") {
-        setHasWeakTopics(false);
-        setWeakTopicsCount(0);
-        return;
-      }
-
-      let weakCount = 0;
-      Object.values(subjEntry).forEach((t) => {
-        if (t && typeof t.score === "number" && t.score < 0.8) {
-          weakCount += 1;
+      let correctCount = 0;
+      const mistakes = [];
+      questions.forEach((q, idx) => {
+        const ua = userAnswers[idx];
+        const isCorrect = typeof ua === "number" && ua === q.correctIndex;
+        if (isCorrect) {
+          correctCount += 1;
+        } else {
+          const opts = Array.isArray(q.options) ? q.options : [];
+          const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
+          const conf = Array.isArray(confidence) ? confidence[idx] : "low";
+          mistakes.push({
+            idx,
+            question: q.question || q.text || "",
+            options: opts,
+            correctIndex: typeof q.correctIndex === "number" ? q.correctIndex : 0,
+            userIndex: typeof ua === "number" ? ua : null,
+            explanation: q.explanation || "",
+            timeSec: typeof tSec === "number" ? tSec : null,
+            confident: conf === "high",
+          });
         }
       });
 
-      setWeakTopicsCount(weakCount);
-      setHasWeakTopics(weakCount > 0);
-    } catch (e) {
-      console.warn("Failed to read noolixKnowledgeMap", e);
-      setHasWeakTopics(false);
-      setWeakTopicsCount(0);
-    }
-  }, [context.subject]);
+      const score = totalCount > 0 ? correctCount / totalCount : 0;
+      const scorePercent = Math.round(score * 100);
 
-  // --- Подтягиваем сохранённые сообщения из библиотеки ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem("noolixLibrarySaved");
-      if (!raw) {
-        setSavedMessageIds([]);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        setSavedMessageIds([]);
-        return;
-      }
+      setResult({ correctCount, totalCount, scorePercent });
 
-      const ids = parsed
-        .map((item) => item.messageId || item.id)
-        .filter(Boolean);
+      const topicRaw = String(topic || "").trim();
 
-      setSavedMessageIds(ids);
-    } catch (e) {
-      console.warn("Failed to init savedMessageIds from library", e);
-      setSavedMessageIds([]);
-    }
-  }, []);
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
+      const finalTopic = normalizeTopicKey((!isDiag && topicRaw)
+        ? topicRaw
+        : (questions?.[0]?.topicTitle || sentTopicForGeneration || `Базовые темы по ${context.subject}`));
 
-  // Автоскролл вниз
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, thinking]);
-
-  // --- Сохраняем историю конкретного чата ---
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      if (!context?.subject || !context?.level) return;
-
-      const compact = clampHistory(messages || []);
-      const historyKey = getHistoryKey(context.subject, context.level);
-
-      if (compact.length > 0) {
-        window.localStorage.setItem(historyKey, JSON.stringify(compact));
-      } else {
-        window.localStorage.removeItem(historyKey);
-      }
-    } catch (e) {
-      console.warn("Failed to save chat history", e);
-    }
-  }, [messages, context?.subject, context?.level]);
-
-  // ✅ NEW: обновление прогресса при сохранении объяснения
-  const normalizeTopicKey = (t) => {
-    let raw = String(t || "").trim();
-    if (!raw) return "Общее";
-
-    raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
-    raw = raw.replace(/\s+/g, " ");
-
-    const q1 = raw.match(/«([^»]{2,80})»/);
-    const q2 = raw.match(/"([^"]{2,80})"/);
-    if (q1?.[1]) raw = q1[1].trim();
-    else if (q2?.[1]) raw = q2[1].trim();
-
-    const patterns = [
-      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-    ];
-    for (const p of patterns) {
-      const m = raw.match(p);
-      if (m?.[1]) {
-        raw = m[1].trim();
-        break;
-      }
-    }
-
-    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
-
-    const words = raw.split(/\s+/).filter(Boolean);
-    const tooLong = raw.length > 60;
-    const tooManyWords = words.length > 8;
-    const hasSentenceMarks = /[\?\!\.]/.test(raw);
-    if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-
-    return raw || "Общее";
-  };
-
-
-  const touchProgressFromDialogSave = (topicKey) => {
-    if (typeof window === "undefined") return;
-
-    const topic = normalizeTopicKey(topicKey);
-
-    try {
-      const raw = window.localStorage.getItem("noolixKnowledgeMap");
-      const km = raw ? JSON.parse(raw) : {};
-      const safeKm = km && typeof km === "object" ? km : {};
-
-      const subject = context?.subject || "Без предмета";
-      const level = context?.level || "Без уровня";
-
-      const rawSubj =
-        safeKm[subject] && typeof safeKm[subject] === "object" ? safeKm[subject] : {};
-
-      // legacy: subject -> topic -> {score...}
-      const sampleVal = Object.values(rawSubj || {})[0];
-      const looksLegacy =
-        sampleVal &&
-        typeof sampleVal === "object" &&
-        ("score" in sampleVal || "updatedAt" in sampleVal || "source" in sampleVal);
-
-      if (looksLegacy) {
-        safeKm[subject] = { [level]: rawSubj };
-      } else if (!safeKm[subject] || typeof safeKm[subject] !== "object") {
-        safeKm[subject] = {};
-      }
-
-      if (!safeKm[subject][level] || typeof safeKm[subject][level] !== "object") {
-        safeKm[subject][level] = {};
-      }
-
-      const lvlEntry = safeKm[subject][level];
-
-      const prev =
-        lvlEntry[topic] && typeof lvlEntry[topic] === "object" ? lvlEntry[topic] : {};
-
-      const prevScore = typeof prev.score === "number" ? prev.score : 0.55;
-      const nextScore = Math.min(1, +(prevScore + 0.03).toFixed(3));
-      const nowIso = new Date().toISOString();
-
-      lvlEntry[topic] = {
-        ...prev,
-        score: nextScore,
-        updatedAt: nowIso,
-        source: "dialog_saved",
-      };
-
-      safeKm[subject][level] = lvlEntry;
-      window.localStorage.setItem("noolixKnowledgeMap", JSON.stringify(safeKm));
-    } catch (e) {
-      console.warn("Failed to update noolixKnowledgeMap from dialog save", e);
-    }
-  };
-
-  // Сохранение объяснения в библиотеку
-  const saveExplanationToLibrary = (message) => {
-    if (typeof window === "undefined" || !message || message.role !== "assistant")
-      return;
-
-    try {
-      const raw = window.localStorage.getItem("noolixLibrarySaved");
-      let list = [];
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) list = parsed;
-      }
-
-      const msgId = message.id || null;
-
-      // Уже сохранено — не дублируем
-      if (msgId && list.some((item) => item.messageId === msgId)) {
-        setSavedMessageIds((prev) =>
-          prev.includes(msgId) ? prev : [...prev, msgId]
-        );
-        return;
-      }
-
-      const titleFromTopic = currentTopic && currentTopic.trim();
-      const firstLine = (message.content || "").split("\n")[0].trim();
-      const titleFromText = firstLine.slice(0, 80);
-      const title =
-        titleFromTopic ||
-        (titleFromText
-          ? titleFromText
-          : `Сохранённое объяснение по ${context.subject}`);
-
-      const item = {
-        id: msgId || Date.now(),
-        title,
+      // Remember questions to avoid repeats in future tests
+      pushQuestionsToBank({
         subject: context.subject,
         level: context.level,
-        topic: message?.meta?.explainTopicTitle || currentTopic || "",
-        explainStyleKey: message?.meta?.explainStyleKey || "",
-        explainStyleLabel: message?.meta?.explainStyleLabel || "",
-
-        from: "из диалога",
-        savedAt: new Date().toISOString(),
-        messageId: msgId,
-        preview: (message.content || "").slice(0, 400),
-      };
-
-      const MAX_SAVED = 50;
-      const newList = [item, ...list].slice(0, MAX_SAVED);
-      window.localStorage.setItem("noolixLibrarySaved", JSON.stringify(newList));
-
-      if (msgId) {
-        setSavedMessageIds((prev) =>
-          prev.includes(msgId) ? prev : [...prev, msgId]
-        );
-      }
-
-      showToast("Сохранено в библиотеку");
-
-      // ✅ NEW: после сохранения — отмечаем тему в прогрессе
-      const metaTopic = message?.meta?.explainTopicTitle || currentTopic || "";
-      let topicKey = normalizeTopicKey(metaTopic);
-      if (!topicKey || topicKey === "Общее") {
-        try {
-          const last = window.localStorage.getItem("noolixLastTopicCandidate");
-          if (last) topicKey = normalizeTopicKey(last);
-        } catch (_) {}
-      }
-      touchProgressFromDialogSave(topicKey);
-    } catch (e) {
-      console.warn("Failed to save explanation to library", e);
-    }
-  };
-
-  // Обновление блока "Твои чаты" в библиотеке
-  const touchContinueItem = () => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const raw = window.localStorage.getItem("noolixLibraryContinue");
-      let list = [];
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) list = parsed;
-      }
-
-      const title = `Диалог: ${context.subject}, ${context.level}`;
-      const nowIso = new Date().toISOString();
-
-      let found = false;
-      const updated = list.map((item) => {
-        if (item.subject === context.subject && item.level === context.level) {
-          found = true;
-          return { ...item, title, updatedAt: nowIso };
-        }
-        return item;
+        topicTitle: finalTopic,
+        questions,
       });
 
-      if (!found) {
-        updated.unshift({
-          id: Date.now(),
-          title,
-          subject: context.subject,
-          level: context.level,
-          type: "Диалог с тьютором",
-          updatedAt: nowIso,
-        });
+
+      // агрегаты по ошибкам
+      const avgTime =
+        mistakes.filter((m) => typeof m.timeSec === "number").reduce((s, m) => s + m.timeSec, 0) /
+        Math.max(1, mistakes.filter((m) => typeof m.timeSec === "number").length);
+      const confidentWrong = mistakes.filter((m) => m.confident).length;
+
+      const _mistakesSummary = {
+        wrongCount: mistakes.length,
+        avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
+        confidentWrongCount: confidentWrong,
+      };
+
+      // обновляем карту знаний
+            // сигналы для прогресса: уверенность + время
+      let uncertainCorrectCount = 0;
+      let confidentCorrectCount = 0;
+      for (let i = 0; i < questions.length; i++) {
+        const ua = userAnswers[i];
+        const isCorrect = typeof ua === "number" && ua === questions[i].correctIndex;
+        if (!isCorrect) continue;
+        const conf = Array.isArray(confidence) ? confidence[i] : "low";
+        if (conf === "high") confidentCorrectCount += 1;
+        else uncertainCorrectCount += 1;
       }
 
-      const MAX_CONTINUE = 20;
-      const finalList = updated
-        .sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        )
-        .slice(0, MAX_CONTINUE);
-
-      window.localStorage.setItem(
-        "noolixLibraryContinue",
-        JSON.stringify(finalList)
+      const timeNums = (Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : []).filter(
+        (x) => typeof x === "number" && Number.isFinite(x)
       );
+      const avgTimeAll =
+        timeNums.length > 0 ? +(timeNums.reduce((s, x) => s + x, 0) / timeNums.length).toFixed(2) : null;
+
+      const signals = {
+        confidentWrong: confidentWrong,
+        uncertainCorrect: uncertainCorrectCount,
+        confidentCorrect: confidentCorrectCount,
+        avgTimeSec: avgTimeAll,
+      };
+
+      // обновляем карту знаний
+      const kmRes = updateKnowledgeFromTest({
+        subject: context.subject,
+        level: context.level,
+        topic: finalTopic,
+        correctCount,
+        totalCount,
+        signals,
+      });
+
+      // обновляем статистику ошибок
+      updateMistakeStats({
+        subject: context.subject,
+        level: context.level,
+        topic: finalTopic,
+        mistakes,
+      });
+
+      // пишем историю тестов
+      const hRes = pushTestHistory({
+        subject: context.subject,
+        level: context.level,
+        topic: finalTopic,
+        score: clamp01(score),
+        correctCount,
+        totalCount,
+        mistakesSummary: _mistakesSummary,
+      });
+
+      setSaveInfo({
+        ts: new Date().toISOString(),
+        historyOk: hRes?.ok === true,
+        historyCount: hRes?.count || 0,
+        historyError: hRes?.error || null,
+        kmOk: kmRes?.ok === true,
+        kmError: kmRes?.error || null,
+      });
+
+      if (!(hRes?.ok === true)) {
+        setError(`Не удалось сохранить историю теста: ${hRes?.error || "unknown"}`);
+      } else if (!(kmRes?.ok === true)) {
+        setError(`История сохранена, но прогресс не обновился: ${kmRes?.error || "unknown"}`);
+      }
+
+      // обновим блок истории тестов на странице
+      setHistoryTick((t) => t + 1);
+      try { loadTestHistory(); } catch (_) {}
     } catch (e) {
-      console.warn("Failed to update continue list", e);
+      setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const sendMessage = () => {
-    const text = input.trim();
-    if (!text || thinking) return;
+  const reviewMistakes = async () => {
+    setReviewing(true);
+    setError("");
+    setAnalysis("");
 
-    const userMessage = {
-      id: Date.now(),
-      role: "user",
-      content: text,
-      createdAt: new Date().toISOString(),
-    };
-
-    // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
     try {
-      const cand = normalizeTopicKey(text);
-      if (cand && cand !== "Общее") {
-        window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      const topicRaw = String(topic || "").trim();
+      const isDiag = /^Диагностика\b/i.test(topicRaw);
+
+      let finalTopic = (!isDiag && topicRaw)
+        ? topicRaw
+        : (questions?.[0]?.topicTitle || sentTopicForGeneration || "");
+
+      if (!finalTopic) {
+        try { finalTopic = window.localStorage.getItem(LAST_TOPIC_KEY) || ""; } catch (_) {}
       }
-    } catch (_) {}
+
+      if (!finalTopic) finalTopic = `Базовые темы по ${context.subject}`;
+
+      finalTopic = normalizeTopicKey(finalTopic);
+
+      try { window.localStorage.setItem(LAST_TOPIC_KEY, finalTopic); } catch (_) {}
+
+      const reviewTopicKey = `${context.subject}|${context.level}|${finalTopic}`;
+      const pickedReview = pickNextReviewStyle(reviewTopicKey);
+      const reviewStyle = pickedReview.next;
+      setReviewStyleLabel(reviewStyle.label);
 
 
-    const newMessages = clampHistory([...(messages || []), userMessage]);
-    setMessages(newMessages);
-    setInput("");
-    setThinking(true);
+      // Remember questions to avoid repeats in future tests
+      pushQuestionsToBank({
+        subject: context.subject,
+        level: context.level,
+        topicTitle: finalTopic,
+        questions,
+      });
 
-    callBackend(newMessages);
-  };
+      const res = await fetch("/api/review-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: context.subject,
+          topic: finalTopic,
+          questions,
+          userAnswers,
+          reviewStyleKey: reviewStyle?.key || "",
+          reviewStyleLabel: reviewStyle?.label || "",
+          reviewStyleInstruction: reviewStyle?.instruction || "",
+        }),
+      });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    sendMessage();
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const subjectPrep = getSubjectPrepositional(context.subject);
-
-  const quickActions = [
-    {
-      key: "explain",
-      label: currentTopic ? `Объяснить «${currentTopic}»` : "Объясни тему",
-    },
-    { key: "steps", label: "Разбери задачу по шагам" },
-    {
-      key: "test",
-      label: currentGoal ? "Мини-тест по цели" : "Сделай мини-тест",
-    },
-    ...(hasWeakTopics
-      ? [{ key: "weak", label: "Потренироваться по слабым темам" }]
-      : []),
-  ];
-
-  const handleQuickAction = (key) => {
-    let text = "";
-
-    switch (key) {
-      case "explain": {
-        // prefer explicit topic, else last candidate, else goal title
-        let topicTitle = "";
-        if (currentTopic) topicTitle = currentTopic;
-        else if (currentGoal && currentGoal.title) topicTitle = currentGoal.title;
-
-        if (!topicTitle && typeof window !== "undefined") {
-          try {
-            const last = window.localStorage.getItem("noolixLastTopicCandidate");
-            if (last) topicTitle = last;
-          } catch (_) {}
-        }
-
-        const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topicTitle)}`;
-        const picked = pickNextExplainStyle(topicKeyForStyle);
-        const style = picked.next;
-
-        pendingExplainRef.current = {
-          topicKey: topicKeyForStyle,
-          styleKey: style.key,
-          styleLabel: style.label,
-          topicTitle: topicTitle || currentTopic || "",
-        };
-
-        text = buildExplainPrompt({ topicTitle: topicTitle || currentTopic || "тему", style });
-        break;
+      if (!res.ok) {
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {}
+        throw new Error(data?.error || data?.message || "Не удалось получить разбор ошибок.");
       }
-      case "steps":
-        text = `Разбери задачу по ${subjectPrep} по шагам. Сначала уточни условия/данные, затем покажи решение и проверку.`;
-        break;
-      case "test":
-        if (currentGoal) {
-          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} в рамках моей цели «${currentGoal.title}» на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
-        } else {
-          text = `Сделай, пожалуйста, мини-тест по ${subjectPrep} на 3–5 вопросов, чтобы я проверил(а) свои знания.`;
-        }
-        break;
-      case "weak":
-        text = `Предложи, пожалуйста, небольшую тренировку по типичным сложным темам по ${subjectPrep} на моём уровне. Начни с самых базовых вопросов и постепенно усложняй.`;
-        break;
-      default:
-        break;
-    }
 
-    if (text) {
-      setInput(text);
-      setTimeout(() => {
-        sendMessage();
-      }, 0);
+      const data = await res.json();
+      setAnalysis(typeof data?.analysis === "string" ? data.analysis : "");
+      try { markReviewStyleUsed(reviewTopicKey, reviewStyle?.key); } catch (_) {}
+    } catch (e) {
+      setError(typeof e?.message === "string" ? e.message : "Ошибка разбора ошибок.");
+    } finally {
+      setReviewing(false);
     }
   };
-
-  if (loading || !isClient) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
-            NOOLIX
-          </div>
-          <p className="text-xs text-purple-100/80">
-            Загружаем твою последнюю сессию…
-          </p>
-          <div className="flex gap-1 text-sm text-purple-100">
-            <span className="animate-pulse">•</span>
-            <span className="animate-pulse opacity-70">•</span>
-            <span className="animate-pulse opacity-40">•</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -1063,7 +1133,8 @@ const callBackend = async (userMessages) => {
       </button>
 
       <aside
-        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
+        className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6
+        transform transition-transform duration-300 z-40
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
@@ -1083,17 +1154,17 @@ const callBackend = async (userMessages) => {
                 key={item.key}
                 href={item.href}
                 className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === "chat" ? "bg-white/15" : "hover:bg-white/5"}
+                  ${item.key === "tests" ? "bg-white/15" : "hover:bg-white/5"}
                 `}
               >
                 <span
                   className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === "chat" ? "ring-2 ring-purple-200" : ""}
+                    ${item.key === "tests" ? "ring-2 ring-purple-200" : ""}
                   `}
                 >
                   {item.icon}
                 </span>
-                <span className={item.key === "chat" ? "font-semibold" : ""}>
+                <span className={item.key === "tests" ? "font-semibold" : ""}>
                   {item.label}
                 </span>
               </a>
@@ -1121,421 +1192,526 @@ const callBackend = async (userMessages) => {
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-      {/* toast */}
-      {toast ? (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="noolix-toast px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs text-purple-50 shadow-lg">
-            {toast.text}
-          </div>
-        </div>
-      ) : null}
-
-      <style jsx global>{`
-        @keyframes noolixToastIn {
-          0% { transform: translateY(-8px) scale(0.98); opacity: 0; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        .noolix-toast { animation: noolixToastIn 160ms ease-out both; }
-      `}</style>
-
-          <div className="w-full max-w-5xl grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
-            <aside className="space-y-4">
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
-                  Текущая сессия
-                </p>
-                <h2 className="text-sm font-semibold mb-1">Контекст</h2>
-
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
-                    <select
-                      value={context.subject}
-                      onChange={(e) =>
-                        applyContextChange({ subject: e.target.value })
-                      }
-                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                    >
-                      <option>Математика</option>
-                      <option>Физика</option>
-                      <option>Русский язык</option>
-                      <option>Английский язык</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
-                    <select
-                      value={context.level}
-                      onChange={(e) =>
-                        applyContextChange({ level: e.target.value })
-                      }
-                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                    >
-                      <option>7–9 класс</option>
-                      <option>10–11 класс</option>
-                      <option>1 курс вуза</option>
-                    </select>
-                  </div>
+          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-purple-300" />
+                  <span>Мини-тесты</span>
                 </div>
-
-                {currentGoal && (
-                  <p className="text-xs text-purple-100">
-                    Цель:{" "}
-                    <span className="font-semibold">{currentGoal.title}</span>
-                  </p>
-                )}
-
-                {hasWeakTopics && (
-                  <p className="text-[11px] text-purple-200 mt-1">
-                    В карте знаний по этому предмету отмечено{" "}
-                    <span className="font-semibold">
-                      {weakTopicsCount} слабых тем
-                    </span>
-                    .
-                  </p>
-                )}
-
-                {currentTopic && (
-                  <p className="text-[11px] text-purple-200 mt-1">
-                    Тема из прогресса:{" "}
-                    <span className="font-semibold">{currentTopic}</span>
-                  </p>
-                )}
-              </section>
-
-              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-purple-300/80 mb-1">
-                  Быстрый старт
-                </p>
-                <p className="text-[11px] text-purple-100 mb-2">
-                  Можно начать с готовых запросов или написать свой вопрос в поле справа.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {quickActions.map((action) => (
-                    <button
-                      key={action.key}
-                      type="button"
-                      onClick={() => handleQuickAction(action.key)}
-                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[11px] text-purple-50 transition border border-white/15"
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </aside>
-
-            <section className="flex flex-col h-[60vh] md:h-[70vh] bg-black/70 border border-white/5 rounded-2xl">
-              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <h1 className="text-sm md:text-base font-semibold">
-                    Диалог с NOOLIX
-                  </h1>
-                  <p className="text-[11px] text-purple-200">
-                    {context.subject} • {context.level}
-                    {currentTopic && <> • Тема: {currentTopic}</>}
+                  <h1 className="text-2xl md:text-3xl font-semibold">Тесты</h1>
+                  <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
+                    Сгенерируй мини-тест, пройди его — и прогресс по теме обновится автоматически.
                   </p>
-                  {currentGoal && (
-                    <p className="text-[10px] text-purple-300 mt-0.5">
-                      Текущая цель: {currentGoal.title}
-                    </p>
-                  )}
+                </div>
+              </div>
+
+              <div className="w-full md:w-[280px] space-y-2">
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
+                  <select
+                    value={context.subject}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, subject: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>Математика</option>
+                    <option>Физика</option>
+                    <option>Русский язык</option>
+                    <option>Английский язык</option>
+                  </select>
                 </div>
 
-                <div className="flex items-center gap-2 text-[11px] text-purple-200">
-                  <span className="h-2 w-2 rounded-full bg-green-400" />
-                  <span>
-                    {thinking ? "Обрабатываю запрос…" : "Готов к диалогу"}
-                  </span>
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Уровень</p>
+                  <select
+                    value={context.level}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, level: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option>7–9 класс</option>
+                    <option>10–11 класс</option>
+                    <option>1 курс вуза</option>
+                  </select>
                 </div>
-              </header>
-              {needPanelOpen ? (
-                <div className="px-4 pt-3">
-                  <div className="rounded-2xl border border-purple-300/20 bg-gradient-to-br from-purple-500/10 via-black/30 to-black/20 p-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wide text-purple-200/80 flex items-center gap-2">
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">
-                            ✨
-                          </span>
-                          Что тебе сейчас нужно?
-                        </p>
-                        <p className="text-[11px] text-purple-100/70 mt-1">
-                          NOOLIX использует твой контекст: {context.subject} • {context.level}
-                          {primaryTopicForNeeds ? (
-                            <>
-                              {" "}
-                              • тема: <span className="text-purple-100/90">{primaryTopicForNeeds}</span>
-                            </>
-                          ) : null}
-                        </p>
-                      </div>
+              </div>
+            </section>
 
-                      <button
-                        type="button"
-                        onClick={() => setNeedPanelOpen(false)}
-                        className="text-[11px] text-purple-200/70 hover:text-purple-100 transition"
-                      >
-                        Скрыть
-                      </button>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => goToTests(primaryTopicForNeeds)}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-100 flex items-center gap-2 transition"
-                        title="Запустить мини‑тест (если тема пустая — будет диагностика)"
-                      >
-                        🧪 <span>Мини‑тест</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickAction("explain")}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-100 flex items-center gap-2 transition"
-                        title="Попросить объяснение (стиль будет чередоваться)"
-                      >
-                        💡 <span>Объяснение</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={openPlan10Modal}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-100 flex items-center gap-2 transition"
-                        title="Открыть план на 10 минут прямо в чате"
-                      >
-                        ⏱ <span>План на 10 минут</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={goToProgress}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-100 flex items-center gap-2 transition"
-                        title="Открыть прогресс и слабые темы"
-                      >
-                        📈 <span>Слабые темы</span>
-                        {hasWeakTopics ? (
-                          <span className="ml-auto text-[10px] rounded-full border border-purple-300/20 bg-purple-500/10 px-2 py-0.5 text-purple-100/90">
-                            {weakTopicsCount || "!"}
-                          </span>
-                        ) : null}
-                      </button>
-                    </div>
-                  </div>
+            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div className="flex-1">
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    Тема теста
+                  </p>
+                  <input
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Например: Производная, Кинематика, Причастные обороты…"
+                    className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
+                  />
+                  <p className="text-[11px] text-purple-200/80 mt-2">
+                    Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
+                  </p>
                 </div>
-              ) : (
-                <div className="px-4 pt-3">
+
+                <div className="flex gap-2 md:justify-end">
                   <button
                     type="button"
-                    onClick={() => setNeedPanelOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-purple-300/25 bg-gradient-to-r from-purple-500/25 via-purple-500/10 to-transparent px-3 py-2 text-[13px] text-purple-50 shadow-sm hover:from-purple-500/35 hover:border-purple-300/40 hover:shadow transition active:scale-[0.99]"
+                    onClick={() => { setTopic(""); resetSession(); }}
+                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                   >
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">✨</span>
-                    <span className="font-medium">Показать быстрые действия</span>
-                    <span className="hidden md:inline text-purple-200/70">тест • объяснение • план</span>
+                    Сброс
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={generateTest}
+                    disabled={!canGenerate}
+                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generating ? "Генерация…" : "Сгенерировать тест"}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="bg-black/40 border border-red-400/30 rounded-xl p-3 text-xs text-red-200">
+                  {error}
+                </div>
+              )}
+            </section>
+
+            {/* История тестов */}
+            <section className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                    История тестов
+                  </p>
+                  <p className="text-xs md:text-sm text-purple-100/90">
+                    {historyScope === "current"
+                    ? "Последние попытки по текущему предмету и уровню."
+                    : "Последние попытки по всем предметам и уровням."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  {historyScope === "current" ? "Показать все" : "Только текущие"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTick((t) => t + 1)}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Обновить
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = window.confirm(
+                      historyScope === "current"
+                        ? "Очистить историю по текущему предмету и уровню?"
+                        : "Очистить ВСЮ историю мини‑тестов?"
+                    );
+                    if (ok) clearTestHistory();
+                  }}
+                  className="px-3 py-2 rounded-full border border-red-300/30 bg-black/30 text-[11px] text-red-100 hover:bg-white/5 transition"
+                >
+                  Очистить
+                </button>
+              </div>
+              </div>
+
+              {testHistory.length > 0 && (
+                <div className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 flex flex-wrap gap-2">
+                  <span>Показано: <b>{testHistory.length}</b></span>
+                  <span>•</span>
+                  <span>
+                    Средний результат:{" "}
+                    <b>
+                      {Math.round(
+                        (testHistory.reduce((sum, x) => sum + (x?.score ?? 0), 0) /
+                          Math.max(1, testHistory.length)) *
+                          100
+                      )}
+                      %
+                    </b>
+                  </span>
                 </div>
               )}
 
-
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
-                {messages.map((m, i) => {
-                  const prev = i > 0 ? messages[i - 1] : null;
-                  const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
-                  const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
-
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex ${
-                        m.role === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div>
-                        {showAssistantHeader ? (
-                          <div className="mb-1 flex items-center justify-start gap-2 text-[11px] text-purple-200/70">
-                            <span
-                              className="h-8 w-8 rounded-2xl flex items-center justify-center border border-white/10 bg-gradient-to-br from-[#FDF2FF] via-[#E5DEFF] to-white text-black shadow-md"
-                              title="NOOLIX"
-                            >
-                              <span className="text-sm font-extrabold tracking-tight">N</span>
-                              <span className="text-[10px] ml-0.5 -mt-2">✦</span>
-                            </span>
-                            <span>NOOLIX</span>
-                          </div>
-                        ) : null}
-
-                        {showUserHeader ? (
-                          <div className="mb-1 flex items-center justify-end gap-2 text-[11px] text-purple-200/70">
-                            {userProfile.name ? <span>{userProfile.name}</span> : null}
-                            <span
-                              className="h-8 w-8 rounded-2xl flex items-center justify-center border border-white/10 bg-white/10 text-white/90 shadow-sm"
-                              title={userProfile.name || "Ты"}
-                            >
-                              <span className="text-lg leading-none">
-                                {AVATAR_EMOJI[userProfile.avatar] || "🙂"}
-                              </span>
-                            </span>
-                          </div>
-                        ) : null}
-
-                        <div
-                          className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm border
-                            ${
-                              m.role === "user"
-                                ? "bg-purple-500/80 text-white border-purple-300/60"
-                                : "bg-black/60 text-purple-50 border-white/10"
-                            }
-                          `}
-                        >
-                          <div className="whitespace-pre-wrap leading-snug">
-                            {m.content}
-                          </div>
-
-                          <div className="mt-1 text-[10px] text-purple-200/70 flex justify-end gap-1">
-                            <span>{formatTime(m.createdAt || m.ts || m.time || m.timestamp) || "—"}</span>
-                          </div>
-
-                          {m.role === "assistant" && (
-                            <div className="mt-2 flex justify-end">
-                              {savedMessageIds.includes(m.id) ? (
-                                <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-black/20 border border-emerald-300/60 text-emerald-200 max-w-[80%]">
-                                  <span>✅</span>
-                                  <span>Сохранено</span>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => saveExplanationToLibrary(m)}
-                                  className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition"
-                                >
-                                  <span>📌</span>
-                                  <span>Сохранить в библиотеку</span>
-                                </button>
-                              )}
-                            </div>
-                          )}
+              {testHistory.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока нет попыток. Пройди мини-тест — и здесь появится история.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {testHistory.map((h) => {
+                    const pct = Math.round((h?.score ?? 0) * 100);
+                    const when = h?.createdAt ? new Date(h.createdAt).toLocaleString() : "";
+                    return (
+                      <div
+                        key={h.id}
+                        className="bg-black/20 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {h.topic || "Тема"}
+                          </p>
+                          <p className="text-[11px] text-purple-200/80">
+                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
+                            {when ? ` • ${when}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 md:justify-end">
+                          <a
+                            href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                          >
+                            Разобрать в чате →
+                          </a>
+                          <a
+                            href="/progress"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Прогресс
+                          </a>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-                {thinking && (
-                  <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 bg-black/60 border border-white/10 text-[11px] text-purple-100">
-                      <span className="h-2 w-2 rounded-full bg-purple-300 animate-pulse" />
-                      <span>Думаю над ответом…</span>
+            {/* questions */}
+            {questions.length > 0 && (
+              <section className="space-y-3">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Вопросы
+                </p>
+
+                <div className="space-y-3">
+                  {questions.map((q, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-sm">
+                          {idx + 1}. {q.question}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {(Array.isArray(q.options) ? q.options : []).map((opt, oi) => {
+                          const checked = userAnswers[idx] === oi;
+                          return (
+                            <label
+                              key={oi}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition cursor-pointer
+                                ${
+                                  checked
+                                    ? "bg-white/10 border-purple-300/60"
+                                    : "bg-black/20 border-white/10 hover:bg-white/5"
+                                }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`q_${idx}`}
+                                checked={checked}
+                                onChange={() => {
+                                  setTimeToFirstAnswerSec((prev) => {
+                                    const next = Array.isArray(prev) ? [...prev] : [];
+                                    if (next[idx] === null || typeof next[idx] !== "number") {
+                                      const shown = Array.isArray(questionShownAt) ? questionShownAt[idx] : null;
+                                      if (typeof shown === "number") {
+                                        const sec = (Date.now() - shown) / 1000;
+                                        next[idx] = +sec.toFixed(1);
+                                      } else {
+                                        next[idx] = null;
+                                      }
+                                    }
+                                    return next;
+                                  });
+                                  setUserAnswers((prev) => {
+                                    const next = [...prev];
+                                    next[idx] = oi;
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <span className="text-xs md:text-sm text-purple-50">
+                                {opt}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      <div className="pt-1">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Уверенность
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfidence((prev) => {
+                                const next = Array.isArray(prev) ? [...prev] : [];
+                                next[idx] = "low";
+                                return next;
+                              })
+                            }
+                            className={`px-3 py-2 rounded-full border text-[11px] transition
+                              ${
+                                confidence[idx] !== "high"
+                                  ? "bg-white/15 border-white/20 text-purple-50"
+                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
+                              }`}
+                          >
+                            Не уверен
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfidence((prev) => {
+                                const next = Array.isArray(prev) ? [...prev] : [];
+                                next[idx] = "high";
+                                return next;
+                              })
+                            }
+                            className={`px-3 py-2 rounded-full border text-[11px] transition
+                              ${
+                                confidence[idx] === "high"
+                                  ? "bg-white text-black border-white shadow-md"
+                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
+                              }`}
+                          >
+                            Уверен
+                          </button>
+
+                          <span className="text-[11px] text-purple-200/80 self-center">
+                            {typeof timeToFirstAnswerSec[idx] === "number"
+                              ? `время: ${timeToFirstAnswerSec[idx]}с`
+                              : "время: —"}
+                          </span>
+                        </div>
+                      </div>
+
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={submitTest}
+                    disabled={!canSubmit}
+                    className="px-4 py-2 rounded-2xl bg-gradient-to-br from-purple-300 to-purple-500 text-black text-xs md:text-sm font-semibold shadow-lg hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "Проверяем…" : "Завершить и сохранить результат"}
+                  </button>
+
+                  <a
+                    href="/progress"
+                    className="px-4 py-2 rounded-2xl border border-white/20 bg-black/30 text-xs md:text-sm text-purple-50 hover:bg-white/5 transition"
+                  >
+                    Перейти в прогресс
+                  </a>
+                </div>
+
+                {result && (
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                      Результат
+                    </p>
+                    <p className="text-sm">
+                      Правильных:{" "}
+                      <span className="font-semibold">
+                        {result.correctCount}/{result.totalCount}
+                      </span>{" "}
+                      · Итог:{" "}
+                      <span className="font-semibold">{result.scorePercent}%</span>
+                    </p>
+                    <p className="text-[11px] text-purple-200/80">
+                      Прогресс по теме обновлён (см. страницу “Прогресс”).
+                    </p>
+                    {saveInfo ? (
+                      <p className="text-[11px] text-purple-200/80">
+                        Сохранение: история {saveInfo.historyOk ? "✓" : "✕"} (в памяти: {saveInfo.historyCount}) • прогресс {saveInfo.kmOk ? "✓" : "✕"}
+                      </p>
+                    ) : null}
+
+                    {topRepeatedMistakes.length > 0 && (
+                      <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Повторяющиеся ошибки
+                        </p>
+                        <div className="space-y-2">
+                          {topRepeatedMistakes.map((m) => {
+                            const repeats = m.count || 2;
+                            const tag = classifyMistake({
+                              timeSec: typeof m.avgTimeSec === "number" ? m.avgTimeSec : null,
+                              confident: (m.confidentWrongCount || 0) >= 1,
+                              repeats,
+                            });
+                            return (
+                              <div
+                                key={m.key}
+                                className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold truncate">
+                                    {m.topic || "Тема"}
+                                  </p>
+                                  <p className="text-[11px] text-purple-200/80">
+                                    {tag} • повторов: {repeats}
+                                    {typeof m.avgTimeSec === "number" ? ` • сред. время: ${m.avgTimeSec}s` : ""}
+                                  </p>
+                                </div>
+                                <div className="flex gap-2 flex-wrap md:justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => generateFocusedTest([m.topic || topic?.trim() || "Базовые понятия"], 2)}
+                                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                  >
+                                    Закрепить (2)
+                                  </button>
+                                  <a
+                                    href={`/chat?topic=${encodeURIComponent(m.topic || "")}`}
+                                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                  >
+                                    Разобрать в чате →
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={reviewMistakes}
+                        disabled={reviewing}
+                        className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {reviewing ? "Делаем разбор…" : "Разобрать ошибки"}
+                      </button>
+
+                      <a
+                        href="/chat"
+                        className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                      >
+                        Обсудить в диалоге →
+                      </a>
                     </div>
                   </div>
                 )}
 
-                <div ref={messagesEndRef} />
-              </div>
-
-              
-              {plan10Modal ? (
-                <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
-                  <div
-                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                    onClick={() => setPlan10Modal(null)}
-                  />
-                  <div className="relative w-full md:max-w-lg mx-auto rounded-2xl border border-purple-300/20 bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white shadow-2xl p-4 m-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-purple-200/80">
-                          {plan10Modal.title}
-                        </div>
-                        <div className="text-sm font-semibold mt-1">
-                          {plan10Modal.text}
-                        </div>
+                {analysis && (
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                      Разбор ошибок
+                    </p>
+                    {reviewStyleLabel ? (
+                      <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                        <span>🧠</span>
+                        <span>Разбор: {reviewStyleLabel}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPlan10Modal(null)}
-                        className="text-purple-200/70 hover:text-purple-100 transition text-sm"
-                        aria-label="Закрыть"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                    ) : null}
+                    <div className="text-xs md:text-sm text-purple-50 whitespace-pre-wrap leading-relaxed">
+                      
+              {result && Array.isArray(questions) && Array.isArray(userAnswers) && questions.length > 0 ? (
+                <div className="mt-4 bg-black/30 border border-white/10 rounded-3xl p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">Твои ошибки</p>
+                    <p className="text-[11px] text-purple-200/80">
+                      Показаны только неверные ответы
+                    </p>
+                  </div>
 
-                    <div className="mt-3 space-y-2">
-                      {(plan10Modal.steps || []).map((s, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2"
-                        >
-                          <div className="text-[11px] text-purple-100/80">{s.t}</div>
-                          <div className="text-[12px] text-purple-50">{s.d}</div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="mt-3 space-y-3">
+                    {questions
+                      .map((q, i) => ({ q, i }))
+                      .filter(({ q, i }) => userAnswers[i] !== q.correctIndex)
+                      .map(({ q, i }) => {
+                        const userIdx = userAnswers[i];
+                        const userText =
+                          typeof userIdx === "number" && q.options?.[userIdx]
+                            ? q.options[userIdx]
+                            : "—";
+                        const correctText =
+                          typeof q.correctIndex === "number" && q.options?.[q.correctIndex]
+                            ? q.options[q.correctIndex]
+                            : "—";
+                        const topicTitle = q.topicTitle || (parseTopicsInput(topic)[0] || "");
+                        const chatHref = `/chat?topic=${encodeURIComponent(topicTitle || "Разбор ошибки")}&prefill=${encodeURIComponent(
+                          `Разбери ошибку по вопросу: "${q.question}". Я ответил: "${userText}", правильный ответ: "${correctText}". Объясни и дай 1 похожий пример.`
+                        )}`;
 
-                    <div className="mt-4 flex flex-col md:flex-row gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlan10Modal(null);
-                          goToTests(primaryTopicForNeeds);
-                        }}
-                        className="rounded-xl border border-purple-300/20 bg-purple-500/20 hover:bg-purple-500/30 px-3 py-2 text-[12px] text-purple-50 transition"
-                      >
-                        Начать с мини‑теста
-                      </button>
+                        return (
+                          <div key={i} className="bg-black/30 border border-white/10 rounded-2xl p-3">
+                            <p className="text-sm font-semibold">
+                              {i + 1}. {q.question}
+                            </p>
+                            <div className="mt-2 grid md:grid-cols-2 gap-2">
+                              <div className="text-[12px] text-purple-100/90">
+                                <span className="text-purple-300/80">Твой ответ:</span>{" "}
+                                {userText}
+                              </div>
+                              <div className="text-[12px] text-purple-100/90">
+                                <span className="text-purple-300/80">Правильно:</span>{" "}
+                                {correctText}
+                              </div>
+                            </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlan10Modal(null);
-                          handleQuickAction("explain");
-                        }}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-50 transition"
-                      >
-                        Сначала объяснение
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPlan10Modal(null)}
-                        className="rounded-xl border border-white/10 bg-black/20 hover:bg-black/30 px-3 py-2 text-[12px] text-purple-100/80 transition"
-                      >
-                        Позже
-                      </button>
-                    </div>
+                            <div className="mt-3 flex gap-2">
+                              <a
+                                href={chatHref}
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                              >
+                                Разобрать в диалоге →
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {questions.filter((q, i) => userAnswers[i] !== q.correctIndex).length === 0 ? (
+                      <p className="text-xs text-purple-200/80">
+                        Ошибок нет — идеально.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
-<footer className="border-t border-white/10 px-3 py-2">
-                <form
-                  onSubmit={handleSubmit}
-                  className="flex items-end gap-2 md:gap-3"
-                >
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    className="flex-1 resize-none rounded-2xl bg-black/60 border border-white/15 px-3 py-2 text-xs md:text-sm text-white placeholder:text-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-300/70"
-                    rows={2}
-                    placeholder="Напиши, что тебе сейчас сложно или что хочешь повторить…"
-                  />
-                  <button
-                    type="submit"
-                    disabled={thinking}
-                    className="px-4 py-2 rounded-2xl bg-white text-black text-xs md:text-sm font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {thinking ? "…" : "Отправить"}
-                  </button>
-                </form>
-                {error && (
-                  <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
+
+{analysis}
+                    </div>
+                  </div>
                 )}
-              </footer>
-            </section>
+              </section>
+            )}
           </div>
         </main>
+
+        <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
+          © 2025 NOOLIX — образовательная платформа будущего. Связь:
+          support@noolix.ai
+        </footer>
       </div>
     </div>
   );
