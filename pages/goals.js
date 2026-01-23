@@ -6,15 +6,42 @@ const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const PROFILE_STORAGE_KEY = "noolixProfile";
 
 const normalizeTopicKey = (t) => {
-  const raw = String(t || "").trim();
+  let raw = String(t || "").trim();
   if (!raw) return "Общее";
+
+  // remove quotes
+  raw = raw.replace(/[«»"]/g, "").trim();
+
+  // drop diagnostic / generic prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
+  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
+
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  // try to extract "topic" from common phrasing
+  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
+  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
+  raw = raw.replace(/^объясни\s+/i, "").trim();
+
+  // normalize spaces
+  raw = raw.replace(/\s+/g, " ").trim();
+
   const words = raw.split(/\s+/).filter(Boolean);
-  const tooLong = raw.length > 60;
-  const tooManyWords = words.length > 8;
-  const hasSentenceMarks = /[\?\!\.]/.test(raw);
-  if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  if (!raw) return "Общее";
+
+  // If still looks like a sentence, shorten
+  const tooLong = raw.length > 80;
+  const tooManyWords = words.length > 12;
+  if (tooLong || tooManyWords) {
+    return words.slice(0, 8).join(" ").trim() || "Общее";
+  }
+
   return raw;
 };
+
 
 const SUBJECT_OPTIONS = [
   "Математика",
