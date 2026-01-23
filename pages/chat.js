@@ -266,6 +266,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
+  const scrollToRef = useRef("");
+  const [highlightMsgId, setHighlightMsgId] = useState("");
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -420,17 +422,33 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Читаем тему из URL (?topic=...)
+  // Читаем параметры из URL (?topic=...&scrollTo=...)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const params = new URLSearchParams(window.location.search);
       const topicFromQuery = params.get("topic");
+      const scrollTo = params.get("scrollTo");
+
+      if (scrollTo && String(scrollTo).trim()) {
+        scrollToRef.current = String(scrollTo).trim();
+      }
+
       if (topicFromQuery && topicFromQuery.trim()) {
-        setCurrentTopic(topicFromQuery.trim());
+        const t = topicFromQuery.trim();
+        setCurrentTopic(t);
+
+        // При переходе из библиотеки: фиксируем тему как "последний кандидат",
+        // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
+        try {
+          const cand = normalizeTopicKey(t);
+          if (cand && cand !== "Общее") {
+            window.localStorage.setItem("noolixLastTopicCandidate", cand);
+          }
+        } catch (_) {}
       }
     } catch (e) {
-      console.warn("Failed to parse topic from URL", e);
+      console.warn("Failed to parse params from URL", e);
     }
   }, []);
 
@@ -552,6 +570,12 @@ const callBackend = async (userMessages) => {
       ? messages.filter((m) => m?.role === "assistant").length
       : 0;
     if (assistantCount > 1) {
+      didAutoStartRef.current = true;
+      return;
+    }
+
+    // если пришли из библиотеки для просмотра сохранённого сообщения — не авто-стартуем объяснение
+    if ((scrollToRef.current || "").trim()) {
       didAutoStartRef.current = true;
       return;
     }
@@ -1349,9 +1373,10 @@ const callBackend = async (userMessages) => {
                   return (
                     <div
                       key={m.id}
+                      id={`msg-${m.id}`}
                       className={`flex ${
                         m.role === "user" ? "justify-end" : "justify-start"
-                      }`}
+                      } ${String(m.id) === String(highlightMsgId) ? "relative rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5" : ""}`}
                     >
                       <div>
                         {showAssistantHeader ? (
