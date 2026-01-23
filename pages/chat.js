@@ -1330,9 +1330,11 @@ const callBackend = async (userMessages) => {
                   <button
                     type="button"
                     onClick={() => setNeedPanelOpen(true)}
-                    className="text-[11px] text-purple-200/70 hover:text-purple-100 transition"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-purple-300/25 bg-gradient-to-r from-purple-500/25 via-purple-500/10 to-transparent px-3 py-2 text-[13px] text-purple-50 shadow-sm hover:from-purple-500/35 hover:border-purple-300/40 hover:shadow transition active:scale-[0.99]"
                   >
-                    Показать быстрые действия ✨
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-purple-500/20 border border-purple-300/20">✨</span>
+                    <span className="font-medium">Показать быстрые действия</span>
+                    <span className="hidden md:inline text-purple-200/70">тест • объяснение • план</span>
                   </button>
                 </div>
               )}
