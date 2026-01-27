@@ -268,6 +268,7 @@ export default function ChatPage() {
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
   const [highlightMsgId, setHighlightMsgId] = useState("");
+  const didScrollToRef = useRef(false);
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -436,15 +437,20 @@ export default function ChatPage() {
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
-        setCurrentTopic(t);
-
-        // При переходе из библиотеки: фиксируем тему как "последний кандидат",
-        // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
         try {
           const cand = normalizeTopicKey(t);
+          // если topic выглядит как реальная тема — используем
           if (cand && cand !== "Общее") {
+            setCurrentTopic(cand);
+
+            // фиксируем тему как "последний кандидат"
             window.localStorage.setItem("noolixLastTopicCandidate", cand);
           }
+        } catch (_) {
+          // fallback
+          setCurrentTopic(t);
+        }
+      }
         } catch (_) {}
       }
     } catch (e) {
@@ -690,7 +696,46 @@ const callBackend = async (userMessages) => {
     }
   }, []);
 
-  // Автоскролл вниз
+  
+  // Авто‑фокус на сохранённое сообщение (переход из Библиотеки)
+  useEffect(() => {
+    if (!isClient) return;
+    if (loading) return;
+
+    const target = String(scrollToRef.current || "").trim();
+    if (!target) return;
+    if (didScrollToRef.current) return;
+
+    const tryScroll = () => {
+      const el = document.getElementById(`msg-${target}`);
+      if (!el) return false;
+
+      didScrollToRef.current = true;
+      setHighlightMsgId(target);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      window.setTimeout(() => setHighlightMsgId(""), 2500);
+      return true;
+    };
+
+    if (tryScroll()) return;
+
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryScroll() || attempts >= 6) {
+        window.clearInterval(timer);
+      }
+    }, 120);
+
+    return () => {
+      try {
+        window.clearInterval(timer);
+      } catch (_) {}
+    };
+  }, [isClient, loading, messages]);
+
+// Автоскролл вниз
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
