@@ -149,13 +149,22 @@ export default function LibraryPage() {
   const safeString = (v) => (v == null ? "" : String(v));
 
   const formatRelativeTime = (value) => {
-    const s = safeString(value).trim();
-    // If already human text like "3 дня назад" — keep it
+    const v = value;
+    const s = safeString(v).trim();
     if (!s) return "";
+
+    // If already human text like "3 дня назад" — keep it
     if (/[а-яА-Я]/.test(s) && /назад|вчера|сегодня|дн|час|мин/.test(s)) return s;
 
-    const dt = new Date(s);
-    if (Number.isNaN(dt.getTime())) return s;
+    // numeric timestamps (ms or sec)
+    let dt = null;
+    if (/^\d{10,13}$/.test(s)) {
+      const n = Number(s);
+      dt = new Date(s.length === 10 ? n * 1000 : n);
+    } else {
+      dt = new Date(s);
+    }
+    if (!dt || Number.isNaN(dt.getTime())) return s;
 
     const diffMs = Date.now() - dt.getTime();
     const min = Math.round(diffMs / 60000);
@@ -173,10 +182,20 @@ export default function LibraryPage() {
   };
 
   const formatSavedAt = (value) => {
-    const s = safeString(value).trim();
+    const v = value;
+    const s = safeString(v).trim();
     if (!s) return "";
-    const dt = new Date(s);
-    if (Number.isNaN(dt.getTime())) return s;
+
+    // numeric timestamps (ms or sec)
+    let dt = null;
+    if (/^\d{10,13}$/.test(s)) {
+      const n = Number(s);
+      dt = new Date(s.length === 10 ? n * 1000 : n);
+    } else {
+      dt = new Date(s);
+    }
+    if (!dt || Number.isNaN(dt.getTime())) return s;
+
     try {
       return dt.toLocaleString("ru-RU", {
         day: "2-digit",
@@ -210,6 +229,31 @@ export default function LibraryPage() {
     return t.replace(/^диагностика\s+по\s+/i, "").trim();
   };
 
+
+
+
+  const topicForChatParam = (item) => {
+    const raw = safeString(topicFromSaved(item)).trim();
+    if (!raw) return "";
+
+    // лёгкая нормализация, чтобы не передавать в topic целое предложение/абзац
+    let t = raw.replace(/[\?\!\.]+$/g, "").trim();
+    t = t.replace(/^диагностика\s+по\s+/i, "").trim();
+
+    const words = t.split(/\s+/).filter(Boolean);
+    const tooLong = t.length > 60 || words.length > 8;
+    if (tooLong) return "";
+
+    return t;
+  };
+
+  const buildChatHref = (item) => {
+    const topic = topicForChatParam(item);
+    const scrollTo = safeString(item?.messageId || item?.id).trim();
+    if (!scrollTo) return topic ? `/chat?topic=${encodeURIComponent(topic)}` : "/chat";
+    if (!topic) return `/chat?scrollTo=${encodeURIComponent(scrollTo)}`;
+    return `/chat?topic=${encodeURIComponent(topic)}&scrollTo=${encodeURIComponent(scrollTo)}`;
+  };
 
 
   const matchesFilters = (item) => {
@@ -565,7 +609,7 @@ export default function LibraryPage() {
                           ) : null}
                         </span>
                         <a
-                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.id || ""))}`}
+                          href={buildChatHref(item)}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
