@@ -927,8 +927,9 @@ const callBackend = async (userMessages) => {
       showToast("Сохранено в библиотеку");
 
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
-      const metaTopic = message?.meta?.explainTopicTitle || currentTopic || "";
-      let topicKey = normalizeTopicKey(metaTopic);
+      // Используем уже вычисленную тему (finalTopic/topicTitle), чтобы не зависеть от текста ответа.
+      const progressTopic = finalTopic || topicTitle || String(currentTopic || "").trim() || "";
+      let topicKey = normalizeTopicKey(progressTopic);
       if (!topicKey || topicKey === "Общее") {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
