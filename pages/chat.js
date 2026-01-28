@@ -110,7 +110,6 @@ const saveExplainStyleHistory = (map) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(EXPLAIN_STYLE_KEY, JSON.stringify(map || {}));
-  } catch (_) {}
 };
 
 const pickNextExplainStyle = (topicKey) => {
@@ -451,8 +450,6 @@ export default function ChatPage() {
           setCurrentTopic(t);
         }
       }
-        } catch (_) {}
-      }
     } catch (e) {
       console.warn("Failed to parse params from URL", e);
     }
@@ -594,7 +591,6 @@ const callBackend = async (userMessages) => {
       if (cand && cand !== "Общее") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
-    } catch (_) {}
 
     const picked = pickNextExplainStyle(topicKeyForStyle);
     const style = picked.next;
@@ -731,7 +727,6 @@ const callBackend = async (userMessages) => {
     return () => {
       try {
         window.clearInterval(timer);
-      } catch (_) {}
     };
   }, [isClient, loading, messages]);
 
@@ -922,8 +917,6 @@ const callBackend = async (userMessages) => {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
           if (last) topicKey = normalizeTopicKey(last);
-        } catch (_) {}
-      }
       touchProgressFromDialogSave(topicKey);
     } catch (e) {
       console.warn("Failed to save explanation to library", e);
@@ -999,7 +992,6 @@ const callBackend = async (userMessages) => {
       if (cand && cand !== "Общее") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
-    } catch (_) {}
 
 
     const newMessages = clampHistory([...(messages || []), userMessage]);
@@ -1053,8 +1045,6 @@ const callBackend = async (userMessages) => {
           try {
             const last = window.localStorage.getItem("noolixLastTopicCandidate");
             if (last) topicTitle = last;
-          } catch (_) {}
-        }
 
         const topicKeyForStyle = `${context.subject}|${context.level}|${normalizeTopicKey(topicTitle)}`;
         const picked = pickNextExplainStyle(topicKeyForStyle);
