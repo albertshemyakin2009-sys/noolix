@@ -729,6 +729,7 @@ const callBackend = async (userMessages) => {
     return () => {
       try {
         window.clearInterval(timer);
+      } catch (_) {}
     };
   }, [isClient, loading, messages]);
 
