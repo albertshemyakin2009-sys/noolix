@@ -148,25 +148,35 @@ export default function LibraryPage() {
 
   const safeString = (v) => (v == null ? "" : String(v));
 
-  const formatRelativeTime = (value) => {
-    const v = value;
-    const s = safeString(v).trim();
-    if (!s) return "";
+  const parseDateValue = (value) => {
+    const s = safeString(value).trim();
+    if (!s) return null;
 
+    // numeric timestamps (ms or seconds)
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return null;
+      const ms = n < 1e12 ? n * 1000 : n; // seconds -> ms
+      const dt = new Date(ms);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    const dt = new Date(s);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+
+
+  const formatRelativeTime = (value) => {
+    const s = safeString(value).trim();
     // If already human text like "3 дня назад" — keep it
+    if (!s) return "";
     if (/[а-яА-Я]/.test(s) && /назад|вчера|сегодня|дн|час|мин/.test(s)) return s;
 
-    // numeric timestamps (ms or sec)
-    let dt = null;
-    if (/^\d{10,13}$/.test(s)) {
-      const n = Number(s);
-      dt = new Date(s.length === 10 ? n * 1000 : n);
-    } else {
-      dt = new Date(s);
-    }
-    if (!dt || Number.isNaN(dt.getTime())) return s;
+    const dt = parseDateValue(s);
+    if (!dt) return s;
 
     const diffMs = Date.now() - dt.getTime();
+    if (diffMs < 0) return "только что";
     const min = Math.round(diffMs / 60000);
     if (min < 1) return "только что";
     if (min < 60) return `${min} мин назад`;
@@ -182,20 +192,10 @@ export default function LibraryPage() {
   };
 
   const formatSavedAt = (value) => {
-    const v = value;
-    const s = safeString(v).trim();
+    const s = safeString(value).trim();
     if (!s) return "";
-
-    // numeric timestamps (ms or sec)
-    let dt = null;
-    if (/^\d{10,13}$/.test(s)) {
-      const n = Number(s);
-      dt = new Date(s.length === 10 ? n * 1000 : n);
-    } else {
-      dt = new Date(s);
-    }
-    if (!dt || Number.isNaN(dt.getTime())) return s;
-
+    const dt = parseDateValue(s);
+    if (!dt) return s;
     try {
       return dt.toLocaleString("ru-RU", {
         day: "2-digit",
@@ -229,31 +229,6 @@ export default function LibraryPage() {
     return t.replace(/^диагностика\s+по\s+/i, "").trim();
   };
 
-
-
-
-  const topicForChatParam = (item) => {
-    const raw = safeString(topicFromSaved(item)).trim();
-    if (!raw) return "";
-
-    // лёгкая нормализация, чтобы не передавать в topic целое предложение/абзац
-    let t = raw.replace(/[\?\!\.]+$/g, "").trim();
-    t = t.replace(/^диагностика\s+по\s+/i, "").trim();
-
-    const words = t.split(/\s+/).filter(Boolean);
-    const tooLong = t.length > 60 || words.length > 8;
-    if (tooLong) return "";
-
-    return t;
-  };
-
-  const buildChatHref = (item) => {
-    const topic = topicForChatParam(item);
-    const scrollTo = safeString(item?.messageId || item?.id).trim();
-    if (!scrollTo) return topic ? `/chat?topic=${encodeURIComponent(topic)}` : "/chat";
-    if (!topic) return `/chat?scrollTo=${encodeURIComponent(scrollTo)}`;
-    return `/chat?topic=${encodeURIComponent(topic)}&scrollTo=${encodeURIComponent(scrollTo)}`;
-  };
 
 
   const matchesFilters = (item) => {
@@ -609,7 +584,15 @@ export default function LibraryPage() {
                           ) : null}
                         </span>
                         <a
-                          href={buildChatHref(item)}
+                          href={`/chat${(() => {
+                              const topic = (topicFromSaved(item) || "").trim();
+                              const mid = String(item?.messageId || item?.id || "").trim();
+                              const params = new URLSearchParams();
+                              if (topic) params.set("topic", topic);
+                              if (mid) params.set("scrollTo", mid);
+                              const qs = params.toString();
+                              return qs ? `?${qs}` : "";
+                            })()}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
