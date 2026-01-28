@@ -291,9 +291,11 @@ export default function LibraryPage() {
   const filteredSaved = baseSaved
     .slice()
     .sort((a, b) => {
-      const da = new Date(a?.savedAt || a?.ts || a?.createdAt || 0).getTime();
-      const db = new Date(b?.savedAt || b?.ts || b?.createdAt || 0).getTime();
-      return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+      // Важно: ts может быть в секундах или миллисекундах.
+      // Используем parseDateMaybe, чтобы не получать «неверные» даты.
+      const da = (parseDateMaybe(a?.savedAt || a?.ts || a?.createdAt)?.getTime() ?? 0);
+      const db = (parseDateMaybe(b?.savedAt || b?.ts || b?.createdAt)?.getTime() ?? 0);
+      return db - da;
     })
     .filter(matchesFilters);
   const savedCount = baseSaved.length;
@@ -597,7 +599,7 @@ export default function LibraryPage() {
                           ) : null}
                         </span>
                         <a
-                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.id || ""))}`}
+                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.messageId || item?.id || ""))}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
