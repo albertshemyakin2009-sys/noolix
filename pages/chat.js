@@ -268,6 +268,7 @@ export default function ChatPage() {
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
   const [highlightMsgId, setHighlightMsgId] = useState("");
+  const [highlightFading, setHighlightFading] = useState(false);
   const didFocusScrollRef = useRef(false);
 
   // Client-only guard (фикс для prerender/export на Vercel)
@@ -742,6 +743,30 @@ const callBackend = async (userMessages) => {
       } catch (_) {}
     };
   }, [messages, loading]);
+
+  // --- Временная подсветка (5 сек) с плавным затуханием ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!highlightMsgId) return;
+
+    setHighlightFading(false);
+
+    const tFade = window.setTimeout(() => {
+      setHighlightFading(true);
+    }, 60);
+
+    const tClear = window.setTimeout(() => {
+      setHighlightMsgId("");
+      setHighlightFading(false);
+    }, 5200);
+
+    return () => {
+      try {
+        window.clearTimeout(tFade);
+        window.clearTimeout(tClear);
+      } catch (_) {}
+    };
+  }, [highlightMsgId]);
 
   // --- Сохраняем историю конкретного чата ---
   useEffect(() => {
@@ -1426,6 +1451,7 @@ const callBackend = async (userMessages) => {
                   const prev = i > 0 ? messages[i - 1] : null;
                   const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
                   const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
+                  const isHighlighted = String(m.id) === String(highlightMsgId);
 
                   return (
                     <div
@@ -1433,8 +1459,14 @@ const callBackend = async (userMessages) => {
                       id={`msg-${m.id}`}
                       className={`flex ${
                         m.role === "user" ? "justify-end" : "justify-start"
-                      } ${String(m.id) === String(highlightMsgId) ? "relative rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5" : ""}`}
+                      } ${isHighlighted ? "relative rounded-2xl" : ""}`}
                     >
+                      {isHighlighted ? (
+                        <div
+                          className={`pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5 transition-opacity ${highlightFading ? "opacity-0" : "opacity-100"}`}
+                          style={{ transitionDuration: "5000ms" }}
+                        />
+                      ) : null}
                       <div>
                         {showAssistantHeader ? (
                           <div className="mb-1 flex items-center justify-start gap-2 text-[11px] text-purple-200/70">
