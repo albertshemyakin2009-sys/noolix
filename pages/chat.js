@@ -268,6 +268,7 @@ export default function ChatPage() {
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
   const [highlightMsgId, setHighlightMsgId] = useState("");
+  const didFocusScrollRef = useRef(false);
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -692,10 +693,55 @@ const callBackend = async (userMessages) => {
 
   // Автоскролл вниз
   useEffect(() => {
+    // Если пришли из библиотеки с focus/scrollTo — не перебиваем фокусный скролл.
+    if ((scrollToRef.current || "").trim() && !didFocusScrollRef.current) return;
+
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
+
+  // --- Фокусный автоскролл к сообщению из библиотеки (?scrollTo=...) ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+
+    const targetId = String(scrollToRef.current || "").trim();
+    if (!targetId) return;
+    if (didFocusScrollRef.current) return;
+
+    // ждём рендера списка сообщений
+    const tryScroll = () => {
+      try {
+        const el = document.getElementById(`msg-${targetId}`);
+        if (!el) return false;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlightMsgId(targetId);
+        didFocusScrollRef.current = true;
+        // очищаем, чтобы больше не мешать обычному автоскроллу
+        scrollToRef.current = "";
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    // 1) сразу
+    if (tryScroll()) return;
+
+    // 2) следующий кадр
+    const raf = window.requestAnimationFrame(() => {
+      if (tryScroll()) return;
+      // 3) и ещё чуть позже (на случай, если история подгружается/рендерится позже)
+      setTimeout(() => tryScroll(), 120);
+    });
+
+    return () => {
+      try {
+        window.cancelAnimationFrame(raf);
+      } catch (_) {}
+    };
+  }, [messages, loading]);
 
   // --- Сохраняем историю конкретного чата ---
   useEffect(() => {
@@ -834,21 +880,31 @@ const callBackend = async (userMessages) => {
         return;
       }
 
-      const titleFromTopic = currentTopic && currentTopic.trim();
-      const firstLine = (message.content || "").split("\n")[0].trim();
-      const titleFromText = firstLine.slice(0, 80);
-      const title =
-        titleFromTopic ||
-        (titleFromText
-          ? titleFromText
-          : `Сохранённое объяснение по ${context.subject}`);
+      // ВАЖНО: title/topic должны быть темой, а не "первой строкой" ответа NOOLIX.
+      // Иначе в библиотеке и в "быстром старте" показывается последнее сообщение/текст ассистента.
+      let topicTitle = "";
+      const metaTopic = String(message?.meta?.explainTopicTitle || "").trim();
+      if (metaTopic) topicTitle = metaTopic;
+      else if (String(currentTopic || "").trim()) topicTitle = String(currentTopic).trim();
+
+      // fallback: последний кандидат темы (из последнего user-сообщения)
+      if (!topicTitle) {
+        try {
+          const last = window.localStorage.getItem("noolixLastTopicCandidate");
+          if (last) topicTitle = String(last).trim();
+        } catch (_) {}
+      }
+
+      const normalizedTopic = normalizeTopicKey(topicTitle);
+      const finalTopic = normalizedTopic && normalizedTopic !== "Общее" ? normalizedTopic : topicTitle;
+      const title = finalTopic || `Сохранённое объяснение по ${context.subject}`;
 
       const item = {
         id: msgId || Date.now(),
         title,
         subject: context.subject,
         level: context.level,
-        topic: message?.meta?.explainTopicTitle || currentTopic || "",
+        topic: finalTopic || "",
         explainStyleKey: message?.meta?.explainStyleKey || "",
         explainStyleLabel: message?.meta?.explainStyleLabel || "",
 
