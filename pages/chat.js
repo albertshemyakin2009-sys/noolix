@@ -113,7 +113,6 @@ const saveExplainStyleHistory = (map) => {
   } catch (_) {}
 };
 
-
 const pickNextExplainStyle = (topicKey) => {
   const key = String(topicKey || "").trim() || "general";
   const map = loadExplainStyleHistory();
@@ -593,6 +592,7 @@ const callBackend = async (userMessages) => {
       if (cand && cand !== "Общее") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
+    } catch (_) {}
 
     const picked = pickNextExplainStyle(topicKeyForStyle);
     const style = picked.next;
