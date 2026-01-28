@@ -520,7 +520,8 @@ export default function LibraryPage() {
                         </a>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -557,8 +558,15 @@ export default function LibraryPage() {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {filteredSaved.map((item) => (
-                    <div
+                  {filteredSaved.map((item) => {
+                    const topic = topicFromSaved(item);
+                    const scrollId = String(item?.messageId || item?.id || "");
+                    const href = topic && String(topic).trim()
+                      ? `/chat?topic=${encodeURIComponent(String(topic).trim())}&scrollTo=${encodeURIComponent(scrollId)}`
+                      : `/chat?scrollTo=${encodeURIComponent(scrollId)}`;
+
+                    return (
+                      <div
                       key={item.id}
                       className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
                     >
@@ -597,7 +605,7 @@ export default function LibraryPage() {
                           ) : null}
                         </span>
                         <a
-                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.id || ""))}`}
+                          href={href}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
