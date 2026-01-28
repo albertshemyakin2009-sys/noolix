@@ -96,6 +96,7 @@ export default function LibraryPage() {
         if (ctx.level) setLevelFilter(ctx.level);
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn("Failed to load context for library", e);
     } finally {
       setLoading(false);
@@ -118,6 +119,7 @@ export default function LibraryPage() {
         setSavedFromStorage(null);
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn("Failed to read noolixLibrarySaved", e);
       setSavedFromStorage(null);
     }
@@ -139,6 +141,7 @@ export default function LibraryPage() {
         setContinueFromStorage(null);
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn("Failed to read noolixLibraryContinue", e);
       setContinueFromStorage(null);
     }
@@ -148,15 +151,23 @@ export default function LibraryPage() {
 
   const safeString = (v) => (v == null ? "" : String(v));
 
-  const parseDateValue = (value) => {
-    const s = safeString(value).trim();
+  const parseDateMaybe = (value) => {
+    if (value == null) return null;
+
+    // number (ms or sec)
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const ms = value < 1e12 ? value * 1000 : value;
+      const dt = new Date(ms);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    const s = String(value).trim();
     if (!s) return null;
 
-    // numeric timestamps (ms or seconds)
-    if (/^\d+$/.test(s)) {
-      const n = Number(s);
-      if (!Number.isFinite(n)) return null;
-      const ms = n < 1e12 ? n * 1000 : n; // seconds -> ms
+    // numeric string (ms or sec)
+    if (/^\d{10,13}$/.test(s)) {
+      const num = Number(s);
+      const ms = s.length == 10 ? num * 1000 : num;
       const dt = new Date(ms);
       return Number.isNaN(dt.getTime()) ? null : dt;
     }
@@ -172,11 +183,13 @@ export default function LibraryPage() {
     if (!s) return "";
     if (/[а-яА-Я]/.test(s) && /назад|вчера|сегодня|дн|час|мин/.test(s)) return s;
 
-    const dt = parseDateValue(s);
+    const dt = parseDateMaybe(value) || parseDateMaybe(s);
     if (!dt) return s;
 
-    const diffMs = Date.now() - dt.getTime();
-    if (diffMs < 0) return "только что";
+    let diffMs = Date.now() - dt.getTime();
+    if (!Number.isFinite(diffMs)) return s;
+    if (diffMs < 0) diffMs = 0;
+
     const min = Math.round(diffMs / 60000);
     if (min < 1) return "только что";
     if (min < 60) return `${min} мин назад`;
@@ -194,7 +207,7 @@ export default function LibraryPage() {
   const formatSavedAt = (value) => {
     const s = safeString(value).trim();
     if (!s) return "";
-    const dt = parseDateValue(s);
+    const dt = parseDateMaybe(value) || parseDateMaybe(s);
     if (!dt) return s;
     try {
       return dt.toLocaleString("ru-RU", {
@@ -584,15 +597,7 @@ export default function LibraryPage() {
                           ) : null}
                         </span>
                         <a
-                          href={`/chat${(() => {
-                              const topic = (topicFromSaved(item) || "").trim();
-                              const mid = String(item?.messageId || item?.id || "").trim();
-                              const params = new URLSearchParams();
-                              if (topic) params.set("topic", topic);
-                              if (mid) params.set("scrollTo", mid);
-                              const qs = params.toString();
-                              return qs ? `?${qs}` : "";
-                            })()}`}
+                          href={`/chat?topic=${encodeURIComponent(topicFromSaved(item) || titleFromSaved(item))}&scrollTo=${encodeURIComponent(String(item?.id || ""))}`}
                           className="underline underline-offset-2 hover:text-white"
                         >
                           Продолжить в диалоге →
