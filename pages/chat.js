@@ -110,7 +110,9 @@ const saveExplainStyleHistory = (map) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(EXPLAIN_STYLE_KEY, JSON.stringify(map || {}));
+  } catch (_) {}
 };
+
 
 const pickNextExplainStyle = (topicKey) => {
   const key = String(topicKey || "").trim() || "general";
