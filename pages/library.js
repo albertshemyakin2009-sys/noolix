@@ -223,6 +223,30 @@ export default function LibraryPage() {
   };
 
 
+const sanitizeTopicTitle = (input) => {
+  let raw = String(input || "").trim();
+  if (!raw) return "";
+
+  raw = raw.replace(/[«»"]/g, "").trim();
+  raw = raw.replace(/\s+/g, " ").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  const low = raw.toLowerCase();
+  if (!raw) return "";
+  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
+
+  if (raw.length > 60) return "";
+  if (raw.includes("\n")) return "";
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length > 8) return "";
+  if (/[.!?]/.test(raw)) return "";
+
+  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return raw;
+};
   const titleFromSaved = (item) => {
     const t = safeString(item?.title).trim();
     const topic = safeString(item?.topic).trim();
@@ -232,23 +256,15 @@ export default function LibraryPage() {
   };
 
   const topicFromSaved = (item) => {
-    // Используем только явную тему из сохранения (или legacy-поля),
-    // НО НИКОГДА не подставляем title/preview, чтобы в чат не улетал текст ответа.
-    const direct = safeString(item?.topic).trim();
-    const legacy1 = safeString(item?.explainTopicTitle).trim();
-    const legacy2 = safeString(item?.meta?.explainTopicTitle).trim();
-    const topic = legacy2 || legacy1 || direct;
+  // Используем только явную тему из сохранения (или legacy-поля),
+  // НО НИКОГДА не подставляем title/preview, чтобы в чат не улетал текст ответа.
+  const direct = safeString(item?.topic).trim();
+  const legacy1 = safeString(item?.explainTopicTitle).trim();
+  const legacy2 = safeString(item?.meta?.explainTopicTitle).trim();
+  const topic = legacy2 || legacy1 || direct;
 
-    if (!topic) return "";
-
-    // если вдруг тема — это плейсхолдер
-    if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(topic)) return "";
-
-    // защита от "темы-параграфа"
-    if (topic.length > 90) return "";
-
-    return topic;
-  };
+  return sanitizeTopicTitle(topic);
+};
 
 
 
