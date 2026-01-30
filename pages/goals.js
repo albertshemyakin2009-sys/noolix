@@ -5,42 +5,35 @@ const GOALS_STORAGE_KEY = "noolixGoals";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const PROFILE_STORAGE_KEY = "noolixProfile";
 
-const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
-  if (!raw) return "Общее";
+const NO_TOPIC_LABEL = "Без темы";
 
-  // remove quotes
+function sanitizeTopicTitle(input) {
+  let raw = String(input || "").trim();
+  if (!raw) return "";
+
   raw = raw.replace(/[«»"]/g, "").trim();
-
-  // drop diagnostic / generic prefixes
-  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
-  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
-
-  // strip trailing punctuation
+  raw = raw.replace(/\s+/g, " ").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
   raw = raw.replace(/[?!\.]+$/g, "").trim();
 
-  // try to extract "topic" from common phrasing
-  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
-  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
-  raw = raw.replace(/^объясни\s+/i, "").trim();
+  const low = raw.toLowerCase();
+  if (!raw) return "";
+  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
 
-  // normalize spaces
-  raw = raw.replace(/\s+/g, " ").trim();
+  if (raw.length > 60) return "";
+  if (raw.includes("\n")) return "";
 
   const words = raw.split(/\s+/).filter(Boolean);
-  if (!raw) return "Общее";
+  if (words.length > 8) return "";
+  if (/[.!?]/.test(raw)) return "";
 
-  // If still looks like a sentence, shorten
-  const tooLong = raw.length > 80;
-  const tooManyWords = words.length > 12;
-  if (tooLong || tooManyWords) {
-    return words.slice(0, 8).join(" ").trim() || "Общее";
-  }
-
+  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
   return raw;
-};
+}
+
+const normalizeTopicKey = (t) => sanitizeTopicTitle(t) || NO_TOPIC_LABEL;
+
 
 
 const SUBJECT_OPTIONS = [
@@ -211,12 +204,13 @@ function SmartNextSteps() {
           : [];
       setRepeatedMistakes(rep);
 
-      const t = weak[0]?.topic || rep[0]?.topic || "";
-      const intent = inferIntentFromGoal(profileGoalForPlan);
-      setPlan({
-        topic: t || "",
-        steps: pickPlanSteps(intent, t),
-      });
+      const tRaw = weak[0]?.topic || rep[0]?.topic || "";
+const t = tRaw === NO_TOPIC_LABEL ? "" : tRaw;
+const intent = inferIntentFromGoal(profileGoalForPlan);
+setPlan({
+  topic: t || "",
+  steps: pickPlanSteps(intent, t),
+});
 } catch (e) {
       console.warn("SmartNextSteps failed", e);
     }
