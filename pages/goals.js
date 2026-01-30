@@ -151,7 +151,8 @@ function SmartNextSteps() {
           let changed = false;
           const nextLvl = {};
           Object.entries(byLvlNorm).forEach(([topic, data]) => {
-            const k = normalizeTopicKey(topic);
+            const k =
+              sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL;
             if (k !== topic) changed = true;
             const score = typeof data?.score === "number" ? data.score : 0;
             const prev = nextLvl[k];
@@ -176,7 +177,7 @@ function SmartNextSteps() {
         byLvlNorm && typeof byLvlNorm === "object"
           ? Object.entries(byLvlNorm)
               .map(([topic, data]) => ({
-                topic,
+                topic: sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL,
                 score: typeof data?.score === "number" ? data.score : 0,
               }))
               .sort((a, b) => a.score - b.score)
@@ -255,7 +256,7 @@ setPlan({
                 Сейчас важно подтянуть
               </p>
               {weakTopics.map((t) => {
-              const topicTitle = String(t?.topic || "").trim();
+              const topicTitle = sanitizeTopicTitle(t?.topic) || NO_TOPIC_LABEL;
               if (!topicTitle) return null;
               const scorePct = Number.isFinite(t?.score) ? Math.round(t.score * 100) : 0;
               return (
