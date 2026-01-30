@@ -166,7 +166,8 @@ export default function ProgressPage() {
             let changed = false;
             const nextLvl = {};
             Object.entries(subjObj).forEach(([topic, data]) => {
-              const k = normalizeTopicKey(topic);
+              const k =
+                sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL;
               if (k !== topic) changed = true;
               const score = typeof data?.score === "number" ? data.score : 0;
               const prev = nextLvl[k];
@@ -229,11 +230,11 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic: (data?.label || data?.title || topic) || topic,
+      topic: sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
-      label: data?.label || null,
+      label: sanitizeTopicTitle(data?.label) || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
