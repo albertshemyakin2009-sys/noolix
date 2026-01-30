@@ -863,7 +863,7 @@ export default function TestsPage() {
 
       // --- определяем и фиксируем финальную тему ---
       const serverTopicRaw =
-        data?.topicTitle || data?.topic || data?.test?.topicTitle || data?.test?.topic || "";
+        data?.testTitle || data?.topicTitle || data?.topic || data?.test?.topicTitle || data?.test?.topic || "";
 
       let resolvedTopic = normalizeTopicKey(
         serverTopicRaw || q?.[0]?.topicTitle || sentTopicForGeneration || titles[0] || ""
