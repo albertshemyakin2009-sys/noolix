@@ -31,6 +31,32 @@ function sanitizeTopicTitle(input) {
   const low = raw.toLowerCase();
   if (!raw) return "";
   if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+
+  // reject UI/status labels and generic subject names
+  const bad = new Set([
+    "математика",
+    "физика",
+    "русский язык",
+    "английский язык",
+    "изучено",
+    "изученный",
+    "изучена",
+    "изучен",
+    "уверенно",
+    "так себе",
+    "слабая зона",
+    "не начато",
+    "слабые",
+    "сильные",
+    "средние",
+    "все",
+    "прогресс",
+  ]);
+  if (bad.has(low)) return "";
+  if (/^уров(е|ё)нь\b/i.test(raw)) return "";
+  if (/^статус\b/i.test(raw)) return "";
+  if (/^изучен(о|а|ый)?\b/i.test(raw)) return "";
+
   if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
 
   // reject paragraph-like topics
@@ -48,6 +74,30 @@ function sanitizeTopicTitle(input) {
 function normalizeTopicKey(input) {
   const t = sanitizeTopicTitle(input);
   return t || NO_TOPIC_LABEL;
+}
+
+function pickTopicTitle(topicKey, data, subject) {
+  const subjectLow = String(subject || "").toLowerCase().trim();
+
+  const keyTitle = sanitizeTopicTitle(topicKey);
+  const dataTitle = sanitizeTopicTitle(data?.title);
+  const dataLabel = sanitizeTopicTitle(data?.label);
+
+  const isBad = (t) => {
+    const low = String(t || "").toLowerCase().trim();
+    if (!low) return true;
+    if (subjectLow && low === subjectLow) return true;
+    return false;
+  };
+
+  // Prefer explicit topic title, then key; never use progress-status label as a topic name
+  if (dataTitle && !isBad(dataTitle)) return dataTitle;
+  if (keyTitle && !isBad(keyTitle)) return keyTitle;
+
+  // data.label is often "Уверенно/Не начато/Изучено" etc — ignore unless it's truly a topic
+  if (dataLabel && !isBad(dataLabel)) return dataLabel;
+
+  return NO_TOPIC_LABEL;
 }
 
 
@@ -167,7 +217,7 @@ export default function ProgressPage() {
             const nextLvl = {};
             Object.entries(subjObj).forEach(([topic, data]) => {
               const k =
-                sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL;
+                sanitizeTopicTitle(data?.title || topic) || sanitizeTopicTitle(topic) || NO_TOPIC_LABEL;
               if (k !== topic) changed = true;
               const score = typeof data?.score === "number" ? data.score : 0;
               const prev = nextLvl[k];
@@ -230,7 +280,7 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic: sanitizeTopicTitle(data?.label || data?.title || topic) || NO_TOPIC_LABEL,
+      topic: pickTopicTitle(topic, data, context.subject),
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
