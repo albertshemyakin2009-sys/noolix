@@ -232,14 +232,22 @@ export default function LibraryPage() {
   };
 
   const topicFromSaved = (item) => {
-    const topic = safeString(item?.topic).trim();
-    if (topic) return topic;
+    // Используем только явную тему из сохранения (или legacy-поля),
+    // НО НИКОГДА не подставляем title/preview, чтобы в чат не улетал текст ответа.
+    const direct = safeString(item?.topic).trim();
+    const legacy1 = safeString(item?.explainTopicTitle).trim();
+    const legacy2 = safeString(item?.meta?.explainTopicTitle).trim();
+    const topic = legacy2 || legacy1 || direct;
 
-    // fallback: try parse from title
-    const t = safeString(item?.title).trim();
-    if (!t) return "";
-    // remove typical prefixes like "Диагностика по ..." etc
-    return t.replace(/^диагностика\s+по\s+/i, "").trim();
+    if (!topic) return "";
+
+    // если вдруг тема — это плейсхолдер
+    if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(topic)) return "";
+
+    // защита от "темы-параграфа"
+    if (topic.length > 90) return "";
+
+    return topic;
   };
 
 
