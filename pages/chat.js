@@ -427,6 +427,7 @@ export default function ChatPage() {
   // Читаем параметры из URL (?topic=...&scrollTo=...)
   useEffect(() => {
     if (typeof window === "undefined") return;
+
     try {
       const params = new URLSearchParams(window.location.search);
       const topicFromQuery = params.get("topic");
@@ -443,15 +444,15 @@ export default function ChatPage() {
         if (isProbablyTopic(t)) {
           setCurrentTopic(t);
 
-        // При переходе из библиотеки: фиксируем тему как "последний кандидат",
-        // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
-        try {
-          const cand = normalizeTopicKey(t);
-          if (cand && cand !== "Общее") {
-            window.localStorage.setItem("noolixLastTopicCandidate", cand);
+          // При переходе из библиотеки: фиксируем тему как "последний кандидат",
+          // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
+          try {
+            const cand = normalizeTopicKey(t);
+            if (cand && cand !== "Общее") {
+              window.localStorage.setItem("noolixLastTopicCandidate", cand);
+            }
+          } catch (_) {}
         }
-      }
-        } catch (_) {}
       }
     } catch (e) {
       console.warn("Failed to parse params from URL", e);
