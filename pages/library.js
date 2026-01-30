@@ -520,8 +520,7 @@ export default function LibraryPage() {
                         </a>
                       </div>
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               )}
             </section>
