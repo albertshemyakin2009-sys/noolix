@@ -448,7 +448,7 @@ export default function ChatPage() {
           // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
           try {
             const cand = normalizeTopicKey(t);
-            if (cand && cand !== "Общее") {
+            if (cand) {
               window.localStorage.setItem("noolixLastTopicCandidate", cand);
             }
           } catch (_) {}
@@ -592,7 +592,7 @@ const callBackend = async (userMessages) => {
     // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
     try {
       const cand = normalizeTopicKey(topic);
-      if (cand && cand !== "Общее") {
+      if (cand) {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
@@ -793,60 +793,45 @@ const callBackend = async (userMessages) => {
   }, [messages, context?.subject, context?.level]);
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
-  const normalizeTopicKey = (t) => {
-    let raw = String(t || "").trim();
-    if (!raw) return "Общее";
+  const sanitizeTopicTitle = (input) => {
+  let raw = String(input || "").trim();
+  if (!raw) return "";
 
-    raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
-    raw = raw.replace(/\s+/g, " ");
+  // remove quotes + normalize spaces
+  raw = raw.replace(/[«»"]/g, "").trim();
+  raw = raw.replace(/\s+/g, " ").trim();
 
-    const q1 = raw.match(/«([^»]{2,80})»/);
-    const q2 = raw.match(/"([^"]{2,80})"/);
-    if (q1?.[1]) raw = q1[1].trim();
-    else if (q2?.[1]) raw = q2[1].trim();
+  // drop generic prefixes
+  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
 
-    const patterns = [
-      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-    ];
-    for (const p of patterns) {
-      const m = raw.match(p);
-      if (m?.[1]) {
-        raw = m[1].trim();
-        break;
-      }
-    }
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
 
-    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+  const low = raw.toLowerCase();
+  if (!raw) return "";
 
-    const words = raw.split(/\s+/).filter(Boolean);
-    const tooLong = raw.length > 60;
-    const tooManyWords = words.length > 8;
-    const hasSentenceMarks = /[\?\!\.]/.test(raw);
-    if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
+  // placeholders / generic buckets
+  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
 
-    return raw || "Общее";
-  };
+  // reject paragraph-like topics
+  if (raw.length > 60) return "";
+  if (raw.includes("\n")) return "";
 
-  const isProbablyTopic = (t) => {
-    const s = String(t || "").trim();
-    if (!s) return false;
-    if (s.length > 90) return false;
-    if (s.includes("\n")) return false;
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length > 8) return "";
 
-    // плейсхолдеры/мусор
-    if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(s)) return false;
+  // if it contains sentence punctuation inside, treat as not-a-topic
+  if (/[.!?]/.test(raw)) return "";
 
-    const words = s.split(/\s+/).filter(Boolean);
-    if (words.length > 12) return false;
+  // normalize casing a bit
+  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return raw;
+};
 
-    // если похоже на предложение/абзац
-    if (/[.!?]/.test(s) && words.length > 8) return false;
+const normalizeTopicKey = (t) => sanitizeTopicTitle(t);
 
-    return true;
-  };
+const isProbablyTopic = (t) => Boolean(sanitizeTopicTitle(t));
 
 
 
@@ -855,6 +840,7 @@ const callBackend = async (userMessages) => {
     if (typeof window === "undefined") return;
 
     const topic = normalizeTopicKey(topicKey);
+    if (!topic) return;
 
     try {
       const raw = window.localStorage.getItem("noolixKnowledgeMap");
@@ -946,7 +932,7 @@ const callBackend = async (userMessages) => {
       }
 
       const normalizedTopic = normalizeTopicKey(topicTitle);
-      const finalTopic = normalizedTopic && normalizedTopic !== "Общее" ? normalizedTopic : topicTitle;
+      const finalTopic = normalizedTopic ? normalizedTopic : topicTitle;
       const title = finalTopic || `Сохранённое объяснение по ${context.subject}`;
 
       const item = {
@@ -980,7 +966,7 @@ const callBackend = async (userMessages) => {
       // Используем уже вычисленную тему (finalTopic/topicTitle), чтобы не зависеть от текста ответа.
       const progressTopic = finalTopic || topicTitle || String(currentTopic || "").trim() || "";
       let topicKey = normalizeTopicKey(progressTopic);
-      if (!topicKey || topicKey === "Общее") {
+      if (!topicKey) {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
           if (last) topicKey = normalizeTopicKey(last);
@@ -1058,7 +1044,7 @@ const callBackend = async (userMessages) => {
     // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
     try {
       const cand = normalizeTopicKey(text);
-      if (cand && cand !== "Общее") {
+      if (cand) {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
