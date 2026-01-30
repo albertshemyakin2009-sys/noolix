@@ -438,7 +438,10 @@ export default function ChatPage() {
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
-        setCurrentTopic(t);
+
+        // Защита: topic не должен быть абзацем/кусочком ответа.
+        if (isProbablyTopic(t)) {
+          setCurrentTopic(t);
 
         // При переходе из библиотеки: фиксируем тему как "последний кандидат",
         // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
@@ -446,7 +449,8 @@ export default function ChatPage() {
           const cand = normalizeTopicKey(t);
           if (cand && cand !== "Общее") {
             window.localStorage.setItem("noolixLastTopicCandidate", cand);
-          }
+        }
+      }
         } catch (_) {}
       }
     } catch (e) {
@@ -824,6 +828,26 @@ const callBackend = async (userMessages) => {
 
     return raw || "Общее";
   };
+
+  const isProbablyTopic = (t) => {
+    const s = String(t || "").trim();
+    if (!s) return false;
+    if (s.length > 90) return false;
+    if (s.includes("\n")) return false;
+
+    // плейсхолдеры/мусор
+    if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(s)) return false;
+
+    const words = s.split(/\s+/).filter(Boolean);
+    if (words.length > 12) return false;
+
+    // если похоже на предложение/абзац
+    if (/[.!?]/.test(s) && words.length > 8) return false;
+
+    return true;
+  };
+
+
 
 
   const touchProgressFromDialogSave = (topicKey) => {
