@@ -18,88 +18,106 @@ const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 
 const NO_TOPIC_LABEL = "Без темы";
+const BASELINE_LABEL = "Базовые темы";
+const NO_TOPIC_KEY = "__no_topic__";
+
+function normalizeSpaces(s) {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+function stripDecorations(raw) {
+  let t = normalizeSpaces(raw);
+  t = t.replace(/[«»"]/g, "").trim();
+  t = t.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
+  t = t.replace(/[?!\.]+$/g, "").trim();
+  return t;
+}
+
+function isDiagnosticTitle(raw) {
+  const t = normalizeSpaces(raw);
+  return /^Диагностика\b/i.test(t) || /^Базовые\s+темы\b/i.test(t);
+}
 
 function sanitizeTopicTitle(input) {
-  let raw = String(input || "").trim();
+  let raw = stripDecorations(input);
   if (!raw) return "";
 
-  raw = raw.replace(/[«»"]/g, "").trim();
-  raw = raw.replace(/\s+/g, " ").trim();
-  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
-  raw = raw.replace(/[?!\.]+$/g, "").trim();
+  // drop diagnostic / generic prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
 
-  const low = raw.toLowerCase();
+  raw = normalizeSpaces(raw);
   if (!raw) return "";
-  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
 
-  // reject UI/status labels and generic subject names
+  const low = raw.toLowerCase().trim();
+  if (
+    low === "общее" ||
+    low === "general" ||
+    low === "без темы" ||
+    low === "без названия" ||
+    low === "unknown"
+  ) return "";
+
+  // reject UI/status labels
   const bad = new Set([
-    "математика",
-    "физика",
-    "русский язык",
-    "английский язык",
-    "изучено",
-    "изученный",
-    "изучена",
-    "изучен",
-    "уверенно",
-    "так себе",
-    "слабая зона",
-    "не начато",
-    "слабые",
-    "сильные",
-    "средние",
-    "все",
-    "прогресс",
+    "изучено","изученный","изучена","изучен",
+    "уверенно","не начато","слабые","сильные","средние","все","прогресс","изучение","результат"
   ]);
   if (bad.has(low)) return "";
+
   if (/^уров(е|ё)нь\b/i.test(raw)) return "";
   if (/^статус\b/i.test(raw)) return "";
   if (/^изучен(о|а|ый)?\b/i.test(raw)) return "";
 
-  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
-
-  // reject paragraph-like topics
-  if (raw.length > 60) return "";
-  if (raw.includes("\n")) return "";
-
+  // if looks like a long sentence/paragraph — reject
   const words = raw.split(/\s+/).filter(Boolean);
-  if (words.length > 8) return "";
-  if (/[.!?]/.test(raw)) return "";
+  if (raw.length > 80 || words.length > 12) return "";
 
-  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
   return raw;
 }
 
+// Storage key: empty means "no topic"
 function normalizeTopicKey(input) {
-  const t = sanitizeTopicTitle(input);
-  return t || NO_TOPIC_LABEL;
+  return sanitizeTopicTitle(input);
 }
 
-function pickTopicTitle(topicKey, data, subject) {
-  const subjectLow = String(subject || "").toLowerCase().trim();
+function normalizeStorageKey(rawKey, subject) {
+  const k0 = normalizeSpaces(rawKey);
+  const subjLow = String(subject || "").toLowerCase().trim();
 
-  const keyTitle = sanitizeTopicTitle(topicKey);
-  const dataTitle = sanitizeTopicTitle(data?.title);
-  const dataLabel = sanitizeTopicTitle(data?.label);
+  if (!k0) return NO_TOPIC_KEY;
 
-  const isBad = (t) => {
-    const low = String(t || "").toLowerCase().trim();
-    if (!low) return true;
-    if (subjectLow && low === subjectLow) return true;
-    return false;
-  };
+  const low0 = k0.toLowerCase().trim();
+  if (low0 === "общее" || low0 === "general" || low0 === "без темы" || low0 === "без названия") {
+    return NO_TOPIC_KEY;
+  }
 
-  // Prefer explicit topic title, then key; never use progress-status label as a topic name
-  if (dataTitle && !isBad(dataTitle)) return dataTitle;
-  if (keyTitle && !isBad(keyTitle)) return keyTitle;
+  // If it's diagnostic/baseline — keep under NO_TOPIC_KEY (display as baseline)
+  if (isDiagnosticTitle(k0)) return NO_TOPIC_KEY;
 
-  // data.label is often "Уверенно/Не начато/Изучено" etc — ignore unless it's truly a topic
-  if (dataLabel && !isBad(dataLabel)) return dataLabel;
+  const k = sanitizeTopicTitle(k0);
+  if (!k) return NO_TOPIC_KEY;
 
+  const low = k.toLowerCase().trim();
+  if (subjLow && (low === subjLow || low === subjLow.replace(/\s+/g, " "))) return NO_TOPIC_KEY;
+
+  return k;
+}
+
+function topicTitleForDisplay(topicKey, data, subject) {
+  const subjLow = String(subject || "").toLowerCase().trim();
+  const keyStr = normalizeSpaces(topicKey);
+
+  const fromTitle = sanitizeTopicTitle(data?.title);
+  if (fromTitle && (!subjLow || fromTitle.toLowerCase().trim() !== subjLow)) return fromTitle;
+
+  const fromKey = sanitizeTopicTitle(keyStr);
+  if (fromKey && (!subjLow || fromKey.toLowerCase().trim() !== subjLow)) return fromKey;
+
+  if (keyStr === NO_TOPIC_KEY || isDiagnosticTitle(keyStr)) return BASELINE_LABEL;
   return NO_TOPIC_LABEL;
 }
-
 
 function safeJsonParse(raw, fallback) {
   try {
@@ -216,8 +234,7 @@ export default function ProgressPage() {
             let changed = false;
             const nextLvl = {};
             Object.entries(subjObj).forEach(([topic, data]) => {
-              const k =
-                sanitizeTopicTitle(data?.title || topic) || sanitizeTopicTitle(topic) || NO_TOPIC_LABEL;
+              const k = normalizeStorageKey(data?.title || topic, subject);
               if (k !== topic) changed = true;
               const score = typeof data?.score === "number" ? data.score : 0;
               const prev = nextLvl[k];
@@ -280,7 +297,7 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic: pickTopicTitle(topic, data, context.subject),
+      topic: topicTitleForDisplay(topic, data, context.subject),
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
