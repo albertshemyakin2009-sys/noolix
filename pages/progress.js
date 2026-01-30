@@ -17,6 +17,40 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 
+const NO_TOPIC_LABEL = "Без темы";
+
+function sanitizeTopicTitle(input) {
+  let raw = String(input || "").trim();
+  if (!raw) return "";
+
+  raw = raw.replace(/[«»"]/g, "").trim();
+  raw = raw.replace(/\s+/g, " ").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  const low = raw.toLowerCase();
+  if (!raw) return "";
+  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
+
+  // reject paragraph-like topics
+  if (raw.length > 60) return "";
+  if (raw.includes("\n")) return "";
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length > 8) return "";
+  if (/[.!?]/.test(raw)) return "";
+
+  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return raw;
+}
+
+function normalizeTopicKey(input) {
+  const t = sanitizeTopicTitle(input);
+  return t || NO_TOPIC_LABEL;
+}
+
+
 function safeJsonParse(raw, fallback) {
   try {
     if (!raw) return fallback;
@@ -125,7 +159,7 @@ export default function ProgressPage() {
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
 
-        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Общее"
+        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Без темы"
         try {
           const subjObj = migrated?.[subject]?.[level];
           if (subjObj && typeof subjObj === "object") {
@@ -719,42 +753,4 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
-  if (!raw) return "Общее";
-
-  // remove quotes
-  raw = raw.replace(/[«»"]/g, "").trim();
-
-  // drop diagnostic / generic prefixes
-  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
-  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
-
-  // strip trailing punctuation
-  raw = raw.replace(/[?!\.]+$/g, "").trim();
-
-  // try to extract "topic" from common phrasing
-  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
-  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
-  raw = raw.replace(/^объясни\s+/i, "").trim();
-
-  // normalize spaces
-  raw = raw.replace(/\s+/g, " ").trim();
-
-  const words = raw.split(/\s+/).filter(Boolean);
-  if (!raw) return "Общее";
-
-  // If still looks like a sentence, shorten
-  const tooLong = raw.length > 80;
-  const tooManyWords = words.length > 12;
-  if (tooLong || tooManyWords) {
-    return words.slice(0, 8).join(" ").trim() || "Общее";
-  }
-
-  return raw;
-};
-
-
-
+}
