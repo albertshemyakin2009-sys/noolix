@@ -9,6 +9,36 @@ const NO_TOPIC_LABEL = "Без темы";
 const BASELINE_LABEL = "Базовые темы";
 const NO_TOPIC_KEY = "__no_topic__";
 
+/**
+ * Единая нормализация темы:
+ * - не даём мусорным/служебным строкам становиться темами
+ * - вычищаем "Диагностика по …", уровни ("7–9 класс"), "Тест" и т.п.
+ */
+const SUBJECT_BLACKLIST = new Set([
+  "математика",
+  "физика",
+  "русский язык",
+  "английский язык",
+]);
+
+const TRASH_TITLES = new Set([
+  "__no_topic__",
+  "без темы",
+  "без названия",
+  "общее",
+  "general",
+  "тест",
+  "тесты",
+  "диагностика",
+  "изучено",
+  "не начато",
+  "уверенно",
+  "слабая зона",
+  "прогресс",
+  "изучение",
+  "результат",
+]);
+
 function normalizeSpaces(s) {
   return String(s || "").replace(/\s+/g, " ").trim();
 }
@@ -19,6 +49,14 @@ function stripDecorations(raw) {
   t = t.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
   t = t.replace(/[?!\.]+$/g, "").trim();
   return t;
+}
+
+function stripGradeHints(raw) {
+  let t = normalizeSpaces(raw);
+  t = t.replace(/\s*[,–—-]\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+  t = t.replace(/\(\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\s*\)/gi, "");
+  t = t.replace(/\b\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+  return normalizeSpaces(t);
 }
 
 function isDiagnosticTitle(raw) {
@@ -34,35 +72,21 @@ function sanitizeTopicTitle(input) {
   raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
   raw = raw.replace(/^Проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
 
+  raw = stripGradeHints(raw);
   raw = normalizeSpaces(raw);
   if (!raw) return "";
 
   const low = raw.toLowerCase().trim();
-  if (
-    low === "общее" ||
-    low === "general" ||
-    low === "без темы" ||
-    low === "без названия" ||
-    low === "unknown"
-  ) return "";
+  if (TRASH_TITLES.has(low)) return "";
+  if (SUBJECT_BLACKLIST.has(low)) return "";
 
-  const bad = new Set([
-    "изучено","изученный","изучена","изучен",
-    "уверенно","не начато","слабые","сильные","средние","все","прогресс","изучение","результат"
-  ]);
-  if (bad.has(low)) return "";
-  if (/^уров(е|ё)нь\b/i.test(raw)) return "";
-  if (/^статус\b/i.test(raw)) return "";
-  if (/^изучен(о|а|ый)?\b/i.test(raw)) return "";
-
+  if (!/[a-zа-яё0-9]/i.test(raw)) return "";
+  if (raw.includes("\n")) return "";
   const words = raw.split(/\s+/).filter(Boolean);
   if (raw.length > 80 || words.length > 12) return "";
+  if (/[.!?…]/.test(raw)) return "";
 
   return raw;
-}
-
-function normalizeTopicKey(input) {
-  return sanitizeTopicTitle(input);
 }
 
 function normalizeStorageKey(rawKey, subject) {
@@ -71,7 +95,9 @@ function normalizeStorageKey(rawKey, subject) {
   if (!k0) return NO_TOPIC_KEY;
 
   const low0 = k0.toLowerCase().trim();
-  if (low0 === "общее" || low0 === "general" || low0 === "без темы" || low0 === "без названия") return NO_TOPIC_KEY;
+  if (TRASH_TITLES.has(low0)) return NO_TOPIC_KEY;
+  if (low0 === NO_TOPIC_KEY) return NO_TOPIC_KEY;
+
   if (isDiagnosticTitle(k0)) return NO_TOPIC_KEY;
 
   const k = sanitizeTopicTitle(k0);
@@ -93,8 +119,7 @@ function topicTitleForDisplay(topicKey, data, subject) {
   const fromKey = sanitizeTopicTitle(keyStr);
   if (fromKey && (!subjLow || fromKey.toLowerCase().trim() !== subjLow)) return fromKey;
 
-  if (keyStr === NO_TOPIC_KEY || isDiagnosticTitle(keyStr)) return BASELINE_LABEL;
-  return NO_TOPIC_LABEL;
+  return "";
 }
 
 const SUBJECT_OPTIONS = [
@@ -534,30 +559,77 @@ export default function GoalsPage() {
           if (km && typeof km === "object") {
             setKnowledgeMap(km);
 
-// Normalize knowledge-map topic keys (fix legacy "Диагностика..." / "Без темы" keys)
+// Normalize knowledge-map topic keys (fix legacy "__no_topic__", "Диагностика…", уровни "7–9 класс" и т.п.)
 try {
-  const subj = subject;
-  const lvl = level;
-  const lvlObj = km?.[subj]?.[lvl];
-  if (lvlObj && typeof lvlObj === "object") {
-    let changed = false;
-    const nextLvl = {};
-    Object.entries(lvlObj).forEach(([k, v]) => {
-      const nk = normalizeStorageKey(k, subj);
-      if (nk !== k) changed = true;
-      const prev = nextLvl[nk];
-      if (!prev) nextLvl[nk] = v;
-      else {
-        const a = typeof prev.score === "number" ? prev.score : 0;
-        const b = typeof v?.score === "number" ? v.score : 0;
-        nextLvl[nk] = { ...prev, score: Math.min(a, b), updatedAt: prev.updatedAt || v?.updatedAt || null };
+  const looksLikeLeaf = (x) => x && typeof x === "object" && typeof x.score === "number";
+
+  let changed = false;
+  const nextKm = { ...(km || {}) };
+
+  Object.entries(nextKm).forEach(([subj, subjObj]) => {
+    if (!subjObj || typeof subjObj !== "object") return;
+
+    const values = Object.values(subjObj);
+    const hasLevelLayer = values.some((v) => v && typeof v === "object" && !looksLikeLeaf(v));
+
+    // A) legacy: km[subject] -> topicLeaf
+    if (!hasLevelLayer) {
+      const nextSubj = {};
+      Object.entries(subjObj).forEach(([k, v]) => {
+        const nk = normalizeStorageKey(k, subj);
+        if (nk !== k) changed = true;
+        if (nk === NO_TOPIC_KEY) {
+          // не держим мусор как отдельную тему
+          changed = true;
+          return;
+        }
+        const prev = nextSubj[nk];
+        if (!prev) nextSubj[nk] = v;
+        else {
+          const a = typeof prev.score === "number" ? prev.score : 0;
+          const b = typeof v?.score === "number" ? v.score : 0;
+          nextSubj[nk] = { ...prev, score: Math.min(a, b), updatedAt: prev.updatedAt || v?.updatedAt || null };
+        }
+      });
+      nextKm[subj] = nextSubj;
+      return;
+    }
+
+    // B) current: km[subject][level] -> topicLeaf
+    const nextSubj = { ...subjObj };
+    Object.entries(subjObj).forEach(([lvl, lvlObj]) => {
+      if (!lvlObj || typeof lvlObj !== "object") return;
+
+      let lvlChanged = false;
+      const nextLvl = {};
+      Object.entries(lvlObj).forEach(([k, v]) => {
+        const nk = normalizeStorageKey(k, subj);
+        if (nk !== k) lvlChanged = true;
+        if (nk === NO_TOPIC_KEY) {
+          lvlChanged = true;
+          return;
+        }
+        const prev = nextLvl[nk];
+        if (!prev) nextLvl[nk] = v;
+        else {
+          const a = typeof prev.score === "number" ? prev.score : 0;
+          const b = typeof v?.score === "number" ? v.score : 0;
+          nextLvl[nk] = { ...prev, score: Math.min(a, b), updatedAt: prev.updatedAt || v?.updatedAt || null };
+        }
+      });
+
+      if (lvlChanged) {
+        changed = true;
+        nextSubj[lvl] = nextLvl;
       }
     });
-    if (changed) {
-      if (!km[subj] || typeof km[subj] !== "object") km[subj] = {};
-      km[subj][lvl] = nextLvl;
-      window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(km));
-    }
+
+    nextKm[subj] = nextSubj;
+  });
+
+  if (changed) {
+    window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(nextKm));
+    setKnowledgeMap(nextKm);
   }
 } catch (eNorm) {
   console.warn("Goals KM normalize failed", eNorm);
