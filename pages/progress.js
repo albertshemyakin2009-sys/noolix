@@ -21,6 +21,36 @@ const NO_TOPIC_LABEL = "Без темы";
 const BASELINE_LABEL = "Базовые темы";
 const NO_TOPIC_KEY = "__no_topic__";
 
+/**
+ * Единая нормализация темы:
+ * - не даём мусорным/служебным строкам становиться темами
+ * - вычищаем "Диагностика по …", уровни ("7–9 класс"), "Тест" и т.п.
+ */
+const SUBJECT_BLACKLIST = new Set([
+  "математика",
+  "физика",
+  "русский язык",
+  "английский язык",
+]);
+
+const TRASH_TITLES = new Set([
+  "__no_topic__",
+  "без темы",
+  "без названия",
+  "общее",
+  "general",
+  "тест",
+  "тесты",
+  "диагностика",
+  "изучено",
+  "не начато",
+  "уверенно",
+  "слабая зона",
+  "прогресс",
+  "изучение",
+  "результат",
+]);
+
 function normalizeSpaces(s) {
   return String(s || "").replace(/\s+/g, " ").trim();
 }
@@ -31,6 +61,17 @@ function stripDecorations(raw) {
   t = t.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
   t = t.replace(/[?!\.]+$/g, "").trim();
   return t;
+}
+
+function stripGradeHints(raw) {
+  let t = normalizeSpaces(raw);
+
+  // удаляем куски вида ", 7–9 класс" / "— 10–11 класс" / "(8-9 класс)"
+  t = t.replace(/\s*[,–—-]\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+  t = t.replace(/\(\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\s*\)/gi, "");
+  t = t.replace(/\b\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+
+  return normalizeSpaces(t);
 }
 
 function isDiagnosticTitle(raw) {
@@ -47,32 +88,26 @@ function sanitizeTopicTitle(input) {
   raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
   raw = raw.replace(/^Проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
 
+  // частый кейс: "Диагностика по Математика, 7–9 класс"
+  raw = stripGradeHints(raw);
+
   raw = normalizeSpaces(raw);
   if (!raw) return "";
 
   const low = raw.toLowerCase().trim();
-  if (
-    low === "общее" ||
-    low === "general" ||
-    low === "без темы" ||
-    low === "без названия" ||
-    low === "unknown"
-  ) return "";
 
-  // reject UI/status labels
-  const bad = new Set([
-    "изучено","изученный","изучена","изучен",
-    "уверенно","не начато","слабые","сильные","средние","все","прогресс","изучение","результат"
-  ]);
-  if (bad.has(low)) return "";
+  // служебные/мусорные строки
+  if (TRASH_TITLES.has(low)) return "";
+  if (SUBJECT_BLACKLIST.has(low)) return "";
 
-  if (/^уров(е|ё)нь\b/i.test(raw)) return "";
-  if (/^статус\b/i.test(raw)) return "";
-  if (/^изучен(о|а|ый)?\b/i.test(raw)) return "";
+  // если после чистки осталась только пунктуация/символы
+  if (!/[a-zа-яё0-9]/i.test(raw)) return "";
 
-  // if looks like a long sentence/paragraph — reject
+  // если выглядит как предложение/абзац — не тема
+  if (raw.includes("\n")) return "";
   const words = raw.split(/\s+/).filter(Boolean);
   if (raw.length > 80 || words.length > 12) return "";
+  if (/[.!?…]/.test(raw)) return "";
 
   return raw;
 }
@@ -89,18 +124,19 @@ function normalizeStorageKey(rawKey, subject) {
   if (!k0) return NO_TOPIC_KEY;
 
   const low0 = k0.toLowerCase().trim();
-  if (low0 === "общее" || low0 === "general" || low0 === "без темы" || low0 === "без названия") {
-    return NO_TOPIC_KEY;
-  }
+  if (TRASH_TITLES.has(low0)) return NO_TOPIC_KEY;
+  if (low0 === "без темы" || low0 === "без названия" || low0 === "общее") return NO_TOPIC_KEY;
+  if (low0 === NO_TOPIC_KEY) return NO_TOPIC_KEY;
 
-  // If it's diagnostic/baseline — keep under NO_TOPIC_KEY (display as baseline)
+  // Диагностика / базовые темы — это не отдельная "тема"
   if (isDiagnosticTitle(k0)) return NO_TOPIC_KEY;
 
+  // чистим и режем "7–9 класс" и т.п.
   const k = sanitizeTopicTitle(k0);
   if (!k) return NO_TOPIC_KEY;
 
   const low = k.toLowerCase().trim();
-  if (subjLow && (low === subjLow || low === subjLow.replace(/\s+/g, " "))) return NO_TOPIC_KEY;
+  if (subjLow && low === subjLow) return NO_TOPIC_KEY;
 
   return k;
 }
@@ -115,8 +151,8 @@ function topicTitleForDisplay(topicKey, data, subject) {
   const fromKey = sanitizeTopicTitle(keyStr);
   if (fromKey && (!subjLow || fromKey.toLowerCase().trim() !== subjLow)) return fromKey;
 
-  if (keyStr === NO_TOPIC_KEY || isDiagnosticTitle(keyStr)) return BASELINE_LABEL;
-  return NO_TOPIC_LABEL;
+  // любые "без темы"/диагностика не показываем как отдельную тему
+  return "";
 }
 
 function safeJsonParse(raw, fallback) {
@@ -227,31 +263,77 @@ export default function ProgressPage() {
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
 
-        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Без темы"
+        // Нормализация тем: чистим legacy-мусор ("__no_topic__", "Диагностика…", уровни "7–9 класс", "Тест" и т.п.)
         try {
-          const subjObj = migrated?.[subject]?.[level];
-          if (subjObj && typeof subjObj === "object") {
-            let changed = false;
-            const nextLvl = {};
-            Object.entries(subjObj).forEach(([topic, data]) => {
-              const k = normalizeStorageKey(data?.title || topic, subject);
-              if (k !== topic) changed = true;
-              const score = typeof data?.score === "number" ? data.score : 0;
-              const prev = nextLvl[k];
-              if (!prev) nextLvl[k] = { ...data, score };
-              else {
-                const prevScore = typeof prev.score === "number" ? prev.score : 0;
-                nextLvl[k] = { ...prev, score: Math.min(prevScore, score) };
+          const looksLikeLeaf = (x) => x && typeof x === "object" && typeof x.score === "number";
+
+          let changed = false;
+
+          Object.entries(migrated).forEach(([subj, subjObj]) => {
+            if (!subjObj || typeof subjObj !== "object") return;
+
+            const values = Object.values(subjObj);
+            const hasLevelLayer = values.some((v) => v && typeof v === "object" && !looksLikeLeaf(v));
+
+            // A) legacy: subject -> topicLeaf
+            if (!hasLevelLayer) {
+              const nextSubj = {};
+              Object.entries(subjObj).forEach(([k, v]) => {
+                const nk = normalizeStorageKey(v?.title || k, subj);
+                if (nk !== k) changed = true;
+                if (nk === NO_TOPIC_KEY) {
+                  changed = true;
+                  return;
+                }
+                const score = typeof v?.score === "number" ? v.score : 0;
+                const prev = nextSubj[nk];
+                if (!prev) nextSubj[nk] = { ...v, score };
+                else {
+                  const prevScore = typeof prev.score === "number" ? prev.score : 0;
+                  nextSubj[nk] = { ...prev, score: Math.min(prevScore, score) };
+                }
+              });
+              migrated[subj] = nextSubj;
+              return;
+            }
+
+            // B) current: subject -> level -> topicLeaf
+            Object.entries(subjObj).forEach(([lvlKey, lvlObj]) => {
+              if (!lvlObj || typeof lvlObj !== "object") return;
+
+              let lvlChanged = false;
+              const nextLvl = {};
+              Object.entries(lvlObj).forEach(([k, v]) => {
+                const nk = normalizeStorageKey(v?.title || k, subj);
+                if (nk !== k) lvlChanged = true;
+                if (nk === NO_TOPIC_KEY) {
+                  lvlChanged = true;
+                  return;
+                }
+                const score = typeof v?.score === "number" ? v.score : 0;
+                const prev = nextLvl[nk];
+                if (!prev) nextLvl[nk] = { ...v, score };
+                else {
+                  const prevScore = typeof prev.score === "number" ? prev.score : 0;
+                  nextLvl[nk] = { ...prev, score: Math.min(prevScore, score) };
+                }
+              });
+
+              if (lvlChanged) {
+                changed = true;
+                subjObj[lvlKey] = nextLvl;
               }
             });
-            if (changed) {
-              migrated[subject][level] = nextLvl;
-              window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
-            }
+          });
+
+          if (changed) {
+            window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
           }
         } catch (eNorm) {
           console.warn("Topic normalize failed", eNorm);
         }
+
+
 
       }
     } finally {
@@ -303,8 +385,9 @@ export default function ProgressPage() {
       source: data?.source || null,
       label: sanitizeTopicTitle(data?.label) || null,
     }));
-    arr.sort((a, b) => a.score - b.score);
-    return arr;
+    const cleaned = arr.filter((t) => t.topic && String(t.topic).trim());
+    cleaned.sort((a, b) => a.score - b.score);
+    return cleaned;
   }, [knowledgeMap, context.subject, context.level]);
 
   const stats = useMemo(() => {
