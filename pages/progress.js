@@ -1,6 +1,5 @@
 // pages/progress.js
 import React, { useEffect, useMemo, useState  } from "react";
-import { repairTopicsNow } from "../lib/topicMigration";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -18,89 +17,206 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 
-const NO_TOPIC_LABEL = "Без темы";
+
+
+const TOPIC_BASELINE_TITLE = "Базовые темы";
+const _BAD_TOPIC_SET = new Set([
+  "__no_topic__",
+  "без темы",
+  "без названия",
+  "no topic",
+  "no_topic",
+  "notopic",
+  "general",
+  "общее",
+  "прочее",
+  "разное",
+  "тест",
+]);
+
+const _STATUS_SET = new Set([
+  "изучено",
+  "изучаю",
+  "в процессе",
+  "не начато",
+  "повторить",
+  "пройдено",
+  "усвоено",
+  "готово",
+  "сдано",
+]);
+
+function _normSpaces(s) {
+  return String(s || "")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u2000-\u200B]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function _normCompare(s) {
+  return _normSpaces(s).replace(/[\u2012\u2013\u2014\u2015]/g, "-").toLowerCase();
+}
+
+function _isGradeOnly(raw) {
+  const t = _normCompare(raw);
+  return /^((\d{1,2}\s*-\s*\d{1,2})|\d{1,2})\s*(класс|кл\.?)+$/i.test(t);
+}
 
 function sanitizeTopicTitle(input) {
-  let raw = String(input || "").trim();
+  let raw = _normSpaces(input);
   if (!raw) return "";
 
   raw = raw.replace(/[«»"]/g, "").trim();
-  raw = raw.replace(/\s+/g, " ").trim();
-  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/^тема\s*[:\-—]\s*/i, "").trim();
   raw = raw.replace(/[?!\.]+$/g, "").trim();
 
-  const low = raw.toLowerCase();
+  raw = raw.replace(/^__no_topic__$/i, "").trim();
+  raw = raw.replace(/^без\s+(темы|названия)$/i, "").trim();
+
+  raw = raw.replace(/^диагностика\b[^\n]*?\bпо\s+/i, "").trim();
+  raw = raw.replace(/^проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/^тест\s*[:\-—]\s*/i, "").trim();
+
+  raw = _normSpaces(raw);
   if (!raw) return "";
-  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
 
-  // reject UI/status labels and generic subject names
-  const bad = new Set([
-    "математика",
-    "физика",
-    "русский язык",
-    "английский язык",
-    "изучено",
-    "изученный",
-    "изучена",
-    "изучен",
-    "уверенно",
-    "так себе",
-    "слабая зона",
-    "не начато",
-    "слабые",
-    "сильные",
-    "средние",
-    "все",
-    "прогресс",
-  ]);
-  if (bad.has(low)) return "";
-  if (/^уров(е|ё)нь\b/i.test(raw)) return "";
-  if (/^статус\b/i.test(raw)) return "";
-  if (/^изучен(о|а|ый)?\b/i.test(raw)) return "";
+  if (_isGradeOnly(raw)) return "";
+  if (raw.length > 80) return "";
 
-  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
-
-  // reject paragraph-like topics
-  if (raw.length > 60) return "";
+  const low = _normCompare(raw);
+  if (_BAD_TOPIC_SET.has(low)) return "";
+  if (_STATUS_SET.has(low)) return "";
+  if (/^диагностика\b/.test(low)) return "";
+  if (/^тест\b/.test(low)) return "";
+  if (/^(математика|физика|русский язык|английский язык)$/.test(low)) return "";
+  if (/[\?\!\.]/.test(raw)) return "";
   if (raw.includes("\n")) return "";
 
-  const words = raw.split(/\s+/).filter(Boolean);
-  if (words.length > 8) return "";
-  if (/[.!?]/.test(raw)) return "";
-
-  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
   return raw;
 }
 
-function normalizeTopicKey(input) {
-  const t = sanitizeTopicTitle(input);
-  return t || NO_TOPIC_LABEL;
+function canonicalTopicKey(raw) {
+  if (!raw) return TOPIC_BASELINE_TITLE;
+
+  const parts = String(raw)
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  for (const p of (parts.length ? parts : [String(raw)])) {
+    const t = sanitizeTopicTitle(p);
+    if (!t) continue;
+    if (_isGradeOnly(t)) continue;
+    return t;
+  }
+
+  if (/^диагностика\b/i.test(String(raw || ""))) return TOPIC_BASELINE_TITLE;
+  return TOPIC_BASELINE_TITLE;
 }
 
-function pickTopicTitle(topicKey, data, subject) {
-  const subjectLow = String(subject || "").toLowerCase().trim();
-
-  const keyTitle = sanitizeTopicTitle(topicKey);
-  const dataTitle = sanitizeTopicTitle(data?.title);
-  const dataLabel = sanitizeTopicTitle(data?.label);
-
-  const isBad = (t) => {
-    const low = String(t || "").toLowerCase().trim();
-    if (!low) return true;
-    if (subjectLow && low === subjectLow) return true;
-    return false;
-  };
-
-  // Prefer explicit topic title, then key; never use progress-status label as a topic name
-  if (dataTitle && !isBad(dataTitle)) return dataTitle;
-  if (keyTitle && !isBad(keyTitle)) return keyTitle;
-
-  // data.label is often "Уверенно/Не начато/Изучено" etc — ignore unless it's truly a topic
-  if (dataLabel && !isBad(dataLabel)) return dataLabel;
-
-  return NO_TOPIC_LABEL;
+function isBadTopicTitle(raw) {
+  const t = sanitizeTopicTitle(raw);
+  if (!t) return true;
+  const low = _normCompare(t);
+  if (_BAD_TOPIC_SET.has(low)) return true;
+  if (_STATUS_SET.has(low)) return true;
+  if (_isGradeOnly(t)) return true;
+  return false;
 }
 
+function _mergeLeaf(a, b) {
+  const aa = a && typeof a === "object" ? a : {};
+  const bb = b && typeof b === "object" ? b : {};
+
+  const aTime = new Date(aa.updatedAt || aa.ts || aa.savedAt || 0).getTime();
+  const bTime = new Date(bb.updatedAt || bb.ts || bb.savedAt || 0).getTime();
+
+  if (Number.isFinite(aTime) && Number.isFinite(bTime) && bTime > aTime) {
+    return { ...aa, ...bb };
+  }
+  const aScore = typeof aa.score === "number" ? aa.score : -1;
+  const bScore = typeof bb.score === "number" ? bb.score : -1;
+  if (bScore > aScore) return { ...aa, ...bb };
+  return { ...bb, ...aa };
+}
+
+function _looksLikeLeaf(x) {
+  return x && typeof x === "object" && ("score" in x || "updatedAt" in x || "source" in x || "savedAt" in x);
+}
+
+function repairKnowledgeMapObject(km) {
+  if (!km || typeof km !== "object") return { changed: false, km };
+  let changed = false;
+  const out = Array.isArray(km) ? km.slice() : { ...km };
+
+  for (const subjKey of Object.keys(out)) {
+    const subjVal = out[subjKey];
+    if (!subjVal || typeof subjVal !== "object") continue;
+
+    const values = Object.values(subjVal);
+    const hasLevelLayer = values.some((v) => v && typeof v === "object" && !_looksLikeLeaf(v));
+
+    if (!hasLevelLayer) {
+      const repaired = {};
+      for (const oldTopicKey of Object.keys(subjVal)) {
+        const newKey = canonicalTopicKey(oldTopicKey);
+        if (newKey !== oldTopicKey) changed = true;
+        const leaf = subjVal[oldTopicKey];
+        repaired[newKey] = repaired[newKey] ? _mergeLeaf(repaired[newKey], leaf) : leaf;
+      }
+      out[subjKey] = repaired;
+      continue;
+    }
+
+    const subjOut = { ...subjVal };
+    for (const lvlKey of Object.keys(subjOut)) {
+      const lvlVal = subjOut[lvlKey];
+      if (!lvlVal || typeof lvlVal !== "object") continue;
+      if (_looksLikeLeaf(lvlVal)) continue;
+
+      const repairedLvl = {};
+      for (const oldTopicKey of Object.keys(lvlVal)) {
+        const newKey = canonicalTopicKey(oldTopicKey);
+        if (newKey !== oldTopicKey) changed = true;
+        const leaf = lvlVal[oldTopicKey];
+        repairedLvl[newKey] = repairedLvl[newKey] ? _mergeLeaf(repairedLvl[newKey], leaf) : leaf;
+      }
+      subjOut[lvlKey] = repairedLvl;
+    }
+    out[subjKey] = subjOut;
+  }
+
+  return { changed, km: out };
+}
+
+function repairTopicsInStorage() {
+  if (typeof window === "undefined") return { changed: false };
+  let changed = false;
+
+  try {
+    const raw = window.localStorage.getItem("noolixKnowledgeMap");
+    const parsed = raw ? JSON.parse(raw) : null;
+    const r = repairKnowledgeMapObject(parsed);
+    if (r.changed) {
+      window.localStorage.setItem("noolixKnowledgeMap", JSON.stringify(r.km));
+      changed = true;
+    }
+  } catch (_) {}
+
+  try {
+    const v = window.localStorage.getItem("noolixLastTopicCandidate");
+    if (v) {
+      const fixed = canonicalTopicKey(v);
+      if (fixed && fixed !== v) {
+        window.localStorage.setItem("noolixLastTopicCandidate", fixed);
+        changed = true;
+      }
+    }
+  } catch (_) {}
+
+  return { changed };
+}
 
 function safeJsonParse(raw, fallback) {
   try {
@@ -158,21 +274,6 @@ function formatUpdatedAt(value) {
 }
 
 export default function ProgressPage() {
-  const [repairStatus, setRepairStatus] = useState("");
-
-  const runRepairTopics = () => {
-    try {
-      const changed = repairTopicsNow();
-      setRepairStatus(changed ? "Темы очищены ✅" : "Изменений не найдено");
-      setTimeout(() => {
-        if (typeof window !== "undefined") window.location.reload();
-      }, 120);
-    } catch (e) {
-      console.warn("Repair topics failed", e);
-      setRepairStatus("Не удалось очистить темы");
-    }
-  };
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -186,12 +287,15 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
+  const [repairing, setRepairing] = useState(false);
 
   // init: context + knowledge map
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
+      try { repairTopicsInStorage(); } catch (_) {}
+
       const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
       const parsedCtx = safeJsonParse(rawCtx, null);
       if (parsedCtx && typeof parsedCtx === "object") {
@@ -206,6 +310,12 @@ export default function ProgressPage() {
 
         // Мягкая миграция legacy-формата: subject -> topic -> {score...}
         const migrated = { ...parsedKnowledge };
+        try {
+          const rr = repairKnowledgeMapObject(migrated);
+          if (rr.changed) {
+            window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(rr.km));
+          }
+        } catch (_) {}
         Object.keys(migrated).forEach((subjKey) => {
           const subjVal = migrated[subjKey];
           if (!subjVal || typeof subjVal !== "object") return;
@@ -225,15 +335,14 @@ export default function ProgressPage() {
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
 
-        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Без темы"
+        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Общее"
         try {
           const subjObj = migrated?.[subject]?.[level];
           if (subjObj && typeof subjObj === "object") {
             let changed = false;
             const nextLvl = {};
             Object.entries(subjObj).forEach(([topic, data]) => {
-              const k =
-                sanitizeTopicTitle(data?.title || topic) || sanitizeTopicTitle(topic) || NO_TOPIC_LABEL;
+              const k = normalizeTopicKey(topic);
               if (k !== topic) changed = true;
               const score = typeof data?.score === "number" ? data.score : 0;
               const prev = nextLvl[k];
@@ -263,6 +372,8 @@ export default function ProgressPage() {
     if (typeof window === "undefined") return;
 
     try {
+      try { repairTopicsInStorage(); } catch (_) {}
+
       const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
       const list = safeJsonParse(raw, []);
       const arr = Array.isArray(list) ? list : [];
@@ -285,6 +396,19 @@ export default function ProgressPage() {
     }
   };
 
+  const handleRepairTopics = async () => {
+    try {
+      if (typeof window === "undefined") return;
+      setRepairing(true);
+      try { repairTopicsInStorage(); } catch (_) {}
+      // reload to force recompute of topic lists
+      window.location.reload();
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+
   const subjectTopics = useMemo(() => {
     const subj = knowledgeMap?.[context.subject];
     const lvl = subj?.[context.level];
@@ -296,11 +420,11 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic: pickTopicTitle(topic, data, context.subject),
+      topic: (data?.label || data?.title || topic) || topic,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
-      label: sanitizeTopicTitle(data?.label) || null,
+      label: data?.label || null,
     }));
     arr.sort((a, b) => a.score - b.score);
     return arr;
@@ -486,21 +610,9 @@ export default function ProgressPage() {
                   <span>Карта знаний</span>
                 </div>
                 <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-2xl md:text-3xl font-semibold">
-                      Прогресс
-                    </h1>
-                    <button
-                      onClick={runRepairTopics}
-                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-xs"
-                      type="button"
-                    >
-                      Починить темы
-                    </button>
-                    {repairStatus && (
-                      <span className="text-[11px] text-white/70">{repairStatus}</span>
-                    )}
-                  </div>
+                  <h1 className="text-2xl md:text-3xl font-semibold">
+                    Прогресс
+                  </h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
                     Здесь видно, какие темы уже сильные, а какие требуют внимания.
                     Темы, сохранённые из диалога, помечаются отдельно.
@@ -535,6 +647,15 @@ export default function ProgressPage() {
                     <option>1 курс вуза</option>
                   </select>
                 </div>
+
+                <button
+                  className="text-[11px] md:text-xs px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 transition"
+                  onClick={handleRepairTopics}
+                  disabled={repairing}
+                  title="Очистить мусорные темы (без темы/тест/диагностика/класс)"
+                >
+                  {repairing ? "Чиним темы…" : "Починить темы"}
+                </button>
               </div>
             </section>
 
@@ -832,4 +953,42 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}
+}const normalizeTopicKey = (t) => {
+  let raw = String(t || "").trim();
+  if (!raw) return "Общее";
+
+  // remove quotes
+  raw = raw.replace(/[«»"]/g, "").trim();
+
+  // drop diagnostic / generic prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
+  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
+
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  // try to extract "topic" from common phrasing
+  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
+  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
+  raw = raw.replace(/^объясни\s+/i, "").trim();
+
+  // normalize spaces
+  raw = raw.replace(/\s+/g, " ").trim();
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (!raw) return "Общее";
+
+  // If still looks like a sentence, shorten
+  const tooLong = raw.length > 80;
+  const tooManyWords = words.length > 12;
+  if (tooLong || tooManyWords) {
+    return words.slice(0, 8).join(" ").trim() || "Общее";
+  }
+
+  return raw;
+};
+
+
+
