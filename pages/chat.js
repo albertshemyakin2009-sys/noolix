@@ -1,6 +1,5 @@
 // pages/chat.js
 import React, { useEffect, useRef, useState  } from "react";
-import { coerceTopicTitleFromAnything, isBadTopicTitle } from "../lib/topicMigration";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -26,6 +25,119 @@ const AVATAR_EMOJI = {
   bear: "🐻",
   koala: "🐨",
 };
+
+
+// --- Topic sanitization (A2 stable) ---
+const TOPIC_BASELINE_TITLE = "Базовые темы";
+const _NO_TOPIC_SET = new Set([
+  "__no_topic__",
+  "без темы",
+  "без названия",
+  "no topic",
+  "no_topic",
+  "notopic",
+  "general",
+  "общее",
+  "прочее",
+  "разное",
+  "тест",
+]);
+
+const _STATUS_SET = new Set([
+  "изучено",
+  "изучаю",
+  "в процессе",
+  "не начато",
+  "повторить",
+  "пройдено",
+  "усвоено",
+  "готово",
+  "сдано",
+]);
+
+const _normSpaces = (s) =>
+  String(s || "")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u2000-\u200B]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const _normCompare = (s) =>
+  _normSpaces(s).replace(/[\u2012\u2013\u2014\u2015]/g, "-").toLowerCase();
+
+const _isGradeOnly = (s) => /^((\d{1,2}\s*-\s*\d{1,2})|\d{1,2})\s*(класс|кл\.?)+$/i.test(_normCompare(s));
+
+const sanitizeTopicTitle = (input) => {
+  let raw = _normSpaces(input);
+  if (!raw) return "";
+
+  raw = raw.replace(/[«»"]/g, "").trim();
+  raw = raw.replace(/^тема\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  raw = raw.replace(/^__no_topic__$/i, "").trim();
+  raw = raw.replace(/^без\s+(темы|названия)$/i, "").trim();
+
+  raw = raw.replace(/^диагностика\b[^\n]*?\bпо\s+/i, "").trim();
+  raw = raw.replace(/^проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/^тест\s*[:\-—]\s*/i, "").trim();
+
+  raw = _normSpaces(raw);
+  if (!raw) return "";
+
+  if (_isGradeOnly(raw)) return "";
+  if (raw.length > 80) return "";
+
+  const low = _normCompare(raw);
+  if (_NO_TOPIC_SET.has(low)) return "";
+  if (_STATUS_SET.has(low)) return "";
+  if (/^диагностика\b/.test(low)) return "";
+  if (/^тест\b/.test(low)) return "";
+  if (/^(математика|физика|русский язык|английский язык)$/.test(low)) return "";
+
+  // not a sentence
+  if (/[\?\!\.]/.test(raw)) return "";
+  if (raw.includes("\n")) return "";
+
+  return raw;
+};
+
+const canonicalTopicKey = (raw) => {
+  if (!raw) return TOPIC_BASELINE_TITLE;
+
+  // split by comma and drop grade parts like "7–9 класс"
+  const parts = String(raw)
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  for (const p of (parts.length ? parts : [String(raw)])) {
+    const t = sanitizeTopicTitle(p);
+    if (!t) continue;
+    if (_isGradeOnly(t)) continue;
+    return t;
+  }
+
+  // diagnostic like "Диагностика по Математика" => baseline (not subject)
+  const diag = String(raw).trim();
+  if (/^диагностика\b/i.test(diag)) return TOPIC_BASELINE_TITLE;
+
+  return TOPIC_BASELINE_TITLE;
+};
+
+const isBadTopicTitle = (raw) => {
+  const t = sanitizeTopicTitle(raw);
+  if (!t) return true;
+  const low = _normCompare(t);
+  if (_NO_TOPIC_SET.has(low)) return true;
+  if (_STATUS_SET.has(low)) return true;
+  if (/^диагностика\b/.test(low)) return true;
+  if (/^тест\b/.test(low)) return true;
+  if (_isGradeOnly(t)) return true;
+  return false;
+};
+
+
 
 
 function formatTime(dateString) {
@@ -268,7 +380,6 @@ export default function ChatPage() {
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
-  const topicDetectSigRef = useRef("");
   const [highlightMsgId, setHighlightMsgId] = useState("");
   const [highlightFading, setHighlightFading] = useState(false);
   const didFocusScrollRef = useRef(false);
@@ -442,18 +553,15 @@ export default function ChatPage() {
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
 
-        // Нормализуем: из "Диагностика по ..." / "..., 7–9 класс" получаем реальную тему
-        const cleaned = coerceTopicTitleFromAnything(t);
-
-        // Защита: topic не должен быть абзацем/кусочком ответа/служебной строкой.
-        if (cleaned && isProbablyTopic(cleaned) && !isBadTopicTitle(cleaned)) {
-          setCurrentTopic(cleaned);
+        // Защита: topic не должен быть абзацем/кусочком ответа.
+        if (isProbablyTopic(t)) {
+          setCurrentTopic(t);
 
           // При переходе из библиотеки: фиксируем тему как "последний кандидат",
           // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
           try {
-            const cand = normalizeTopicKey(cleaned);
-            if (cand && cand !== "Общее") {
+            const cand = normalizeTopicKey(t);
+            if (cand && cand !== TOPIC_BASELINE_TITLE) {
               window.localStorage.setItem("noolixLastTopicCandidate", cand);
             }
           } catch (_) {}
@@ -485,19 +593,18 @@ ${styleLine}
 Доп. указание:
 ${styleInstruction}`;
   };
+  const detectTopicInFlightRef = useRef(false);
 
-
-  const detectTopicIfNeeded = async ({ userText, assistantText }) => {
+  const maybeAutoDetectTopic = async (userText, assistantText) => {
     try {
-      const existing = coerceTopicTitleFromAnything(currentTopic || "");
-      if (existing && !isBadTopicTitle(existing)) return;
+      if (typeof window === "undefined") return;
+      if (!userText || !String(userText).trim()) return;
 
-      const u = String(userText || "").trim();
-      if (!u) return;
+      // already have a good topic -> nothing to do
+      if (currentTopic && !isBadTopicTitle(currentTopic)) return;
 
-      const sig = `${context.subject}|${context.level}|${u.slice(0, 140)}|${String(assistantText || "").slice(0, 140)}`;
-      if (topicDetectSigRef.current === sig) return;
-      topicDetectSigRef.current = sig;
+      if (detectTopicInFlightRef.current) return;
+      detectTopicInFlightRef.current = true;
 
       const res = await fetch("/api/detect-topic", {
         method: "POST",
@@ -505,23 +612,30 @@ ${styleInstruction}`;
         body: JSON.stringify({
           subject: context.subject,
           level: context.level,
-          userText: u,
+          userText: String(userText || ""),
           assistantText: String(assistantText || ""),
         }),
       });
 
       if (!res.ok) return;
       const data = await res.json();
-      const tt = coerceTopicTitleFromAnything(data?.topicTitle || "");
-      if (!tt || isBadTopicTitle(tt)) return;
+      const topicTitle = String(data?.topicTitle || "").trim();
+      if (!topicTitle || isBadTopicTitle(topicTitle)) return;
 
-      setCurrentTopic(tt);
+      const normalized = canonicalTopicKey(topicTitle);
+      if (!normalized || normalized === TOPIC_BASELINE_TITLE) return;
 
+      setCurrentTopic(normalized);
       try {
-        window.localStorage.setItem("noolixLastTopicCandidate", tt);
+        window.localStorage.setItem("noolixLastTopicCandidate", normalized);
       } catch (_) {}
-    } catch (_) {}
+    } catch (_) {
+      // ignore
+    } finally {
+      detectTopicInFlightRef.current = false;
+    }
   };
+
 
 const callBackend = async (userMessages) => {
     try {
@@ -585,16 +699,14 @@ const callBackend = async (userMessages) => {
       // обновляем "твои чаты" в библиотеке
       touchContinueItem();
 
-      // Если тема не задана/мусорная — пробуем определить автоматически по диалогу
-      try {
-        const lastUser = [...(userMessages || [])]
-          .slice()
-          .reverse()
-          .find((m) => m?.role === "user")?.content;
-        detectTopicIfNeeded({ userText: lastUser || "", assistantText: replyText });
-      } catch (_) {}
+          setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
 
-      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
+    // ✅ умное автоопределение темы по диалогу (если тема пустая/мусорная)
+    try {
+      const lastUser = (userMessages || []).slice().reverse().find((m) => m?.role === "user");
+      const userText = lastUser?.content || "";
+      maybeAutoDetectTopic(userText, assistantMessage.content);
+    } catch (_) {}
     } catch (err) {
       console.error(err);
       setError(
@@ -643,7 +755,7 @@ const callBackend = async (userMessages) => {
     // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
     try {
       const cand = normalizeTopicKey(topic);
-      if (cand && cand !== "Общее") {
+      if (cand && cand !== TOPIC_BASELINE_TITLE) {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
@@ -845,60 +957,18 @@ const callBackend = async (userMessages) => {
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
   const normalizeTopicKey = (t) => {
-    let raw = String(t || "").trim();
-    if (!raw) return "Общее";
-
-    raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
-    raw = raw.replace(/\s+/g, " ");
-
-    const q1 = raw.match(/«([^»]{2,80})»/);
-    const q2 = raw.match(/"([^"]{2,80})"/);
-    if (q1?.[1]) raw = q1[1].trim();
-    else if (q2?.[1]) raw = q2[1].trim();
-
-    const patterns = [
-      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-    ];
-    for (const p of patterns) {
-      const m = raw.match(p);
-      if (m?.[1]) {
-        raw = m[1].trim();
-        break;
-      }
-    }
-
-    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
-
-    const words = raw.split(/\s+/).filter(Boolean);
-    const tooLong = raw.length > 60;
-    const tooManyWords = words.length > 8;
-    const hasSentenceMarks = /[\?\!\.]/.test(raw);
-    if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
-
-    return raw || "Общее";
+    return canonicalTopicKey(t);
   };
 
   const isProbablyTopic = (t) => {
     const s = String(t || "").trim();
+    if (isBadTopicTitle(s)) return false;
     if (!s) return false;
     if (s.length > 90) return false;
     if (s.includes("\n")) return false;
 
     // плейсхолдеры/мусор
     if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(s)) return false;
-
-    // служебные/мусорные "темы" — запрещаем
-    if (/^__no_topic__$/i.test(s)) return false;
-    if (/^без\s+(темы|названия)$/i.test(s)) return false;
-    if (/^тест$/i.test(s)) return false;
-    if (/^диагностика\b/i.test(s)) return false;
-
-    // уровень/класс — не тема
-    if (/^(\d{1,2}\s*[–-]\s*\d{1,2}|\d{1,2})\s*(класс|кл\.?)$/i.test(s)) return false;
-
 
     const words = s.split(/\s+/).filter(Boolean);
     if (words.length > 12) return false;
@@ -1007,7 +1077,7 @@ const callBackend = async (userMessages) => {
       }
 
       const normalizedTopic = normalizeTopicKey(topicTitle);
-      const finalTopic = normalizedTopic && normalizedTopic !== "Общее" ? normalizedTopic : topicTitle;
+      const finalTopic = normalizedTopic && normalizedTopic !== TOPIC_BASELINE_TITLE ? normalizedTopic : topicTitle;
       const title = finalTopic || `Сохранённое объяснение по ${context.subject}`;
 
       const item = {
@@ -1041,7 +1111,7 @@ const callBackend = async (userMessages) => {
       // Используем уже вычисленную тему (finalTopic/topicTitle), чтобы не зависеть от текста ответа.
       const progressTopic = finalTopic || topicTitle || String(currentTopic || "").trim() || "";
       let topicKey = normalizeTopicKey(progressTopic);
-      if (!topicKey || topicKey === "Общее") {
+      if (!topicKey || topicKey === TOPIC_BASELINE_TITLE) {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
           if (last) topicKey = normalizeTopicKey(last);
@@ -1119,7 +1189,7 @@ const callBackend = async (userMessages) => {
     // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
     try {
       const cand = normalizeTopicKey(text);
-      if (cand && cand !== "Общее") {
+      if (cand && cand !== TOPIC_BASELINE_TITLE) {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
