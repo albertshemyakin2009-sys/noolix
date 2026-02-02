@@ -266,8 +266,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null);
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
-  const lastUserTextRef = useRef("");
   const scrollToRef = useRef("");
+  const pendingAutoTopicRef = useRef(false);
   const [highlightMsgId, setHighlightMsgId] = useState("");
   const [highlightFading, setHighlightFading] = useState(false);
   const didFocusScrollRef = useRef(false);
@@ -440,17 +440,17 @@ export default function ChatPage() {
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
+        const candKey = normalizeTopicKey(t);
 
-        // Защита: topic не должен быть абзацем/кусочком ответа.
-        if (isProbablyTopic(t)) {
+        // Защита: topic не должен быть абзацем/кусочком ответа, и не должен быть служебным значением.
+        if (isProbablyTopic(t) && candKey !== "__no_topic__") {
           setCurrentTopic(t);
 
           // При переходе из библиотеки: фиксируем тему как "последний кандидат",
           // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
           try {
-            const cand = normalizeTopicKey(t);
-            if (cand) {
-              window.localStorage.setItem("noolixLastTopicCandidate", cand);
+            if (candKey) {
+              window.localStorage.setItem("noolixLastTopicCandidate", candKey);
             }
           } catch (_) {}
         }
@@ -481,46 +481,6 @@ ${styleLine}
 Доп. указание:
 ${styleInstruction}`;
   };
-
-const looksLikeSystemPrompt = (s) => {
-  const t = String(s || "").trim();
-  if (!t) return false;
-  // our own generated prompts often contain these markers
-  if (t.startsWith("Объясни тему")) return true;
-  if (t.includes("Требования:") && t.includes("1)")) return true;
-  if (t.startsWith("Предмет:") && t.includes("Тема:")) return true;
-  return false;
-};
-
-const detectTopicFromDialog = async ({ userText, assistantText }) => {
-  try {
-    if (typeof window === "undefined") return "";
-    const ut = String(userText || "").trim();
-    if (!ut || looksLikeSystemPrompt(ut)) return "";
-
-    const res = await fetch("/api/detect-topic", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subject: context.subject,
-        level: context.level,
-        userText: ut,
-        assistantText: String(assistantText || "").trim(),
-      }),
-    });
-
-    if (!res.ok) return "";
-
-    const data = await res.json();
-    const topicTitle = typeof data?.topicTitle === "string" ? data.topicTitle : "";
-    const norm = normalizeTopicKey(topicTitle);
-    return norm;
-  } catch (_) {
-    return "";
-  }
-};
-
-
 
 const callBackend = async (userMessages) => {
     try {
@@ -581,28 +541,11 @@ const callBackend = async (userMessages) => {
       }
 
 
-      
-
-// --- умное автоопределение темы по диалогу ---
-try {
-  const hasTopic = !!normalizeTopicKey(currentTopic);
-  if (!hasTopic) {
-    const detected = await detectTopicFromDialog({
-      userText: lastUserTextRef.current || "",
-      assistantText: assistantMessage.content || "",
-    });
-    if (detected) {
-      setCurrentTopic(detected);
-      try {
-        window.localStorage.setItem("noolixLastTopicCandidate", detected);
-        window.localStorage.setItem("noolixLastTopic", detected);
-      } catch (_) {}
-    }
-  }
-} catch (_) {}
-
-// обновляем "твои чаты" в библиотеке
+      // обновляем "твои чаты" в библиотеке
       touchContinueItem();
+
+      // если темы нет/мусор — попробуем автоопределение после обновления messages
+      pendingAutoTopicRef.current = true;
 
       setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
     } catch (err) {
@@ -653,7 +596,7 @@ try {
     // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
     try {
       const cand = normalizeTopicKey(topic);
-      if (cand) {
+      if (cand && cand !== "__no_topic__") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
@@ -854,58 +797,81 @@ try {
   }, [messages, context?.subject, context?.level]);
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
-  
-const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
-  if (!raw) return "";
+    const NO_TOPIC_KEY = "__no_topic__";
 
-  raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
-  raw = raw.replace(/\s+/g, " ");
+  const stripGradeHints = (raw) => {
+    let t = String(raw || "").replace(/\s+/g, " ").trim();
+    t = t.replace(/\s*[,–—-]\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+    t = t.replace(/\(\s*\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\s*\)/gi, "");
+    t = t.replace(/\b\d{1,2}\s*(?:[–—-]\s*\d{1,2})?\s*класс\b/gi, "");
+    return t.replace(/\s+/g, " ").trim();
+  };
 
-  const q1 = raw.match(/«([^»]{2,80})»/);
-  const q2 = raw.match(/"([^"]{2,80})"/);
-  if (q1?.[1]) raw = q1[1].trim();
-  else if (q2?.[1]) raw = q2[1].trim();
+  // ✅ NEW: обновление прогресса при сохранении объяснения (единый стандарт тем)
+  const normalizeTopicKey = (t) => {
+    let raw = String(t || "").trim();
+    if (!raw) return NO_TOPIC_KEY;
 
-  const patterns = [
-    /^(?:что такое|что значит|что означает)\s+(.+)$/i,
-    /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
-    /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
-    /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
-  ];
-  for (const p of patterns) {
-    const m = raw.match(p);
-    if (m?.[1]) {
-      raw = m[1].trim();
-      break;
+    raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
+    raw = raw.replace(/\s+/g, " ");
+
+    // частый кейс: "Диагностика по Математика, 7–9 класс"
+    raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+    raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
+    raw = stripGradeHints(raw);
+
+    const q1 = raw.match(/«([^»]{2,80})»/);
+    const q2 = raw.match(/"([^"]{2,80})"/);
+    if (q1?.[1]) raw = q1[1].trim();
+    else if (q2?.[1]) raw = q2[1].trim();
+
+    const patterns = [
+      /^(?:что такое|что значит|что означает)\s+(.+)$/i,
+      /^(?:как решать|как решить|как найти|как сделать|как понять|как работает)\s+(.+)$/i,
+      /^(?:объясни(?:те)?(?: мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?: мне)?(?: понять|с)?)\s+(.+)$/i,
+      /^(?:тема|по теме)\s*[:\-—]?\s*(.+)$/i,
+    ];
+    for (const p of patterns) {
+      const m = raw.match(p);
+      if (m?.[1]) {
+        raw = m[1].trim();
+        break;
+      }
     }
-  }
 
-  // drop diagnostic/generic prefixes
-  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
+    raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+    raw = raw.replace(/\s+/g, " ").trim();
 
-  raw = raw.replace(/[\?\!\.]+$/g, "").trim();
+    const low = raw.toLowerCase();
+    const trash = new Set([
+      "__no_topic__",
+      "без темы",
+      "без названия",
+      "общее",
+      "general",
+      "тест",
+      "тесты",
+      "диагностика",
+      "изучено",
+      "не начато",
+      "уверенно",
+      "прогресс",
+      "результат",
+      "математика",
+      "физика",
+      "русский язык",
+      "английский язык",
+    ]);
+    if (!raw || trash.has(low)) return NO_TOPIC_KEY;
 
-  const words = raw.split(/\s+/).filter(Boolean);
-  const tooLong = raw.length > 80;
-  const tooManyWords = words.length > 12;
-  const hasSentenceMarks = /[\?\!\.]/.test(raw);
-  if (!raw || tooLong || tooManyWords || hasSentenceMarks) return "";
+    const words = raw.split(/\s+/).filter(Boolean);
+    const tooLong = raw.length > 70;
+    const tooManyWords = words.length > 10;
+    const hasSentenceMarks = /[\?\!\.]/.test(raw);
+    if (tooLong || tooManyWords || hasSentenceMarks) return NO_TOPIC_KEY;
 
-  // placeholders
-  const low = raw.toLowerCase().trim();
-  if (
-    low === "общее" ||
-    low === "general" ||
-    low === "без темы" ||
-    low === "без названия" ||
-    /^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(low)
-  ) return "";
-
-  return raw;
-};
+    return raw || NO_TOPIC_KEY;
+  };
 
   const isProbablyTopic = (t) => {
     const s = String(t || "").trim();
@@ -924,6 +890,53 @@ const normalizeTopicKey = (t) => {
 
     return true;
   };
+  // ✅ NEW: умное автоопределение темы по диалогу (если тема пустая/мусорная)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!pendingAutoTopicRef.current) return;
+    if (!Array.isArray(messages) || messages.length < 2) return;
+
+    // сбрасываем флаг сразу — чтобы не зациклиться
+    pendingAutoTopicRef.current = false;
+
+    try {
+      const curKey = normalizeTopicKey(currentTopic);
+      if (curKey && curKey !== NO_TOPIC_KEY) return; // тема уже нормальная
+
+      // берём последние сообщения (без огромной истории)
+      const slice = messages.slice(-12).map((m) => ({
+        role: m.role,
+        content: String(m.content || ""),
+      }));
+
+      (async () => {
+        try {
+          const res = await fetch("/api/detect-topic", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: context?.subject || "",
+              level: context?.level || "",
+              messages: slice,
+            }),
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          const topic = String(data?.topic || "").trim();
+          const key = normalizeTopicKey(topic);
+          if (topic && key && key !== NO_TOPIC_KEY) {
+            setCurrentTopic(topic);
+            try {
+              window.localStorage.setItem("noolixLastTopicCandidate", key);
+            } catch (_) {}
+          }
+        } catch (eDetect) {
+          // silently ignore
+        }
+      })();
+    } catch (_) {}
+  }, [messages, currentTopic, context?.subject, context?.level]);
+
 
 
 
@@ -1023,7 +1036,7 @@ const normalizeTopicKey = (t) => {
       }
 
       const normalizedTopic = normalizeTopicKey(topicTitle);
-      const finalTopic = normalizedTopic ? normalizedTopic : topicTitle;
+      const finalTopic = normalizedTopic && normalizedTopic !== "Общее" ? normalizedTopic : topicTitle;
       const title = finalTopic || `Сохранённое объяснение по ${context.subject}`;
 
       const item = {
@@ -1057,7 +1070,7 @@ const normalizeTopicKey = (t) => {
       // Используем уже вычисленную тему (finalTopic/topicTitle), чтобы не зависеть от текста ответа.
       const progressTopic = finalTopic || topicTitle || String(currentTopic || "").trim() || "";
       let topicKey = normalizeTopicKey(progressTopic);
-      if (!topicKey) {
+      if (!topicKey || topicKey === "__no_topic__") {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
           if (last) topicKey = normalizeTopicKey(last);
@@ -1132,12 +1145,12 @@ const normalizeTopicKey = (t) => {
       createdAt: new Date().toISOString(),
     };
 
-    // сохраняем последний текст пользователя для автоопределения темы
-    try { lastUserTextRef.current = text; } catch (_) {}
-    // сохраняем быстрый кандидат темы (только если текст действительно похож на тему)
+    // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
     try {
       const cand = normalizeTopicKey(text);
-      if (cand) window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      if (cand && cand !== "__no_topic__") {
+        window.localStorage.setItem("noolixLastTopicCandidate", cand);
+      }
     } catch (_) {}
 
 
