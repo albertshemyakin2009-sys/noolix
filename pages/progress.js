@@ -17,207 +17,6 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 
-
-
-const TOPIC_BASELINE_TITLE = "Базовые темы";
-const _BAD_TOPIC_SET = new Set([
-  "__no_topic__",
-  "без темы",
-  "без названия",
-  "no topic",
-  "no_topic",
-  "notopic",
-  "general",
-  "общее",
-  "прочее",
-  "разное",
-  "тест",
-]);
-
-const _STATUS_SET = new Set([
-  "изучено",
-  "изучаю",
-  "в процессе",
-  "не начато",
-  "повторить",
-  "пройдено",
-  "усвоено",
-  "готово",
-  "сдано",
-]);
-
-function _normSpaces(s) {
-  return String(s || "")
-    .replace(/\u00A0/g, " ")
-    .replace(/[\u2000-\u200B]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function _normCompare(s) {
-  return _normSpaces(s).replace(/[\u2012\u2013\u2014\u2015]/g, "-").toLowerCase();
-}
-
-function _isGradeOnly(raw) {
-  const t = _normCompare(raw);
-  return /^((\d{1,2}\s*-\s*\d{1,2})|\d{1,2})\s*(класс|кл\.?)+$/i.test(t);
-}
-
-function sanitizeTopicTitle(input) {
-  let raw = _normSpaces(input);
-  if (!raw) return "";
-
-  raw = raw.replace(/[«»"]/g, "").trim();
-  raw = raw.replace(/^тема\s*[:\-—]\s*/i, "").trim();
-  raw = raw.replace(/[?!\.]+$/g, "").trim();
-
-  raw = raw.replace(/^__no_topic__$/i, "").trim();
-  raw = raw.replace(/^без\s+(темы|названия)$/i, "").trim();
-
-  raw = raw.replace(/^диагностика\b[^\n]*?\bпо\s+/i, "").trim();
-  raw = raw.replace(/^проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
-  raw = raw.replace(/^тест\s*[:\-—]\s*/i, "").trim();
-
-  raw = _normSpaces(raw);
-  if (!raw) return "";
-
-  if (_isGradeOnly(raw)) return "";
-  if (raw.length > 80) return "";
-
-  const low = _normCompare(raw);
-  if (_BAD_TOPIC_SET.has(low)) return "";
-  if (_STATUS_SET.has(low)) return "";
-  if (/^диагностика\b/.test(low)) return "";
-  if (/^тест\b/.test(low)) return "";
-  if (/^(математика|физика|русский язык|английский язык)$/.test(low)) return "";
-  if (/[\?\!\.]/.test(raw)) return "";
-  if (raw.includes("\n")) return "";
-
-  return raw;
-}
-
-function canonicalTopicKey(raw) {
-  if (!raw) return TOPIC_BASELINE_TITLE;
-
-  const parts = String(raw)
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  for (const p of (parts.length ? parts : [String(raw)])) {
-    const t = sanitizeTopicTitle(p);
-    if (!t) continue;
-    if (_isGradeOnly(t)) continue;
-    return t;
-  }
-
-  if (/^диагностика\b/i.test(String(raw || ""))) return TOPIC_BASELINE_TITLE;
-  return TOPIC_BASELINE_TITLE;
-}
-
-function isBadTopicTitle(raw) {
-  const t = sanitizeTopicTitle(raw);
-  if (!t) return true;
-  const low = _normCompare(t);
-  if (_BAD_TOPIC_SET.has(low)) return true;
-  if (_STATUS_SET.has(low)) return true;
-  if (_isGradeOnly(t)) return true;
-  return false;
-}
-
-function _mergeLeaf(a, b) {
-  const aa = a && typeof a === "object" ? a : {};
-  const bb = b && typeof b === "object" ? b : {};
-
-  const aTime = new Date(aa.updatedAt || aa.ts || aa.savedAt || 0).getTime();
-  const bTime = new Date(bb.updatedAt || bb.ts || bb.savedAt || 0).getTime();
-
-  if (Number.isFinite(aTime) && Number.isFinite(bTime) && bTime > aTime) {
-    return { ...aa, ...bb };
-  }
-  const aScore = typeof aa.score === "number" ? aa.score : -1;
-  const bScore = typeof bb.score === "number" ? bb.score : -1;
-  if (bScore > aScore) return { ...aa, ...bb };
-  return { ...bb, ...aa };
-}
-
-function _looksLikeLeaf(x) {
-  return x && typeof x === "object" && ("score" in x || "updatedAt" in x || "source" in x || "savedAt" in x);
-}
-
-function repairKnowledgeMapObject(km) {
-  if (!km || typeof km !== "object") return { changed: false, km };
-  let changed = false;
-  const out = Array.isArray(km) ? km.slice() : { ...km };
-
-  for (const subjKey of Object.keys(out)) {
-    const subjVal = out[subjKey];
-    if (!subjVal || typeof subjVal !== "object") continue;
-
-    const values = Object.values(subjVal);
-    const hasLevelLayer = values.some((v) => v && typeof v === "object" && !_looksLikeLeaf(v));
-
-    if (!hasLevelLayer) {
-      const repaired = {};
-      for (const oldTopicKey of Object.keys(subjVal)) {
-        const newKey = canonicalTopicKey(oldTopicKey);
-        if (newKey !== oldTopicKey) changed = true;
-        const leaf = subjVal[oldTopicKey];
-        repaired[newKey] = repaired[newKey] ? _mergeLeaf(repaired[newKey], leaf) : leaf;
-      }
-      out[subjKey] = repaired;
-      continue;
-    }
-
-    const subjOut = { ...subjVal };
-    for (const lvlKey of Object.keys(subjOut)) {
-      const lvlVal = subjOut[lvlKey];
-      if (!lvlVal || typeof lvlVal !== "object") continue;
-      if (_looksLikeLeaf(lvlVal)) continue;
-
-      const repairedLvl = {};
-      for (const oldTopicKey of Object.keys(lvlVal)) {
-        const newKey = canonicalTopicKey(oldTopicKey);
-        if (newKey !== oldTopicKey) changed = true;
-        const leaf = lvlVal[oldTopicKey];
-        repairedLvl[newKey] = repairedLvl[newKey] ? _mergeLeaf(repairedLvl[newKey], leaf) : leaf;
-      }
-      subjOut[lvlKey] = repairedLvl;
-    }
-    out[subjKey] = subjOut;
-  }
-
-  return { changed, km: out };
-}
-
-function repairTopicsInStorage() {
-  if (typeof window === "undefined") return { changed: false };
-  let changed = false;
-
-  try {
-    const raw = window.localStorage.getItem("noolixKnowledgeMap");
-    const parsed = raw ? JSON.parse(raw) : null;
-    const r = repairKnowledgeMapObject(parsed);
-    if (r.changed) {
-      window.localStorage.setItem("noolixKnowledgeMap", JSON.stringify(r.km));
-      changed = true;
-    }
-  } catch (_) {}
-
-  try {
-    const v = window.localStorage.getItem("noolixLastTopicCandidate");
-    if (v) {
-      const fixed = canonicalTopicKey(v);
-      if (fixed && fixed !== v) {
-        window.localStorage.setItem("noolixLastTopicCandidate", fixed);
-        changed = true;
-      }
-    }
-  } catch (_) {}
-
-  return { changed };
-}
-
 function safeJsonParse(raw, fallback) {
   try {
     if (!raw) return fallback;
@@ -273,6 +72,158 @@ function formatUpdatedAt(value) {
   });
 }
 
+const BASE_TOPIC = "Базовые темы";
+
+const normalizeTopicKey = (t) => {
+  let raw = String(t || "").trim();
+  if (!raw) return BASE_TOPIC;
+
+  // normalize spaces / quotes / dashes
+  raw = raw
+    .replace(/[\u00A0\u202F]/g, " ")
+    .replace(/[«»"']/g, "")
+    .replace(/[—–]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // unwrap «topic» inside string
+  const q = raw.match(/(?:«([^»]{2,80})»|"([^"]{2,80})")/);
+  if (q) raw = String(q[1] || q[2] || raw).trim();
+
+  // drop prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]?\s*/i, "").trim();
+
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  // extract from common phrasing
+  const patterns = [
+    /^(?:что\s+такое|что\s+значит|что\s+означает)\s+(.+)$/i,
+    /^(?:как\s+(?:решить|решать|находить|найти|считать|вычислить|работает))\s+(.+)$/i,
+    /^(?:объясни(?:те)?(?:\s+мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?:\s+мне)?(?:\s+понять|\s+с)?)\s+(.+)$/i,
+  ];
+  for (const p of patterns) {
+    const m = raw.match(p);
+    if (m && m[1]) {
+      raw = String(m[1]).trim();
+      break;
+    }
+  }
+
+  raw = raw.replace(/\s+/g, " ").trim();
+  const lower = raw.toLowerCase();
+
+  // blacklist: service/status/subject names
+  const badExact = new Set([
+    "__no_topic__",
+    "no_topic",
+    "без темы",
+    "без названия",
+    "тест",
+    "диагностика",
+    "изучено",
+    "изученный",
+    "изучена",
+    "уверенно",
+    "в процессе",
+    "не начато",
+    "средне",
+    "слабые",
+    "сильные",
+    "средние",
+    "прогресс",
+    "результаты",
+    "математика",
+    "физика",
+    "русский язык",
+    "английский язык",
+  ]);
+  if (!lower || badExact.has(lower)) return BASE_TOPIC;
+
+  // grade / level strings are not topics
+  const gradeOnly = lower
+    .replace(/\s+/g, "")
+    .replace(/[—–]/g, "-");
+  if (/^\d{1,2}-\d{1,2}класс$/.test(gradeOnly)) return BASE_TOPIC;
+  if (/^\d{1,2}-\d{1,2}$/.test(gradeOnly)) return BASE_TOPIC;
+  if (/^\d{1,2}класс$/.test(gradeOnly)) return BASE_TOPIC;
+
+  // too sentence-like
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (raw.length > 80 || words.length > 12 || /[.!?]/.test(raw)) return BASE_TOPIC;
+
+  return raw || BASE_TOPIC;
+};
+
+const pickTopicDisplay = (topicKey, maybeTitle) => {
+  const k = normalizeTopicKey(topicKey);
+  const t = normalizeTopicKey(maybeTitle);
+  return t !== BASE_TOPIC ? t : k;
+};
+
+const repairKnowledgeMapTopics = (kmRaw) => {
+  const km = kmRaw && typeof kmRaw === "object" ? kmRaw : {};
+  let changed = false;
+
+  const nextKm = { ...km };
+
+  Object.keys(nextKm).forEach((subject) => {
+    const subjVal = nextKm[subject];
+    if (!subjVal || typeof subjVal !== "object") return;
+
+    // legacy: subject -> topic -> {score}
+    const sampleVal = Object.values(subjVal)[0];
+    const looksLegacy =
+      sampleVal &&
+      typeof sampleVal === "object" &&
+      ("score" in sampleVal || "updatedAt" in sampleVal || "source" in sampleVal);
+
+    if (looksLegacy) {
+      // cannot know level here, keep as-is (legacy will be migrated elsewhere)
+      return;
+    }
+
+    const nextSubj = { ...subjVal };
+
+    Object.keys(nextSubj).forEach((level) => {
+      const lvlVal = nextSubj[level];
+      if (!lvlVal || typeof lvlVal !== "object") return;
+
+      const nextLvl = {};
+      Object.entries(lvlVal).forEach(([topicKey, data]) => {
+        const k = normalizeTopicKey(topicKey);
+        if (k !== topicKey) changed = true;
+
+        const prev = nextLvl[k];
+        const score = typeof data?.score === "number" ? data.score : 0;
+
+        if (!prev) nextLvl[k] = { ...(data || {}), score };
+        else {
+          const prevScore = typeof prev.score === "number" ? prev.score : 0;
+          // keep weaker score (so we don't accidentally inflate)
+          nextLvl[k] = { ...prev, ...(data || {}), score: Math.min(prevScore, score) };
+        }
+      });
+
+      // remove empty keys
+      Object.keys(nextLvl).forEach((k) => {
+        if (!nextLvl[k] || typeof nextLvl[k] !== "object") {
+          delete nextLvl[k];
+          changed = true;
+        }
+      });
+
+      nextSubj[level] = nextLvl;
+    });
+
+    nextKm[subject] = nextSubj;
+  });
+
+  return { nextKm, changed };
+};
+
 export default function ProgressPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -287,15 +238,12 @@ export default function ProgressPage() {
   const [search, setSearch] = useState("");
   const [bandFilter, setBandFilter] = useState("all"); // all | weak | mid | strong
   const [recentTests, setRecentTests] = useState([]);
-  const [repairing, setRepairing] = useState(false);
 
   // init: context + knowledge map
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
-      try { repairTopicsInStorage(); } catch (_) {}
-
       const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
       const parsedCtx = safeJsonParse(rawCtx, null);
       if (parsedCtx && typeof parsedCtx === "object") {
@@ -303,19 +251,13 @@ export default function ProgressPage() {
       }
 
       const rawKnowledge = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
-      const parsedKnowledge = safeJsonParse(rawKnowledge, {});
+      let parsedKnowledge = safeJsonParse(rawKnowledge, {});
       if (parsedKnowledge && typeof parsedKnowledge === "object") {
         const subject = (parsedCtx?.subject || "Математика").toString();
         const level = (parsedCtx?.level || "10–11 класс").toString();
 
         // Мягкая миграция legacy-формата: subject -> topic -> {score...}
         const migrated = { ...parsedKnowledge };
-        try {
-          const rr = repairKnowledgeMapObject(migrated);
-          if (rr.changed) {
-            window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(rr.km));
-          }
-        } catch (_) {}
         Object.keys(migrated).forEach((subjKey) => {
           const subjVal = migrated[subjKey];
           if (!subjVal || typeof subjVal !== "object") return;
@@ -332,10 +274,21 @@ export default function ProgressPage() {
           }
         });
 
+        
+        // Глобальная чистка мусорных тем (класс/статусы/служебные)
+        try {
+          const rep = repairKnowledgeMapTopics(migrated);
+          if (rep.changed) {
+            Object.assign(migrated, rep.nextKm);
+          }
+        } catch (eRep) {
+          console.warn("NOOLIX: repairKnowledgeMapTopics failed", eRep);
+        }
+
         setKnowledgeMap(migrated);
         window.localStorage.setItem(KNOWLEDGE_STORAGE_KEY, JSON.stringify(migrated));
 
-        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Общее"
+        // Нормализация тем: если ключ похож на фразу/сообщение — сводим в "Базовые темы"
         try {
           const subjObj = migrated?.[subject]?.[level];
           if (subjObj && typeof subjObj === "object") {
@@ -372,8 +325,6 @@ export default function ProgressPage() {
     if (typeof window === "undefined") return;
 
     try {
-      try { repairTopicsInStorage(); } catch (_) {}
-
       const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
       const list = safeJsonParse(raw, []);
       const arr = Array.isArray(list) ? list : [];
@@ -396,19 +347,6 @@ export default function ProgressPage() {
     }
   };
 
-  const handleRepairTopics = async () => {
-    try {
-      if (typeof window === "undefined") return;
-      setRepairing(true);
-      try { repairTopicsInStorage(); } catch (_) {}
-      // reload to force recompute of topic lists
-      window.location.reload();
-    } finally {
-      setRepairing(false);
-    }
-  };
-
-
   const subjectTopics = useMemo(() => {
     const subj = knowledgeMap?.[context.subject];
     const lvl = subj?.[context.level];
@@ -420,7 +358,9 @@ export default function ProgressPage() {
     if (!sourceObj || typeof sourceObj !== "object") return [];
 
     const arr = Object.entries(sourceObj).map(([topic, data]) => ({
-      topic: (data?.label || data?.title || topic) || topic,
+      topic: pickTopicDisplay(topic, data?.title),
+      topicKey: normalizeTopicKey(topic),
+      status: typeof data?.label === "string" ? data.label : null,
       score: clamp01(data?.score ?? 0),
       updatedAt: data?.updatedAt || null,
       source: data?.source || null,
@@ -647,15 +587,6 @@ export default function ProgressPage() {
                     <option>1 курс вуза</option>
                   </select>
                 </div>
-
-                <button
-                  className="text-[11px] md:text-xs px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 transition"
-                  onClick={handleRepairTopics}
-                  disabled={repairing}
-                  title="Очистить мусорные темы (без темы/тест/диагностика/класс)"
-                >
-                  {repairing ? "Чиним темы…" : "Починить темы"}
-                </button>
               </div>
             </section>
 
@@ -953,42 +884,4 @@ export default function ProgressPage() {
       </div>
     </div>
   );
-}const normalizeTopicKey = (t) => {
-  let raw = String(t || "").trim();
-  if (!raw) return "Общее";
-
-  // remove quotes
-  raw = raw.replace(/[«»"]/g, "").trim();
-
-  // drop diagnostic / generic prefixes
-  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Базовые\s+темы\b[^\n]*?по\s+/i, "").trim();
-  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
-  raw = raw.replace(/^Тема\s*[:\-]\s*/i, "").trim();
-
-  // strip trailing punctuation
-  raw = raw.replace(/[?!\.]+$/g, "").trim();
-
-  // try to extract "topic" from common phrasing
-  raw = raw.replace(/^что\s+такое\s+/i, "").trim();
-  raw = raw.replace(/^как\s+(решить|находить|считать|вычислить)\s+/i, "").trim();
-  raw = raw.replace(/^объясни\s+/i, "").trim();
-
-  // normalize spaces
-  raw = raw.replace(/\s+/g, " ").trim();
-
-  const words = raw.split(/\s+/).filter(Boolean);
-  if (!raw) return "Общее";
-
-  // If still looks like a sentence, shorten
-  const tooLong = raw.length > 80;
-  const tooManyWords = words.length > 12;
-  if (tooLong || tooManyWords) {
-    return words.slice(0, 8).join(" ").trim() || "Общее";
-  }
-
-  return raw;
-};
-
-
-
+}
