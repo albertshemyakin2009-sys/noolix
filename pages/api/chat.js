@@ -1,22 +1,40 @@
 // pages/api/chat.js
 
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const MODEL = "gpt-4.1-mini";
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: ctrl.signal });
+    return res;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: { message: "Method not allowed" } });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return res
-      .status(500)
-      .json({ error: "OPENAI_API_KEY не задан в переменных окружения" });
+    return res.status(500).json({
+      error: { message: "OPENAI_API_KEY не задан в переменных окружения" },
+    });
   }
 
   try {
-    const { messages } = req.body || {};
-    if (!Array.isArray(messages) || messages.length === 0) {
+    const body = req.body || {};
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+
+    if (messages.length === 0) {
       return res.status(400).json({
-        error: "Нужен массив messages с историей диалога",
+        error: { message: "Нужен массив messages с историей диалога" },
       });
     }
 
@@ -68,50 +86,108 @@ export default async function handler(req, res) {
 - не придумывай тесты, если о них прямо не попросили.
 `.trim();
 
-    const openaiRes = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...messages,
-          ],
-          temperature: 0.5,
-        }),
-      }
-    );
+    const payload = {
+      model: MODEL,
+      temperature: 0.5,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+    };
 
-    if (!openaiRes.ok) {
-      let errText = "";
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    // Retry policy: 1 retry for transient errors/timeouts
+    const maxAttempts = 2;
+    const timeoutMs = 28000;
+
+    let lastStatus = 0;
+    let lastText = "";
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        errText = await openaiRes.text();
-      } catch (_) {}
-      console.error("OpenAI chat error:", openaiRes.status, errText);
-      return res.status(500).json({
-        error: "Ошибка при обращении к OpenAI (чат)",
-        details: errText || openaiRes.statusText,
-      });
+        const openaiRes = await fetchWithTimeout(
+          OPENAI_URL,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          },
+          timeoutMs
+        );
+
+        lastStatus = openaiRes.status;
+
+        if (!openaiRes.ok) {
+          try {
+            lastText = await openaiRes.text();
+          } catch (_) {
+            lastText = openaiRes.statusText || "";
+          }
+
+          const transient = [408, 429, 500, 502, 503, 504].includes(openaiRes.status);
+          if (transient && attempt < maxAttempts) {
+            await sleep(800 + attempt * 500);
+            continue;
+          }
+
+          console.error("OpenAI chat error:", openaiRes.status, lastText);
+
+          const mappedStatus = openaiRes.status === 429 ? 429 : 502;
+
+          return res.status(mappedStatus).json({
+            error: {
+              message:
+                openaiRes.status === 429
+                  ? "Сервис ИИ перегружен (429). Попробуй ещё раз через минуту."
+                  : "Ошибка при обращении к OpenAI (чат).",
+              status: openaiRes.status,
+              details: lastText || openaiRes.statusText,
+            },
+          });
+        }
+
+        const data = await openaiRes.json();
+        const reply = data?.choices?.[0]?.message?.content || "";
+
+        return res.status(200).json({
+          reply,
+          message: { role: "assistant", content: reply },
+        });
+      } catch (err) {
+        const isAbort = err && (err.name === "AbortError" || String(err).includes("AbortError"));
+        const transient = isAbort || true;
+
+        if (attempt < maxAttempts && transient) {
+          await sleep(900 + attempt * 600);
+          continue;
+        }
+
+        console.error("Chat API error:", err);
+        return res.status(isAbort ? 504 : 500).json({
+          error: {
+            message: isAbort
+              ? "Таймаут при обращении к ИИ. Попробуй ещё раз."
+              : "Internal server error в чате",
+            details: typeof err?.message === "string" ? err.message : "Unknown error",
+            status: lastStatus || undefined,
+            openai: lastText || undefined,
+          },
+        });
+      }
     }
 
-    const data = await openaiRes.json();
-    const reply = data?.choices?.[0]?.message?.content || "";
-
-    return res.status(200).json({
-      reply,
-      message: { role: "assistant", content: reply },
+    // Fallback (shouldn't happen)
+    return res.status(500).json({
+      error: { message: "Unexpected error in chat handler" },
     });
   } catch (error) {
-    console.error("Chat API error:", error);
+    console.error("Chat API fatal:", error);
     return res.status(500).json({
-      error: "Internal server error в чате",
-      details:
-        typeof error?.message === "string" ? error.message : "Unknown error",
+      error: {
+        message: "Internal server error в чате",
+        details: typeof error?.message === "string" ? error.message : "Unknown error",
+      },
     });
   }
 }
