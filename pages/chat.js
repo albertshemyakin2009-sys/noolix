@@ -27,119 +27,6 @@ const AVATAR_EMOJI = {
 };
 
 
-// --- Topic sanitization (A2 stable) ---
-const TOPIC_BASELINE_TITLE = "Базовые темы";
-const _NO_TOPIC_SET = new Set([
-  "__no_topic__",
-  "без темы",
-  "без названия",
-  "no topic",
-  "no_topic",
-  "notopic",
-  "general",
-  "общее",
-  "прочее",
-  "разное",
-  "тест",
-]);
-
-const _STATUS_SET = new Set([
-  "изучено",
-  "изучаю",
-  "в процессе",
-  "не начато",
-  "повторить",
-  "пройдено",
-  "усвоено",
-  "готово",
-  "сдано",
-]);
-
-const _normSpaces = (s) =>
-  String(s || "")
-    .replace(/\u00A0/g, " ")
-    .replace(/[\u2000-\u200B]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const _normCompare = (s) =>
-  _normSpaces(s).replace(/[\u2012\u2013\u2014\u2015]/g, "-").toLowerCase();
-
-const _isGradeOnly = (s) => /^((\d{1,2}\s*-\s*\d{1,2})|\d{1,2})\s*(класс|кл\.?)+$/i.test(_normCompare(s));
-
-const sanitizeTopicTitle = (input) => {
-  let raw = _normSpaces(input);
-  if (!raw) return "";
-
-  raw = raw.replace(/[«»"]/g, "").trim();
-  raw = raw.replace(/^тема\s*[:\-—]\s*/i, "").trim();
-  raw = raw.replace(/[?!\.]+$/g, "").trim();
-
-  raw = raw.replace(/^__no_topic__$/i, "").trim();
-  raw = raw.replace(/^без\s+(темы|названия)$/i, "").trim();
-
-  raw = raw.replace(/^диагностика\b[^\n]*?\bпо\s+/i, "").trim();
-  raw = raw.replace(/^проверка\s+понимания\s*[:\-—]\s*/i, "").trim();
-  raw = raw.replace(/^тест\s*[:\-—]\s*/i, "").trim();
-
-  raw = _normSpaces(raw);
-  if (!raw) return "";
-
-  if (_isGradeOnly(raw)) return "";
-  if (raw.length > 80) return "";
-
-  const low = _normCompare(raw);
-  if (_NO_TOPIC_SET.has(low)) return "";
-  if (_STATUS_SET.has(low)) return "";
-  if (/^диагностика\b/.test(low)) return "";
-  if (/^тест\b/.test(low)) return "";
-  if (/^(математика|физика|русский язык|английский язык)$/.test(low)) return "";
-
-  // not a sentence
-  if (/[\?\!\.]/.test(raw)) return "";
-  if (raw.includes("\n")) return "";
-
-  return raw;
-};
-
-const canonicalTopicKey = (raw) => {
-  if (!raw) return TOPIC_BASELINE_TITLE;
-
-  // split by comma and drop grade parts like "7–9 класс"
-  const parts = String(raw)
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  for (const p of (parts.length ? parts : [String(raw)])) {
-    const t = sanitizeTopicTitle(p);
-    if (!t) continue;
-    if (_isGradeOnly(t)) continue;
-    return t;
-  }
-
-  // diagnostic like "Диагностика по Математика" => baseline (not subject)
-  const diag = String(raw).trim();
-  if (/^диагностика\b/i.test(diag)) return TOPIC_BASELINE_TITLE;
-
-  return TOPIC_BASELINE_TITLE;
-};
-
-const isBadTopicTitle = (raw) => {
-  const t = sanitizeTopicTitle(raw);
-  if (!t) return true;
-  const low = _normCompare(t);
-  if (_NO_TOPIC_SET.has(low)) return true;
-  if (_STATUS_SET.has(low)) return true;
-  if (/^диагностика\b/.test(low)) return true;
-  if (/^тест\b/.test(low)) return true;
-  if (_isGradeOnly(t)) return true;
-  return false;
-};
-
-
-
-
 function formatTime(dateString) {
   if (!dateString) return "";
   const d = new Date(dateString);
@@ -286,6 +173,7 @@ export default function ChatPage() {
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryPayload, setRetryPayload] = useState(null);
 
   const [currentTopic, setCurrentTopic] = useState("");
   const [currentGoal, setCurrentGoal] = useState(null);
@@ -381,8 +269,6 @@ export default function ChatPage() {
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
   const [highlightMsgId, setHighlightMsgId] = useState("");
-  const [highlightFading, setHighlightFading] = useState(false);
-  const didFocusScrollRef = useRef(false);
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -540,7 +426,6 @@ export default function ChatPage() {
   // Читаем параметры из URL (?topic=...&scrollTo=...)
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     try {
       const params = new URLSearchParams(window.location.search);
       const topicFromQuery = params.get("topic");
@@ -552,20 +437,16 @@ export default function ChatPage() {
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
+        setCurrentTopic(t);
 
-        // Защита: topic не должен быть абзацем/кусочком ответа.
-        if (isProbablyTopic(t)) {
-          setCurrentTopic(t);
-
-          // При переходе из библиотеки: фиксируем тему как "последний кандидат",
-          // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
-          try {
-            const cand = normalizeTopicKey(t);
-            if (cand && cand !== TOPIC_BASELINE_TITLE) {
-              window.localStorage.setItem("noolixLastTopicCandidate", cand);
-            }
-          } catch (_) {}
-        }
+        // При переходе из библиотеки: фиксируем тему как "последний кандидат",
+        // чтобы быстрые действия/тесты/цели не подставляли последнее сообщение.
+        try {
+          const cand = normalizeTopicKey(t);
+          if (cand && cand !== "Базовые темы") {
+            window.localStorage.setItem("noolixLastTopicCandidate", cand);
+          }
+        } catch (_) {}
       }
     } catch (e) {
       console.warn("Failed to parse params from URL", e);
@@ -593,53 +474,11 @@ ${styleLine}
 Доп. указание:
 ${styleInstruction}`;
   };
-  const detectTopicInFlightRef = useRef(false);
-
-  const maybeAutoDetectTopic = async (userText, assistantText) => {
-    try {
-      if (typeof window === "undefined") return;
-      if (!userText || !String(userText).trim()) return;
-
-      // already have a good topic -> nothing to do
-      if (currentTopic && !isBadTopicTitle(currentTopic)) return;
-
-      if (detectTopicInFlightRef.current) return;
-      detectTopicInFlightRef.current = true;
-
-      const res = await fetch("/api/detect-topic", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: context.subject,
-          level: context.level,
-          userText: String(userText || ""),
-          assistantText: String(assistantText || ""),
-        }),
-      });
-
-      if (!res.ok) return;
-      const data = await res.json();
-      const topicTitle = String(data?.topicTitle || "").trim();
-      if (!topicTitle || isBadTopicTitle(topicTitle)) return;
-
-      const normalized = canonicalTopicKey(topicTitle);
-      if (!normalized || normalized === TOPIC_BASELINE_TITLE) return;
-
-      setCurrentTopic(normalized);
-      try {
-        window.localStorage.setItem("noolixLastTopicCandidate", normalized);
-      } catch (_) {}
-    } catch (_) {
-      // ignore
-    } finally {
-      detectTopicInFlightRef.current = false;
-    }
-  };
-
 
 const callBackend = async (userMessages) => {
     try {
       setError("");
+      setRetryPayload(null);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -699,20 +538,47 @@ const callBackend = async (userMessages) => {
       // обновляем "твои чаты" в библиотеке
       touchContinueItem();
 
-          setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
+      setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
 
-    // ✅ умное автоопределение темы по диалогу (если тема пустая/мусорная)
-    try {
-      const lastUser = (userMessages || []).slice().reverse().find((m) => m?.role === "user");
-      const userText = lastUser?.content || "";
-      maybeAutoDetectTopic(userText, assistantMessage.content);
-    } catch (_) {}
+      // автоопределение темы: если тема пустая/мусорная — попросим backend (detect-topic)
+      try {
+        const cur = normalizeTopicKey(currentTopic);
+        if (!currentTopic || cur === "Базовые темы") {
+          void (async () => {
+            try {
+              const slice = (userMessages || []).slice(-12).map(({ role, content }) => ({ role, content }));
+              const r = await fetch("/api/detect-topic", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messages: slice, context: { subject: context.subject, level: context.level } }),
+              });
+              if (!r.ok) return;
+              const d = await r.json();
+              const cand = String(d?.topic || d?.title || d?.result || "").trim();
+              const norm = normalizeTopicKey(cand);
+              if (norm && norm !== "Базовые темы") {
+                setCurrentTopic(norm);
+                try { window.localStorage.setItem("noolixLastTopicCandidate", norm); } catch (_) {}
+              }
+            } catch (_) {}
+          })();
+        }
+      } catch (_) {}
     } catch (err) {
       console.error(err);
-      setError(
-        err?.message ||
-          "Произошла ошибка при получении ответа. Попробуй ещё раз или обнови страницу."
-      );
+      const msgText = err?.message || "Произошла ошибка при получении ответа. Попробуй ещё раз.";
+      setError(msgText);
+      setRetryPayload(userMessages || null);
+      try {
+        const failedAssistant = {
+          id: Date.now() + 2,
+          role: "assistant",
+          content: msgText,
+          createdAt: new Date().toISOString(),
+          meta: { failed: true },
+        };
+        setMessages((prev) => clampHistory([...(prev || []), failedAssistant]));
+      } catch (_) {}
     } finally {
       setThinking(false);
     }
@@ -755,7 +621,7 @@ const callBackend = async (userMessages) => {
     // сохраняем последний адекватный кандидат темы для других страниц (Tests/Goals/Progress)
     try {
       const cand = normalizeTopicKey(topic);
-      if (cand && cand !== TOPIC_BASELINE_TITLE) {
+      if (cand && cand !== "Базовые темы") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
@@ -862,79 +728,10 @@ const callBackend = async (userMessages) => {
 
   // Автоскролл вниз
   useEffect(() => {
-    // Если пришли из библиотеки с focus/scrollTo — не перебиваем фокусный скролл.
-    if ((scrollToRef.current || "").trim() && !didFocusScrollRef.current) return;
-
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, thinking]);
-
-  // --- Фокусный автоскролл к сообщению из библиотеки (?scrollTo=...) ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (loading) return;
-
-    const targetId = String(scrollToRef.current || "").trim();
-    if (!targetId) return;
-    if (didFocusScrollRef.current) return;
-
-    // ждём рендера списка сообщений
-    const tryScroll = () => {
-      try {
-        const el = document.getElementById(`msg-${targetId}`);
-        if (!el) return false;
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        setHighlightMsgId(targetId);
-        didFocusScrollRef.current = true;
-        // очищаем, чтобы больше не мешать обычному автоскроллу
-        scrollToRef.current = "";
-        return true;
-      } catch (_) {
-        return false;
-      }
-    };
-
-    // 1) сразу
-    if (tryScroll()) return;
-
-    // 2) следующий кадр
-    const raf = window.requestAnimationFrame(() => {
-      if (tryScroll()) return;
-      // 3) и ещё чуть позже (на случай, если история подгружается/рендерится позже)
-      setTimeout(() => tryScroll(), 120);
-    });
-
-    return () => {
-      try {
-        window.cancelAnimationFrame(raf);
-      } catch (_) {}
-    };
-  }, [messages, loading]);
-
-  // --- Временная подсветка (5 сек) с плавным затуханием ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!highlightMsgId) return;
-
-    setHighlightFading(false);
-
-    const tFade = window.setTimeout(() => {
-      setHighlightFading(true);
-    }, 60);
-
-    const tClear = window.setTimeout(() => {
-      setHighlightMsgId("");
-      setHighlightFading(false);
-    }, 5200);
-
-    return () => {
-      try {
-        window.clearTimeout(tFade);
-        window.clearTimeout(tClear);
-      } catch (_) {}
-    };
-  }, [highlightMsgId]);
 
   // --- Сохраняем историю конкретного чата ---
   useEffect(() => {
@@ -957,29 +754,82 @@ const callBackend = async (userMessages) => {
 
   // ✅ NEW: обновление прогресса при сохранении объяснения
   const normalizeTopicKey = (t) => {
-    return canonicalTopicKey(t);
-  };
+  let raw = String(t || "").trim();
+  if (!raw) return "Базовые темы";
 
-  const isProbablyTopic = (t) => {
-    const s = String(t || "").trim();
-    if (isBadTopicTitle(s)) return false;
-    if (!s) return false;
-    if (s.length > 90) return false;
-    if (s.includes("\n")) return false;
+  // normalize quotes/spaces/dashes
+  raw = raw
+    .replace(/[\u00A0\u202F]/g, " ")
+    .replace(/[«»"']/g, "")
+    .replace(/[—–]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
 
-    // плейсхолдеры/мусор
-    if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(s)) return false;
+  // unwrap quoted topic inside string
+  const q = raw.match(/(?:«([^»]{2,80})»|"([^"]{2,80})")/);
+  if (q) raw = String(q[1] || q[2] || raw).trim();
 
-    const words = s.split(/\s+/).filter(Boolean);
-    if (words.length > 12) return false;
+  // drop diagnostic / generic prefixes
+  raw = raw.replace(/^Диагностика\b[^\n]*?по\s+/i, "").trim();
+  raw = raw.replace(/^Проверка\s+понимания\s*[:\-]\s*/i, "").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]?\s*/i, "").trim();
 
-    // если похоже на предложение/абзац
-    if (/[.!?]/.test(s) && words.length > 8) return false;
+  // try to extract "topic" from common phrasing
+  const patterns = [
+    /^(?:что\s+такое|что\s+значит|что\s+означает)\s+(.+)$/i,
+    /^(?:как\s+(?:решить|решать|находить|найти|считать|вычислить|работает))\s+(.+)$/i,
+    /^(?:объясни(?:те)?(?:\s+мне)?|поясни(?:те)?|расскажи(?:те)?|разбери(?:те)?|помоги(?:те)?(?:\s+мне)?(?:\s+понять|\s+с)?)\s+(.+)$/i,
+  ];
+  for (const p of patterns) {
+    const m = raw.match(p);
+    if (m && m[1]) {
+      raw = String(m[1]).trim();
+      break;
+    }
+  }
 
-    return true;
-  };
+  // strip trailing punctuation
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+  raw = raw.replace(/\s+/g, " ").trim();
 
+  const lower = raw.toLowerCase();
 
+  // hard blacklist: service/status/empty-ish
+  const badExact = new Set([
+    "__no_topic__",
+    "no_topic",
+    "без темы",
+    "без названия",
+    "тест",
+    "изучено",
+    "изученный",
+    "изучена",
+    "уверенно",
+    "средне",
+    "слабые",
+    "сильные",
+    "средние",
+    "прогресс",
+    "результаты",
+  ]);
+  if (!lower || badExact.has(lower)) return "Базовые темы";
+
+  // subject names are not topics
+  if (["математика", "физика", "русский язык", "английский язык"].includes(lower)) {
+    return "Базовые темы";
+  }
+
+  // grade-only strings are not topics
+  const gradeRe = /^\s*\d{1,2}\s*[-–—]\s*\d{1,2}\s*класс\s*$/i;
+  const gradeRe2 = /^\s*\d{1,2}\s*класс\s*$/i;
+  if (gradeRe.test(raw) || gradeRe2.test(raw)) return "Базовые темы";
+
+  // if still looks like a sentence, drop
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (raw.length > 80 || words.length > 12 || /[.!?]/.test(raw)) return "Базовые темы";
+
+  return raw || "Базовые темы";
+};
 
 
   const touchProgressFromDialogSave = (topicKey) => {
@@ -1061,31 +911,21 @@ const callBackend = async (userMessages) => {
         return;
       }
 
-      // ВАЖНО: title/topic должны быть темой, а не "первой строкой" ответа NOOLIX.
-      // Иначе в библиотеке и в "быстром старте" показывается последнее сообщение/текст ассистента.
-      let topicTitle = "";
-      const metaTopic = String(message?.meta?.explainTopicTitle || "").trim();
-      if (metaTopic) topicTitle = metaTopic;
-      else if (String(currentTopic || "").trim()) topicTitle = String(currentTopic).trim();
-
-      // fallback: последний кандидат темы (из последнего user-сообщения)
-      if (!topicTitle) {
-        try {
-          const last = window.localStorage.getItem("noolixLastTopicCandidate");
-          if (last) topicTitle = String(last).trim();
-        } catch (_) {}
-      }
-
-      const normalizedTopic = normalizeTopicKey(topicTitle);
-      const finalTopic = normalizedTopic && normalizedTopic !== TOPIC_BASELINE_TITLE ? normalizedTopic : topicTitle;
-      const title = finalTopic || `Сохранённое объяснение по ${context.subject}`;
+      const titleFromTopic = currentTopic && currentTopic.trim();
+      const firstLine = (message.content || "").split("\n")[0].trim();
+      const titleFromText = firstLine.slice(0, 80);
+      const title =
+        titleFromTopic ||
+        (titleFromText
+          ? titleFromText
+          : `Сохранённое объяснение по ${context.subject}`);
 
       const item = {
         id: msgId || Date.now(),
         title,
         subject: context.subject,
         level: context.level,
-        topic: finalTopic || "",
+        topic: message?.meta?.explainTopicTitle || currentTopic || "",
         explainStyleKey: message?.meta?.explainStyleKey || "",
         explainStyleLabel: message?.meta?.explainStyleLabel || "",
 
@@ -1108,10 +948,9 @@ const callBackend = async (userMessages) => {
       showToast("Сохранено в библиотеку");
 
       // ✅ NEW: после сохранения — отмечаем тему в прогрессе
-      // Используем уже вычисленную тему (finalTopic/topicTitle), чтобы не зависеть от текста ответа.
-      const progressTopic = finalTopic || topicTitle || String(currentTopic || "").trim() || "";
-      let topicKey = normalizeTopicKey(progressTopic);
-      if (!topicKey || topicKey === TOPIC_BASELINE_TITLE) {
+      const metaTopic = message?.meta?.explainTopicTitle || currentTopic || "";
+      let topicKey = normalizeTopicKey(metaTopic);
+      if (!topicKey || topicKey === "Общее") {
         try {
           const last = window.localStorage.getItem("noolixLastTopicCandidate");
           if (last) topicKey = normalizeTopicKey(last);
@@ -1189,7 +1028,7 @@ const callBackend = async (userMessages) => {
     // сохраняем кандидат темы из сообщения пользователя (если это похоже на тему)
     try {
       const cand = normalizeTopicKey(text);
-      if (cand && cand !== TOPIC_BASELINE_TITLE) {
+      if (cand && cand !== "Базовые темы") {
         window.localStorage.setItem("noolixLastTopicCandidate", cand);
       }
     } catch (_) {}
@@ -1607,7 +1446,6 @@ const callBackend = async (userMessages) => {
                   const prev = i > 0 ? messages[i - 1] : null;
                   const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
                   const showAssistantHeader = m.role === "assistant" && (!prev || prev.role !== "assistant");
-                  const isHighlighted = String(m.id) === String(highlightMsgId);
 
                   return (
                     <div
@@ -1615,14 +1453,8 @@ const callBackend = async (userMessages) => {
                       id={`msg-${m.id}`}
                       className={`flex ${
                         m.role === "user" ? "justify-end" : "justify-start"
-                      } ${isHighlighted ? "relative rounded-2xl" : ""}`}
+                      } ${String(m.id) === String(highlightMsgId) ? "relative rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5" : ""}`}
                     >
-                      {isHighlighted ? (
-                        <div
-                          className={`pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5 transition-opacity ${highlightFading ? "opacity-0" : "opacity-100"}`}
-                          style={{ transitionDuration: "5000ms" }}
-                        />
-                      ) : null}
                       <div>
                         {showAssistantHeader ? (
                           <div className="mb-1 flex items-center justify-start gap-2 text-[11px] text-purple-200/70">
@@ -1802,6 +1634,24 @@ const callBackend = async (userMessages) => {
                 {error && (
                   <p className="mt-1 text-[11px] text-red-300/90">{error}</p>
                 )}
+                {retryPayload && !thinking ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        setThinking(true);
+                        setError("");
+                        callBackend(retryPayload);
+                      } catch (e) {
+                        console.warn(e);
+                        setThinking(false);
+                      }
+                    }}
+                    className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 border border-white/15 text-[11px] text-purple-50 hover:bg-white/15 transition"
+                  >
+                    Повторить запрос
+                  </button>
+                ) : null}
               </footer>
             </section>
           </div>
