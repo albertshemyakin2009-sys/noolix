@@ -19,6 +19,31 @@ const TEST_HISTORY_KEY = "noolixTestsHistory";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
+const DIFFICULTIES = [
+  { key: "easy", label: "Лёгкий" },
+  { key: "medium", label: "Средний" },
+  { key: "hard", label: "Сложный" },
+];
+
+const difficultyHint = (k) => {
+  if (k === "easy") return "Лёгкий: 1 шаг, базовые определения/формулы, без ловушек, простые числа.";
+  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей, ловушки, экзаменационный/олимпиадный стиль (для 10–11 ближе к ЕГЭ).";
+  return "Средний: 2–4 шага, стандартные преобразования, умеренные числа/формулировки.";
+};
+
+// Уровневая поправка названия темы (пример; можно расширять)
+const levelAdjustTopicTitle = (title, level) => {
+  const t = String(title || "").trim();
+  if (!t) return "";
+  const lvl = String(level || "").trim();
+  const low = t.toLowerCase();
+  if (low === "квадратные уравнения") {
+    return lvl.includes("10") ? "Квадратные уравнения (ЕГЭ/углубл.)" : "Квадратные уравнения (база)";
+  }
+  return t;
+};
+
+
 
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
@@ -331,6 +356,34 @@ const getWeakestTopicFromProgress = (subject, level) => {
 };
 
 
+
+const getTopicsFromProgress = (subject, level, limit = 24) => {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+  const km = safeParse(raw, {});
+  const subj = km?.[subject];
+  const lvl = subj?.[level];
+  if (!lvl || typeof lvl !== "object") return [];
+  const arr = Object.entries(lvl)
+    .map(([k, v]) => {
+      const title = levelAdjustTopicTitle(normalizeTopicKey(k), level);
+      const score = typeof v?.score === "number" ? v.score : 0;
+      return { title, score };
+    })
+    .filter((x) => x.title && x.title !== "Общее")
+    .sort((a, b) => a.score - b.score);
+  const uniq = [];
+  const seen = new Set();
+  for (const x of arr) {
+    const key = x.title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(x);
+    if (uniq.length >= limit) break;
+  }
+  return uniq;
+};
+
 const safeParse = (raw, fallback) => {
   try {
     if (!raw) return fallback;
@@ -608,7 +661,11 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  const [topic, setTopic] = useState("");
+  
+
+  const [difficulty, setDifficulty] = useState("medium");
+  const [selectedTopics, setSelectedTopics] = useState([]); // темы (можно несколько)
+const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -642,9 +699,12 @@ export default function TestsPage() {
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    setContext(nextCtx);
+    const lvl = String(nextCtx?.level || "");
+    const fixedLevel = lvl.includes("10") ? "10–11 класс" : "7–9 класс";
+    const safeNext = { ...nextCtx, level: fixedLevel };
+    setContext(safeNext);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(nextCtx));
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
     }
   };
 
@@ -658,10 +718,8 @@ export default function TestsPage() {
     let scoped = list;
 
     if (historyScope === "current") {
-      scoped = list.filter(
-        (x) => x?.subject === context.subject && x?.level === context.level
-      );
-    }
+      scoped = list.filter((x) => x?.subject === context.subject);
+}
 
     setTestHistory(scoped.slice(0, 20));
   };
@@ -676,16 +734,25 @@ export default function TestsPage() {
     let next = list;
 
     if (historyScope === "current") {
-      next = list.filter(
-        (x) => !(x?.subject === context.subject && x?.level === context.level)
-      );
-    } else {
+      next = list.filter((x) => !(x?.subject === context.subject));
+} else {
       next = [];
     }
 
     window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
     setHistoryTick((t) => t + 1);
   };
+
+
+  // синхронизация: ручной ввод темы через запятую -> selectedTopics
+  useEffect(() => {
+    const arr = parseTopicsInput(topic)
+      .map(normalizeTopicKey)
+      .filter((t) => t && !isBadManualTopic(t) && t !== "Общее");
+    const adjusted = arr.map((t) => levelAdjustTopicTitle(t, context.level));
+    setSelectedTopics(adjusted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic, context.level]);
 
   const canGenerate = useMemo(() => {
     return !generating && context.subject && context.level;
@@ -750,7 +817,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty: "medium",
+          difficulty,
           avoid,
         }),
       });
@@ -791,7 +858,7 @@ export default function TestsPage() {
 
     try {
       // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
-      const manualTopics = parseTopicsInput(topic)
+      const manualTopics = (Array.isArray(selectedTopics) && selectedTopics.length ? selectedTopics : parseTopicsInput(topic))
         .map(normalizeTopicKey)
         .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
@@ -835,7 +902,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty: "medium",
+          difficulty,
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -1117,7 +1184,7 @@ export default function TestsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+    <div className="min-h-screen bg-[#0B0B0F] text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -1235,8 +1302,21 @@ export default function TestsPage() {
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                    <option>1 курс вуза</option>
                   </select>
+                </div>
+
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    {DIFFICULTIES.map((d) => (
+                      <option key={d.key} value={d.key}>{d.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty)}</p>
                 </div>
               </div>
             </section>
@@ -1256,6 +1336,39 @@ export default function TestsPage() {
                   <p className="text-[11px] text-purple-200/80 mt-2">
                     Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
+
+                  <div className="mt-3">
+                    <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Темы из прогресса (можно выбрать несколько)</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {getTopicsFromProgress(context.subject, context.level, 18).map((t) => {
+                        const active = selectedTopics.includes(t.title);
+                        return (
+                          <button
+                            key={t.title}
+                            type="button"
+                            onClick={() => {
+                              const next = active ? selectedTopics.filter((x) => x !== t.title) : [...selectedTopics, t.title];
+                              setSelectedTopics(next);
+                              setTopic(next.join(", "));
+                            }}
+                            className={`px-3 py-2 rounded-full border text-[11px] transition ${active ? "bg-white text-black border-white shadow-md" : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"}`}
+                            title={`Слабость: ${Math.round((1 - (t.score || 0)) * 100)}%`}
+                          >
+                            {t.title}
+                          </button>
+                        );
+                      })}
+                      {getTopicsFromProgress(context.subject, context.level, 18).length === 0 ? (
+                        <span className="text-[11px] text-purple-200/70">Пока нет тем в прогрессе — введи тему вручную.</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90">
+                    <span className="text-purple-200/80">Выбрано:</span>{" "}
+                    <b>{selectedTopics.length ? selectedTopics.join(" + ") : "—"}</b>
+                  </div>
+
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
@@ -1294,7 +1407,7 @@ export default function TestsPage() {
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
                     {historyScope === "current"
-                    ? "Последние попытки по текущему предмету и уровню."
+? "Последние попытки по текущему предмету (все уровни)."
                     : "Последние попытки по всем предметам и уровням."}
                   </p>
                 </div>
@@ -1318,7 +1431,7 @@ export default function TestsPage() {
                   onClick={() => {
                     const ok = window.confirm(
                       historyScope === "current"
-                        ? "Очистить историю по текущему предмету и уровню?"
+                        ? "Очистить историю по текущему предмету (все уровни)?"
                         : "Очистить ВСЮ историю мини‑тестов?"
                     );
                     if (ok) clearTestHistory();
