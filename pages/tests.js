@@ -606,10 +606,7 @@ export default function TestsPage() {
     subject: "Математика",
     level: "10–11 класс",
     mode: "exam_prep",
-    difficulty: difficulty,
   });
-
-  const difficulty = context?.difficulty || "medium";
 
   const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
@@ -753,7 +750,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty: difficulty,
+          difficulty: "medium",
           avoid,
         }),
       });
@@ -838,7 +835,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty: difficulty,
+          difficulty: "medium",
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -1240,24 +1237,6 @@ export default function TestsPage() {
                     <option>10–11 класс</option>
                     <option>1 курс вуза</option>
                   </select>
-                <div>
-                  <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
-                  <select
-                    value={difficulty}
-                    onChange={(e) =>
-                      applyContextChange({ ...context, difficulty: e.target.value })
-                    }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                  >
-                    <option value="easy">Лёгкая</option>
-                    <option value="medium">Нормальная</option>
-                    <option value="hard">Сложная</option>
-                  </select>
-                  <p className="text-[10px] text-purple-200/70 mt-1">
-                    Лёгкая — базовые задания, Нормальная — стандарт, Сложная — больше ловушек и комбинированных шагов.
-                  </p>
-                </div>
-
                 </div>
               </div>
             </section>
