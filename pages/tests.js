@@ -1057,7 +1057,7 @@ export default function TestsPage() {
         score: clamp01(score),
         correctCount,
         totalCount,
-        mistakesSummary: _mistakesSummary,
+        mistakesSummary: { mistakesCount: mistakes.length },
       });
 
       setSaveInfo({
@@ -1540,7 +1540,6 @@ export default function TestsPage() {
                         })}
                       </div>
                     </div>
-                  </div>
                   ))}
                 </div>
 
