@@ -1413,9 +1413,13 @@ export default function TestsPage() {
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
                   <select
                     value={context.subject}
-                    onChange={(e) =>
+                    onChange={(e) => applyContextChange({ ...context, subject: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
                     {SUBJECTS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
                   </select>
                 </div>
