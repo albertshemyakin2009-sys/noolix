@@ -22,67 +22,7 @@ const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 
 
-// === Темы по умолчанию (пока только Математика, по 12 тем на уровень) ===
-const TOPIC_BANK = {
-  "Математика": {
-    "7–9 класс": [
-      "Линейные уравнения и неравенства",
-      "Системы линейных уравнений",
-      "Проценты и задачи на проценты",
-      "Пропорции и дроби",
-      "Функции и графики (база)",
-      "Квадратные уравнения (база)",
-      "Разложение на множители",
-      "Степени и корни (база)",
-      "Геометрия: треугольники и подобие",
-      "Геометрия: окружность (база)",
-      "Прогрессии (база)",
-      "Вероятность (введение)",
-    ],
-    "10–11 класс": [
-      "Квадратные уравнения (ЕГЭ/углубл.)",
-      "Тригонометрия: формулы и уравнения",
-      "Показательные и логарифмические уравнения",
-      "Производная: правила и вычисления",
-      "Исследование функций (ЕГЭ)",
-      "Планиметрия: окружности (ЕГЭ)",
-      "Стереометрия (ЕГЭ)",
-      "Неравенства (ЕГЭ): интервалы",
-      "Текстовые задачи (ЕГЭ)",
-      "Вероятность и статистика (ЕГЭ)",
-      "Параметры (ЕГЭ): базовые подходы",
-      "Комбинаторика (ЕГЭ)",
-    ],
-  },
-};
-
-const getTopicBank = (subject, level) => {
-  const s = TOPIC_BANK?.[subject];
-  if (!s) return [];
-  return Array.isArray(s[level]) ? s[level] : [];
-};
-
-const pickRandom = (arr, n = 3) => {
-  const a = Array.isArray(arr) ? [...arr] : [];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a.slice(0, n);
-};
-
-const DIFFICULTIES = [
-  { key: "easy", label: "Лёгкий" },
-  { key: "medium", label: "Средний" },
-  { key: "hard", label: "Сложный" },
-];
-
-const difficultyHint = (k) => {
-  if (k === "easy") return "Лёгкий: 1 шаг, базовые определения/формулы, без ловушек, простые числа.";
-  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей, ловушки, экзаменационный/олимпиадный стиль.";
-  return "Средний: 2–4 шага, стандартные преобразования, умеренные числа/формулировки.";
-};
-
+const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
@@ -671,23 +611,11 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  
-
-  const [difficulty, setDifficulty] = useState("medium");
-const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
-  
-
-  // Сбрасываем тему при смене предмета или уровня
-  useEffect(() => {
-    setTopic("");
-    setSentTopicForGeneration("");
-  }, [context.subject, context.level]);
-const [diagnosticLabel, setDiagnosticLabel] = useState("");
+  const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
-  
-  const [suggestedTopics, setSuggestedTopics] = useState([]);
-const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const [questions, setQuestions] = useState([]); // [{question, options, correctIndex, topicTitle?}]
@@ -722,18 +650,6 @@ const [submitting, setSubmitting] = useState(false);
       window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(nextCtx));
     }
   };
-
-  // Предложенные платформой темы (3 шт. за раз)
-  const refreshSuggestedTopics = () => {
-    const bank = getTopicBank(context.subject, context.level);
-    setSuggestedTopics(pickRandom(bank, 3));
-  };
-
-  useEffect(() => {
-    refreshSuggestedTopics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level]);
-
 
   const loadTestHistory = () => {
     if (typeof window === "undefined") return;
@@ -837,7 +753,7 @@ const [submitting, setSubmitting] = useState(false);
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty,
+          difficulty: "medium",
           avoid,
         }),
       });
@@ -922,7 +838,7 @@ const [submitting, setSubmitting] = useState(false);
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty,
+          difficulty: "medium",
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -1101,7 +1017,6 @@ const [submitting, setSubmitting] = useState(false);
       // пишем историю тестов
       const hRes = pushTestHistory({
         subject: context.subject,
-        level: context.level,
         level: context.level,
         topic: finalTopic,
         score: clamp01(score),
@@ -1299,10 +1214,13 @@ const [submitting, setSubmitting] = useState(false);
                 <div>
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
                   <select
-                    value={context.subject}
-                    onChange={(e) =>
-                    <option>Математика</option>
-                  </select>
+                      value={context.subject}
+                      onChange={(e) => applyContextChange({ ...context, subject: e.target.value })}
+                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      {SUBJECTS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      </select>
                 </div>
 
                 <div>
@@ -1319,24 +1237,6 @@ const [submitting, setSubmitting] = useState(false);
                     
                   </select>
                 </div>
-
-                <div>
-                  <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value)}
-                    disabled={generating}
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-60"
-                  >
-                    {DIFFICULTIES.map((d) => (
-                      <option key={d.key} value={d.key}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty)}</p>
-                </div>
-
               </div>
             </section>
 
@@ -1355,53 +1255,6 @@ const [submitting, setSubmitting] = useState(false);
                   <p className="text-[11px] text-purple-200/80 mt-2">
                     Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
-
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Предложенные темы</p>
-                      <button
-                        type="button"
-                        onClick={refreshSuggestedTopics}
-                        disabled={generating}
-                        className="px-3 py-1.5 rounded-full border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 disabled:opacity-60"
-                      >
-                        Заменить темы
-                      </button>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {suggestedTopics.map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          disabled={generating}
-                          onClick={() => {
-                            const title = t;
-                            setTopic((prev) => {
-                              const cur = parseTopicsInput(prev).map((x) => x.trim()).filter(Boolean);
-                              const exists = cur.some((x) => x.toLowerCase() === title.toLowerCase());
-                              const merged = exists
-                                ? cur.filter((x) => x.toLowerCase() !== title.toLowerCase())
-                                : [...cur, title];
-                              return merged.join(", ");
-                            });
-                          }}
-                          className="px-3 py-2 rounded-full border text-[11px] transition bg-black/30 border-white/20 text-purple-50 hover:bg-white/5 disabled:opacity-60"
-                        >
-                          {t}
-                        </button>
-                      ))}
-                      {(!suggestedTopics || suggestedTopics.length === 0) ? (
-                        <span className="text-[11px] text-purple-200/70">Пока нет тем — введи тему вручную.</span>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-3 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90">
-                      <span className="text-purple-200/80">Выбрано:</span>{" "}
-                      <b>{topic ? topic : "—"}</b>
-                    </div>
-                  </div>
-
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
