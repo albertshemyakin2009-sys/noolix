@@ -16,164 +16,21 @@ const secondaryMenuItems = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
-const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 
 
-
-const SUBJECTS = [
-  "Математика",
-  "Русский язык",
-  "Английский язык",
-  "Физика",
-  "Химия",
-  "Биология",
-  "История",
-  "Обществознание",
-  "География",
-  "Информатика",
-  "Литература",
+const DIFFICULTIES = [
+  { key: "easy", label: "Лёгкий" },
+  { key: "medium", label: "Средний" },
+  { key: "hard", label: "Сложный" },
 ];
 
-// 10–12 тем на каждый уровень (7–9 и 10–11). Потом расширим/персонализируем.
-const TOPIC_BANK = {
-  "Математика": {
-    "7–9 класс": [
-      "Линейные уравнения и неравенства",
-      "Системы линейных уравнений",
-      "Проценты и задачи на проценты",
-      "Пропорции и дроби",
-      "Функции и графики (база)",
-      "Квадратные уравнения (база)",
-      "Разложение на множители",
-      "Степени и корни (база)",
-      "Геометрия: треугольники и подобие",
-      "Геометрия: окружность (база)",
-      "Прогрессии (база)",
-      "Вероятность (введение)",
-    ],
-    "10–11 класс": [
-      "Квадратные уравнения (ЕГЭ/углубл.)",
-      "Тригонометрия: формулы и уравнения",
-      "Показательные и логарифмические уравнения",
-      "Производная: правила и вычисления",
-      "Исследование функций (ЕГЭ)",
-      "Планиметрия: окружности (ЕГЭ)",
-      "Стереометрия (ЕГЭ)",
-      "Неравенства (ЕГЭ): интервалы",
-      "Текстовые задачи (ЕГЭ)",
-      "Вероятность и статистика (ЕГЭ)",
-      "Параметры (ЕГЭ): базовые подходы",
-      "Комбинаторика (ЕГЭ)",
-    ],
-  },
-  "Физика": {
-    "7–9 класс": [
-      "Механика: путь, скорость, ускорение",
-      "Силы и законы Ньютона (база)",
-      "Давление и архимедова сила",
-      "Работа, мощность, энергия (база)",
-      "Тепловые явления (база)",
-      "Электричество: ток, напряжение, сопротивление",
-      "Магнитные явления (введение)",
-      "Оптика: отражение и преломление",
-      "Колебания и волны (введение)",
-      "Погрешности и измерения (база)",
-      "Графики и зависимости",
-      "Задачи на перевод единиц",
-    ],
-    "10–11 класс": [
-      "Кинематика (ЕГЭ): графики и формулы",
-      "Динамика (ЕГЭ): силы, трение, движение по окружности",
-      "Законы сохранения (ЕГЭ): импульс/энергия",
-      "Молекулярная физика и термодинамика (ЕГЭ)",
-      "Электростатика (ЕГЭ)",
-      "Постоянный ток (ЕГЭ): цепи",
-      "Магнитное поле и электромагнитная индукция",
-      "Колебания и волны (ЕГЭ)",
-      "Геометрическая оптика (ЕГЭ)",
-      "Квантовая физика (ЕГЭ)",
-      "Атомная и ядерная физика",
-      "Методика решения задач ЕГЭ",
-    ],
-  },
-  "Русский язык": {
-    "7–9 класс": [
-      "Орфография: гласные/согласные в корне",
-      "Орфография: приставки и суффиксы",
-      "Пунктуация: однородные члены",
-      "Пунктуация: вводные и обращения",
-      "Сложное предложение (база)",
-      "Прямая речь и диалог",
-      "Части речи: правописание (база)",
-      "Лексика и фразеология",
-      "Стили речи (база)",
-      "Текст: тема и основная мысль",
-      "Синтаксический разбор",
-      "Орфоэпия (база)",
-    ],
-    "10–11 класс": [
-      "ЕГЭ: орфография (сложные случаи)",
-      "ЕГЭ: пунктуация (СПП/БСП/однородные)",
-      "ЕГЭ: средства выразительности",
-      "ЕГЭ: лексические нормы и паронимы",
-      "ЕГЭ: грамматические нормы",
-      "ЕГЭ: орфоэпия",
-      "ЕГЭ: анализ текста (микротемы)",
-      "ЕГЭ: логика и связность",
-      "ЕГЭ: сочинение (структура)",
-      "ЕГЭ: сочинение (аргументация)",
-      "ЕГЭ: типовые ошибки",
-      "ЕГЭ: практика вариантов",
-    ],
-  },
-  "Английский язык": {
-    "7–9 класс": [
-      "Present Simple / Continuous",
-      "Past Simple / Continuous",
-      "Future (will / be going to)",
-      "Comparatives & Superlatives",
-      "Modal verbs (can/must/should)",
-      "Articles (a/an/the) — база",
-      "Prepositions of time/place",
-      "Reading: main idea & details",
-      "Listening: short dialogues",
-      "Vocabulary: school & hobbies",
-      "Writing: short email/message",
-      "Speaking: describing people/places",
-    ],
-    "10–11 класс": [
-      "Tenses review (all) + signal words",
-      "Conditionals (0–3) & mixed",
-      "Passive voice",
-      "Reported speech",
-      "Gerund/Infinitive patterns",
-      "Phrasal verbs (common set)",
-      "Reading: inference & context",
-      "Listening: longer texts (exam)",
-      "Writing: essay/opinion (exam)",
-      "Writing: formal email/letter",
-      "Speaking: сравнение картинок",
-      "Use of English: transformations",
-    ],
-  },
-};
-
-const getTopicBank = (subject, level) => {
-  const s = TOPIC_BANK?.[subject];
-  if (!s) return [];
-  return Array.isArray(s[level]) ? s[level] : [];
-};
-
-const pickRandom = (arr, n = 3) => {
-  const a = Array.isArray(arr) ? [...arr] : [];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a.slice(0, n);
+const difficultyHint = (k) => {
+  if (k === "easy") return "Лёгкий: 1 шаг, базовые определения/формулы, без ловушек, простые числа.";
+  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей, ловушки, экзаменационный/олимпиадный стиль.";
+  return "Средний: 2–4 шага, стандартные преобразования, умеренные числа/формулировки.";
 };
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
@@ -730,30 +587,13 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
   if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
   try {
-    const subjKey = (subject || "Без предмета").toString().trim() || "Без предмета";
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const list = safeParse(raw, []);
+    const next = Array.isArray(list) ? list : [];
 
-    // читаем/мигрируем историю в формат { [subject]: [] }
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    let by = safeParse(rawBy, null);
-
-    if (!by || typeof by !== "object" || Array.isArray(by)) {
-      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const legacyArr = safeParse(rawLegacy, []);
-      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-      const migrated = {};
-      for (const item of legacy) {
-        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-        if (!migrated[s]) migrated[s] = [];
-        migrated[s].push(item);
-      }
-      by = migrated;
-    }
-
-    const list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
-
-    list.unshift({
+    next.unshift({
       id: Date.now(),
-      subject: subjKey,
+      subject,
       level,
       topic: topicKey,
       score,
@@ -763,11 +603,8 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       mistakesSummary: mistakesSummary || null,
     });
 
-    const trimmed = list.slice(0, 50);
-    by[subjKey] = trimmed;
-    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
-
-    // legacy можно оставить, но не используем
+    const trimmed = next.slice(0, 50);
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(trimmed));
     return { ok: true, count: trimmed.length, error: null };
   } catch (e) {
     return { ok: false, count: 0, error: e?.message || "history-write-failed" };
@@ -783,11 +620,18 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  const [topic, setTopic] = useState("");
+  
 
-  const [suggestedTopics, setSuggestedTopics] = useState([]);
-
-  const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+  const [difficulty, setDifficulty] = useState('medium');
+const [topic, setTopic] = useState("");
+  
+  // Сбрасываем тему при смене предмета или уровня
+  useEffect(() => {
+    setTopic("");
+    setSentTopicForGeneration("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -826,66 +670,43 @@ export default function TestsPage() {
     }
   };
 
-  // Предложенные платформой темы (3 шт. за раз) — зависят от предмета и уровня
-  const refreshSuggestedTopics = () => {
-    const bank = getTopicBank(context.subject, context.level);
-    setSuggestedTopics(pickRandom(bank, 3));
-  };
-
-  useEffect(() => {
-    refreshSuggestedTopics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level]);
-
-
   const loadTestHistory = () => {
     if (typeof window === "undefined") return;
 
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    let by = safeParse(rawBy, null);
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
 
-    // миграция (если by ещё нет)
-    if (!by || typeof by !== "object" || Array.isArray(by)) {
-      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const legacyArr = safeParse(rawLegacy, []);
-      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-      const migrated = {};
-      for (const item of legacy) {
-        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-        if (!migrated[s]) migrated[s] = [];
-        migrated[s].push(item);
-      }
-      by = migrated;
-      window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+    let scoped = list;
+
+    if (historyScope === "current") {
+      scoped = list.filter(
+        (x) => x?.subject === context.subject && x?.level === context.level
+      );
     }
 
-    const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
-    const list = Array.isArray(by?.[subjKey]) ? by[subjKey] : [];
-
-    // historyScope === current: показываем текущий предмет (все уровни)
-    const scoped = historyScope === "current" ? list : Object.values(by).flat();
-
-    setTestHistory((Array.isArray(scoped) ? scoped : []).slice(0, 20));
+    setTestHistory(scoped.slice(0, 20));
   };
 
   const clearTestHistory = () => {
     if (typeof window === "undefined") return;
 
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    const by0 = safeParse(rawBy, {});
-    const by = by0 && typeof by0 === "object" && !Array.isArray(by0) ? by0 : {};
+    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const arr = safeParse(raw, []);
+    const list = Array.isArray(arr) ? arr : [];
 
-    const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
-
-    let nextBy = { ...by };
+    let next = list;
 
     if (historyScope === "current") {
-      nextBy[subjKey] = [];
+      next = list.filter(
+        (x) => !(x?.subject === context.subject && x?.level === context.level)
+      );
     } else {
-      nextBy = {};
+      next = [];
     }
 
-    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(nextBy));
+    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
+    setHistoryTick((t) => t + 1);
   };
 
   const canGenerate = useMemo(() => {
@@ -951,7 +772,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty: "medium",
+          difficulty,
           avoid,
         }),
       });
@@ -1036,7 +857,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty: "medium",
+          difficulty,
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -1413,14 +1234,15 @@ export default function TestsPage() {
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
                   <select
                     value={context.subject}
-                    onChange={(e) => applyContextChange({ ...context, subject: e.target.value })}
+                    onChange={(e) =>
+                      applyContextChange({ ...context, subject: e.target.value })
+                    }
                     className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                   >
-                    {SUBJECTS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
+                    <option>Математика</option>
+                    <option>Физика</option>
+                    <option>Русский язык</option>
+                    <option>Английский язык</option>
                   </select>
                 </div>
 
@@ -1435,7 +1257,7 @@ export default function TestsPage() {
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                    
+                    <option>1 курс вуза</option>
                   </select>
                 </div>
               </div>
@@ -1456,47 +1278,6 @@ export default function TestsPage() {
                   <p className="text-[11px] text-purple-200/80 mt-2">
                     Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Предложенные темы</p>
-                      <button
-                        type="button"
-                        onClick={refreshSuggestedTopics}
-                        className="px-3 py-1.5 rounded-full border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5"
-                      >
-                        Заменить темы
-                      </button>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {suggestedTopics.map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => {
-                            const title = t;
-                            const next = parseTopicsInput(topic)
-                              .filter(Boolean)
-                              .map((x) => x.trim());
-
-                            const exists = next.some((x) => x.toLowerCase() === title.toLowerCase());
-                            const merged = exists
-                              ? next.filter((x) => x.toLowerCase() !== title.toLowerCase())
-                              : [...next, title];
-
-                            setTopic(merged.join(", "));
-                          }}
-                          className="px-3 py-2 rounded-full border text-[11px] transition bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                        >
-                          {t}
-                        </button>
-                      ))}
-                      {(!suggestedTopics || suggestedTopics.length === 0) ? (
-                        <span className="text-[11px] text-purple-200/70">Для этого предмета пока нет банка тем — введи тему вручную.</span>
-                      ) : null}
-                    </div>
-                  </div>
-
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
