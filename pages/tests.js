@@ -20,6 +20,165 @@ const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 
+
+
+
+const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
+
+const DIFFICULTIES = [
+  { key: "easy", label: "Лёгкий" },
+  { key: "medium", label: "Средний" },
+  { key: "hard", label: "Сложный" },
+];
+
+const difficultyHint = (k) => {
+  if (k === "easy") return "Лёгкий: базовые формулы/правила, 1–2 шага, простые числа, без ловушек.";
+  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей/шагов, экзаменационный/углублённый уровень.";
+  return "Средний: стандартные задачи, 2–4 шага, умеренная сложность.";
+};
+
+// 10–12 тем на каждый уровень (7–9 и 10–11) для 4 предметов.
+// Позже расширим и персонализируем под ученика.
+const TOPIC_BANK = {
+  "Математика": {
+    "7–9 класс": [
+      "Линейные уравнения и неравенства",
+      "Системы линейных уравнений",
+      "Проценты и задачи на проценты",
+      "Пропорции и дроби",
+      "Функции и графики (база)",
+      "Квадратные уравнения (база)",
+      "Разложение на множители",
+      "Степени и корни (база)",
+      "Геометрия: треугольники и подобие",
+      "Геометрия: окружность (база)",
+      "Прогрессии (база)",
+      "Вероятность (введение)",
+    ],
+    "10–11 класс": [
+      "Квадратные уравнения (ЕГЭ/углубл.)",
+      "Тригонометрия: формулы и уравнения",
+      "Показательные и логарифмические уравнения",
+      "Производная: правила и вычисления",
+      "Исследование функций (ЕГЭ)",
+      "Планиметрия: окружности (ЕГЭ)",
+      "Стереометрия (ЕГЭ)",
+      "Неравенства (ЕГЭ): интервалы",
+      "Текстовые задачи (ЕГЭ)",
+      "Вероятность и статистика (ЕГЭ)",
+      "Параметры (ЕГЭ): базовые подходы",
+      "Комбинаторика (ЕГЭ)",
+    ],
+  },
+
+  "Русский язык": {
+    "7–9 класс": [
+      "Орфография: гласные и согласные в корне",
+      "Орфография: приставки и суффиксы",
+      "Пунктуация: однородные члены",
+      "Пунктуация: вводные слова и обращения",
+      "Сложное предложение (база)",
+      "Прямая речь и диалог",
+      "Части речи: правописание (база)",
+      "Лексика и фразеология",
+      "Стили речи (база)",
+      "Текст: тема и основная мысль",
+      "Синтаксический разбор (база)",
+      "Орфоэпия (база)",
+    ],
+    "10–11 класс": [
+      "ЕГЭ: орфография (сложные случаи)",
+      "ЕГЭ: пунктуация (СПП/БСП/однородные)",
+      "ЕГЭ: лексические нормы и паронимы",
+      "ЕГЭ: грамматические нормы",
+      "ЕГЭ: орфоэпия",
+      "ЕГЭ: средства выразительности",
+      "ЕГЭ: анализ текста (микротемы)",
+      "ЕГЭ: логика и связность текста",
+      "ЕГЭ: сочинение (структура)",
+      "ЕГЭ: сочинение (аргументация)",
+      "ЕГЭ: типовые ошибки",
+      "ЕГЭ: практика вариантов",
+    ],
+  },
+
+  "Физика": {
+    "7–9 класс": [
+      "Путь, скорость, ускорение (база)",
+      "Силы и законы Ньютона (база)",
+      "Давление и архимедова сила",
+      "Работа, мощность, энергия (база)",
+      "Тепловые явления (база)",
+      "Электрический ток: U, I, R",
+      "Соединение резисторов (база)",
+      "Магнитные явления (введение)",
+      "Оптика: отражение и преломление",
+      "Колебания и волны (введение)",
+      "Графики физических величин",
+      "Перевод единиц и порядок величин",
+    ],
+    "10–11 класс": [
+      "Кинематика (ЕГЭ): графики и формулы",
+      "Динамика (ЕГЭ): силы и движение",
+      "Законы сохранения (ЕГЭ): импульс/энергия",
+      "МКТ и термодинамика (ЕГЭ)",
+      "Электростатика (ЕГЭ)",
+      "Постоянный ток (ЕГЭ): цепи",
+      "Индукция и магнитное поле (ЕГЭ)",
+      "Колебания и волны (ЕГЭ)",
+      "Геометрическая оптика (ЕГЭ)",
+      "Квантовая физика (ЕГЭ)",
+      "Атомная и ядерная физика",
+      "Стратегии решения задач ЕГЭ",
+    ],
+  },
+
+  "Английский язык": {
+    "7–9 класс": [
+      "Present Simple / Continuous",
+      "Past Simple / Continuous",
+      "Future (will / going to)",
+      "Comparatives & Superlatives",
+      "Modal verbs (can/must/should)",
+      "Articles (a/an/the) — база",
+      "Prepositions of time/place",
+      "Reading: main idea & details",
+      "Listening: short dialogues",
+      "Vocabulary: school & hobbies",
+      "Writing: short email/message",
+      "Speaking: describing people/places",
+    ],
+    "10–11 класс": [
+      "Tenses review (all) + signal words",
+      "Conditionals (0–3) & mixed",
+      "Passive voice (exam)",
+      "Reported speech",
+      "Gerund / Infinitive patterns",
+      "Phrasal verbs (core set)",
+      "Reading: inference & context",
+      "Listening: longer texts (exam)",
+      "Writing: essay/opinion (exam)",
+      "Writing: formal email/letter",
+      "Speaking: сравнение картинок",
+      "Use of English: transformations",
+    ],
+  },
+};
+
+const getTopicBank = (subject, level) => {
+  const s = TOPIC_BANK?.[subject];
+  if (!s) return [];
+  return Array.isArray(s[level]) ? s[level] : [];
+};
+
+const pickRandom = (arr, n = 3) => {
+  const a = Array.isArray(arr) ? [...arr] : [];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
+};
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
@@ -608,8 +767,14 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  const [topic, setTopic] = useState("");
-  const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+  
+
+  const [difficulty, setDifficulty] = useState('medium');
+const [topic, setTopic] = useState("");
+  
+
+  const [suggestedTopics, setSuggestedTopics] = useState([]);
+const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -619,7 +784,6 @@ export default function TestsPage() {
   const [userAnswers, setUserAnswers] = useState([]); // number|null
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
-  const [confidence, setConfidence] = useState([]); // "low" | "high"
 
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
@@ -648,6 +812,17 @@ export default function TestsPage() {
     }
   };
 
+  const refreshSuggestedTopics = () => {
+    const bank = getTopicBank(context.subject, context.level);
+    setSuggestedTopics(pickRandom(bank, 3));
+  };
+
+  useEffect(() => {
+    refreshSuggestedTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+
+
   const loadTestHistory = () => {
     if (typeof window === "undefined") return;
 
@@ -659,7 +834,7 @@ export default function TestsPage() {
 
     if (historyScope === "current") {
       scoped = list.filter(
-        (x) => x?.subject === context.subject && x?.level === context.level
+        (x) => x?.subject === context.subject
       );
     }
 
@@ -677,7 +852,7 @@ export default function TestsPage() {
 
     if (historyScope === "current") {
       next = list.filter(
-        (x) => !(x?.subject === context.subject && x?.level === context.level)
+        (x) => !(x?.subject === context.subject)
       );
     } else {
       next = [];
@@ -703,7 +878,17 @@ export default function TestsPage() {
     return true;
   }, [questions.length, submitting]);
 
+  
+  // Сбрасываем тему/сессию при смене предмета или уровня
   useEffect(() => {
+    setTopic("");
+    setSentTopicForGeneration("");
+    setDiagnosticLabel("");
+    resetSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+
+useEffect(() => {
     loadTestHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level, historyScope, historyTick]);
@@ -714,8 +899,7 @@ export default function TestsPage() {
     setUserAnswers([]);
     setQuestionShownAt([]);
     setTimeToFirstAnswerSec([]);
-    setConfidence([]);
-    setResult(null);
+setResult(null);
     setAnalysis("");
     setReviewing(false);
   };
@@ -750,7 +934,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty: "medium",
+          difficulty,
           avoid,
         }),
       });
@@ -774,8 +958,7 @@ export default function TestsPage() {
       const nowMs = Date.now();
       setQuestionShownAt(new Array(q.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(q.length).fill(null));
-      setConfidence(new Array(q.length).fill("low"));
-      setTopic(serverTopic);
+setTopic(serverTopic);
       setGenerating(false);
     } catch (e) {
       setError(e?.message || "Ошибка");
@@ -835,7 +1018,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty: "medium",
+          difficulty,
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -894,8 +1077,7 @@ export default function TestsPage() {
       const nowMs = Date.now();
       setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(qWithTopic.length).fill(null));
-      setConfidence(new Array(qWithTopic.length).fill("low"));
-    } catch (e) {
+} catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
       setGenerating(false);
@@ -920,16 +1102,7 @@ export default function TestsPage() {
         } else {
           const opts = Array.isArray(q.options) ? q.options : [];
           const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
-          const conf = Array.isArray(confidence) ? confidence[idx] : "low";
-          mistakes.push({
-            idx,
-            question: q.question || q.text || "",
-            options: opts,
-            correctIndex: typeof q.correctIndex === "number" ? q.correctIndex : 0,
-            userIndex: typeof ua === "number" ? ua : null,
-            explanation: q.explanation || "",
-            timeSec: typeof tSec === "number" ? tSec : null,
-            confident: conf === "high",
+          confident: false,
           });
         }
       });
@@ -969,16 +1142,8 @@ export default function TestsPage() {
 
       // обновляем карту знаний
             // сигналы для прогресса: уверенность + время
-      let uncertainCorrectCount = 0;
-      let confidentCorrectCount = 0;
-      for (let i = 0; i < questions.length; i++) {
-        const ua = userAnswers[i];
-        const isCorrect = typeof ua === "number" && ua === questions[i].correctIndex;
-        if (!isCorrect) continue;
-        const conf = Array.isArray(confidence) ? confidence[i] : "low";
-        if (conf === "high") confidentCorrectCount += 1;
-        else uncertainCorrectCount += 1;
-      }
+            const uncertainCorrectCount = 0;
+      const confidentCorrectCount = 0;
 
       const timeNums = (Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : []).filter(
         (x) => typeof x === "number" && Number.isFinite(x)
@@ -1213,6 +1378,7 @@ export default function TestsPage() {
                   <select
                       value={context.subject}
                       onChange={(e) => applyContextChange({ ...context, subject: e.target.value })}
+                      disabled={generating}
                       className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     >
                       {SUBJECTS.map((s) => (
@@ -1229,12 +1395,30 @@ export default function TestsPage() {
                       applyContextChange({ ...context, level: e.target.value })
                     }
                     className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    disabled={generating}
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                    <option>1 курс вуза</option>
+                    
                   </select>
                 </div>
+
+
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    disabled={generating}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    {DIFFICULTIES.map((d) => (
+                      <option key={d.key} value={d.key}>{d.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty)}</p>
+                </div>
+
               </div>
             </section>
 
@@ -1247,12 +1431,53 @@ export default function TestsPage() {
                   <input
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
+                    disabled={generating}
                     placeholder="Например: Производная, Кинематика, Причастные обороты…"
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
                   />
                   <p className="text-[11px] text-purple-200/80 mt-2">
                     Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Предложенные темы</p>
+                      <button
+                        type="button"
+                        onClick={refreshSuggestedTopics}
+                        disabled={generating}
+                        className="px-3 py-1.5 rounded-full border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Заменить темы
+                      </button>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {suggestedTopics.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          disabled={generating}
+                          onClick={() => {
+                            setTopic((prev) => {
+                              const cur = parseTopicsInput(prev);
+                              const exists = cur.some((x) => x.toLowerCase() === String(t).toLowerCase());
+                              const merged = exists
+                                ? cur.filter((x) => x.toLowerCase() !== String(t).toLowerCase())
+                                : [...cur, t];
+                              return merged.join(", ");
+                            });
+                          }}
+                          className="px-3 py-2 rounded-full border text-[11px] transition bg-black/30 border-white/20 text-purple-50 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {t}
+                        </button>
+                      ))}
+                      {(!suggestedTopics || suggestedTopics.length === 0) ? (
+                        <span className="text-[11px] text-purple-200/70">Пока нет банка тем для этого выбора — введи тему вручную.</span>
+                      ) : null}
+                    </div>
+                  </div>
+
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
@@ -1291,7 +1516,7 @@ export default function TestsPage() {
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
                     {historyScope === "current"
-                    ? "Последние попытки по текущему предмету и уровню."
+                    ? "Последние попытки по текущему предмету (все уровни)."
                     : "Последние попытки по всем предметам и уровням."}
                   </p>
                 </div>
@@ -1315,7 +1540,7 @@ export default function TestsPage() {
                   onClick={() => {
                     const ok = window.confirm(
                       historyScope === "current"
-                        ? "Очистить историю по текущему предмету и уровню?"
+                        ? "Очистить историю по текущему предмету (все уровни)?"
                         : "Очистить ВСЮ историю мини‑тестов?"
                     );
                     if (ok) clearTestHistory();
@@ -1364,7 +1589,7 @@ export default function TestsPage() {
                             {h.topic || "Тема"}
                           </p>
                           <p className="text-[11px] text-purple-200/80">
-                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
+                            Результат: {pct}% • {h.correctCount}/{h.totalCount} • {h.level}
                             {when ? ` • ${when}` : ""}
                           </p>
                         </div>
@@ -1453,56 +1678,6 @@ export default function TestsPage() {
                           );
                         })}
                       </div>
-
-                      <div className="pt-1">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          Уверенность
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "low";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] !== "high"
-                                  ? "bg-white/15 border-white/20 text-purple-50"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Не уверен
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "high";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] === "high"
-                                  ? "bg-white text-black border-white shadow-md"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Уверен
-                          </button>
-
-                          <span className="text-[11px] text-purple-200/80 self-center">
-                            {typeof timeToFirstAnswerSec[idx] === "number"
-                              ? `время: ${timeToFirstAnswerSec[idx]}с`
-                              : "время: —"}
-                          </span>
-                        </div>
                       </div>
 
                     </div>
