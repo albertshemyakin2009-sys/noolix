@@ -17,8 +17,136 @@ const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
 const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
+const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
+
+const SUBJECTS = [
+  "Математика",
+  "Русский язык",
+  "Английский язык",
+  "Физика",
+  "Химия",
+  "Биология",
+  "История",
+  "Обществознание",
+  "География",
+  "Информатика",
+  "Литература",
+];
+
+// Банк тем: по 10–12 тем на каждый уровень (7–9 и 10–11). Можно расширять позже.
+const TOPIC_BANK = {
+  "Математика": {
+    "7–9 класс": [
+      "Линейные уравнения и неравенства",
+      "Системы линейных уравнений",
+      "Проценты и задачи на проценты",
+      "Пропорции и дроби",
+      "Функции и графики (база)",
+      "Квадратные уравнения (база)",
+      "Разложение на множители",
+      "Арифметическая и геометрическая прогрессии (база)",
+      "Геометрия: треугольники и подобие",
+      "Геометрия: окружность (база)",
+      "Степени и корни (база)",
+      "Теория вероятностей (введение)",
+    ],
+    "10–11 класс": [
+      "Квадратные уравнения (ЕГЭ/углубл.)",
+      "Тригонометрия: формулы и уравнения",
+      "Показательные и логарифмические уравнения",
+      "Производная и исследование функций",
+      "Геометрия: стереометрия (ЕГЭ)",
+      "Планиметрия: окружности и углы (ЕГЭ)",
+      "Неравенства (ЕГЭ): метод интервалов",
+      "Текстовые задачи (ЕГЭ): проценты/движение/смеси",
+      "Вероятность и статистика (ЕГЭ)",
+      "Параметры (ЕГЭ): базовые подходы",
+      "Комбинаторика (ЕГЭ): подсчёт вариантов",
+      "Последовательности и прогрессии (ЕГЭ)",
+    ],
+  },
+
+  "Русский язык": {
+    "7–9 класс": [
+      "Орфография: безударные гласные и чередования",
+      "Орфография: приставки и суффиксы",
+      "Пунктуация: однородные члены",
+      "Пунктуация: обращения и вводные слова",
+      "Сложное предложение (база)",
+      "Прямая речь и диалог",
+      "Части речи: правописание (база)",
+      "Лексика и фразеология",
+      "Текст: тема и основная мысль",
+      "Стили речи (база)",
+      "Синтаксический разбор",
+      "Орфоэпия (ударения — база)",
+    ],
+    "10–11 класс": [
+      "ЕГЭ: орфография (сложные случаи)",
+      "ЕГЭ: пунктуация (СПП/БСП/однородные)",
+      "ЕГЭ: средства выразительности",
+      "ЕГЭ: паронимы и лексические нормы",
+      "ЕГЭ: грамматические нормы",
+      "ЕГЭ: орфоэпия (ударения)",
+      "ЕГЭ: работа с текстом и микротемами",
+      "ЕГЭ: логика и связность текста",
+      "ЕГЭ: сочинение (аргументация)",
+      "ЕГЭ: сочинение (композиция и речевые нормы)",
+      "ЕГЭ: типы ошибок и их исправление",
+      "ЕГЭ: анализ предложений (практика)",
+    ],
+  },
+
+  "Английский язык": {
+    "7–9 класс": [
+      "Present Simple / Continuous",
+      "Past Simple / Continuous",
+      "Future forms (will/going to)",
+      "Comparatives & Superlatives",
+      "Modal verbs (can/must/should)",
+      "Articles (a/an/the) — base",
+      "Prepositions of time/place",
+      "Reading: main idea & details",
+      "Listening: short dialogues",
+      "Vocabulary: school & hobbies",
+      "Writing: short email/message",
+      "Speaking: describing people/places",
+    ],
+    "10–11 класс": [
+      "Tenses review (all) + signal words",
+      "Conditionals (0–3) & mixed",
+      "Passive voice (all tenses)",
+      "Reported speech",
+      "Gerund/Infinitive patterns",
+      "Phrasal verbs (common set)",
+      "Reading: inference & vocabulary in context",
+      "Listening: longer texts (exam style)",
+      "Writing: essay/opinion (exam style)",
+      "Writing: formal email/letter",
+      "Speaking: сравнение картинок",
+      "Use of English: grammar transformations",
+    ],
+  },
+};
+
+const getTopicBank = (subject, level) => {
+  const s = TOPIC_BANK[subject];
+  if (!s) return [];
+  return s[level] || [];
+};
+
+const pickRandom = (arr, n = 3) => {
+  const a = Array.isArray(arr) ? [...arr] : [];
+  // shuffle
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
+};
+
 
 
 
@@ -595,51 +723,17 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
   }
 };
 
-const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
-  const topicKey = normalizeTopicKey(topic);
-  if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
-
-  try {
-    const subjKey = (subject || "Без предмета").toString().trim() || "Без предмета";
-
-    // читаем/мигрируем
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    let by = safeParse(rawBy, null);
-    if (!by || typeof by !== "object" || Array.isArray(by)) {
-      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const legacyArr = safeParse(rawLegacy, []);
-      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-      const migrated = {};
-      for (const item of legacy) {
-        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-        if (!migrated[s]) migrated[s] = [];
-        migrated[s].push(item);
-      }
-      by = migrated;
-    }
-
-    const list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
-
-    list.unshift({
-      id: Date.now(),
-      subject: subjKey,
-      level,
-      topic: topicKey,
-      score,
-      correctCount,
-      totalCount,
-      createdAt: new Date().toISOString(),
-      mistakesSummary: mistakesSummary || null,
-    });
-
-    const trimmed = list.slice(0, 50);
-    by[subjKey] = trimmed;
-    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
-
-    return { ok: true, count: trimmed.length, error: null };
-  } catch (e) {
-    return { ok: false, count: 0, error: e?.message || "history-write-failed" };
-  }
+const pushTestHistory = (entry) => {
+  if (typeof window === "undefined") return;
+  const subject = String(entry?.subject || "").trim() || "Без предмета";
+  const by = safeParse(window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY), {});
+  const list = Array.isArray(by[subject]) ? by[subject] : [];
+  const withLevel = {
+    ...entry,
+    level: entry?.level || (getContextFromStorage()?.level || "7–9 класс"),
+  };
+  by[subject] = [withLevel, ...list].slice(0, 50);
+  window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
 };
 
 export default function TestsPage() {
@@ -647,12 +741,15 @@ export default function TestsPage() {
 
   const [context, setContext] = useState({
     subject: "Математика",
-    level: "10–11 класс",
+    level: "7–9 класс",
     mode: "exam_prep",
   });
 
   const [difficulty, setDifficulty] = useState('medium');
-  const [selectedTopics, setSelectedTopics] = useState([]); // темы (можно несколько)
+  const [selectedTopics, setSelectedTopics] = useState([]);
+
+  const [suggestedTopics, setSuggestedTopics] = useState([]);
+ // темы (можно несколько)
 
   const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
@@ -690,6 +787,19 @@ export default function TestsPage() {
     const lvl = String(nextCtx?.level || '');
     const fixedLevel = lvl.includes('10') ? '10–11 класс' : '7–9 класс';
     const safeNext = { ...nextCtx, level: fixedLevel };
+
+  // Предложенные платформой темы (3 шт. за раз) — зависят от предмета и уровня
+  const refreshSuggestedTopics = () => {
+    const bank = getTopicBank(context.subject, context.level);
+    const picks = pickRandom(bank, 3);
+    setSuggestedTopics(picks);
+  };
+
+  useEffect(() => {
+    refreshSuggestedTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+
     setContext(safeNext);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
@@ -1050,14 +1160,13 @@ export default function TestsPage() {
       });
 
       // пишем историю тестов
-      const hRes = pushTestHistory({
-        subject: context.subject,
+      const hRes = pushTestHistory({ subject: context.subject, level: context.level,
         level: context.level,
         topic: finalTopic,
         score: clamp01(score),
         correctCount,
         totalCount,
-        mistakesSummary: { mistakesCount: mistakes.length },
+        mistakesSummary: _mistakesSummary,
       });
 
       setSaveInfo({
@@ -1309,6 +1418,42 @@ export default function TestsPage() {
                   </p>
 
                   <div className="mt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Предложенные темы</p>
+                      <button
+                        type="button"
+                        onClick={refreshSuggestedTopics}
+                        className="px-3 py-1.5 rounded-full border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5"
+                      >
+                        Заменить темы
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {suggestedTopics.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => {
+                            const title = levelAdjustTopicTitle(t, context.level);
+                            const next = selectedTopics.includes(title)
+                              ? selectedTopics.filter((x) => x !== title)
+                              : [...selectedTopics, title];
+                            setSelectedTopics(next);
+                            setTopic(next.join(", "));
+                          }}
+                          className={`px-3 py-2 rounded-full border text-[11px] transition ${selectedTopics.includes(levelAdjustTopicTitle(t, context.level)) ? "bg-white text-black border-white shadow-md" : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"}`}
+                        >
+                          {levelAdjustTopicTitle(t, context.level)}
+                        </button>
+                      ))}
+                      {(!suggestedTopics || suggestedTopics.length === 0) ? (
+                        <span className="text-[11px] text-purple-200/70">Для этого предмета пока нет банка тем — введи тему вручную.</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+
+                  <div className="mt-3">
                     <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Темы из прогресса (можно выбрать несколько)</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {getTopicsFromProgress(context.subject, context.level, 18).map((t) => {
@@ -1404,7 +1549,7 @@ export default function TestsPage() {
                         ? "Очистить историю по текущему предмету (все уровни)?"
                         : "Очистить ВСЮ историю мини‑тестов?"
                     );
-                    if (ok) clearTestHistory();
+                    if (ok) clearTestHistory(context.subject);
                   }}
                   className="px-3 py-2 rounded-full border border-red-300/30 bg-black/30 text-[11px] text-red-100 hover:bg-white/5 transition"
                 >
@@ -1540,6 +1685,7 @@ export default function TestsPage() {
                         })}
                       </div>
                     </div>
+                  </div>
                   ))}
                 </div>
 
