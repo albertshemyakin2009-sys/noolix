@@ -20,9 +20,6 @@ const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
 
-
-
-const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
@@ -1220,7 +1217,8 @@ export default function TestsPage() {
                     >
                       {SUBJECTS.map((s) => (
                         <option key={s} value={s}>{s}</option>
-                      </select>
+                      ))}
+                    </select>
                 </div>
 
                 <div>
@@ -1234,7 +1232,7 @@ export default function TestsPage() {
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                    
+                    <option>1 курс вуза</option>
                   </select>
                 </div>
               </div>
