@@ -16,35 +16,43 @@ const secondaryMenuItems = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
+const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
+
+
+
 const DIFFICULTIES = [
-  { key: "easy", label: "Лёгкий" },
-  { key: "medium", label: "Средний" },
-  { key: "hard", label: "Сложный" },
+  { key: 'easy', label: 'Лёгкий' },
+  { key: 'medium', label: 'Средний' },
+  { key: 'hard', label: 'Сложный' },
 ];
 
-const difficultyHint = (k) => {
-  if (k === "easy") return "Лёгкий: 1 шаг, базовые определения/формулы, без ловушек, простые числа.";
-  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей, ловушки, экзаменационный/олимпиадный стиль (для 10–11 ближе к ЕГЭ).";
-  return "Средний: 2–4 шага, стандартные преобразования, умеренные числа/формулировки.";
+const difficultyHint = (k, level) => {
+  if (k === 'easy') return 'Лёгкий: 1–2 шага, базовые формулы/определения, без ловушек, простые числа.';
+  if (k === 'hard') return level?.includes('10')
+    ? 'Сложный: углубл./ЕГЭ-уровень, комбинирование идей, ловушки, несколько шагов.'
+    : 'Сложный: комбинирование идей, несколько шагов, ловушки/нестандартная постановка.';
+  return 'Средний: 2–4 шага, стандартные преобразования, умеренные числа/формулировки.';
 };
 
-// Уровневая поправка названия темы (пример; можно расширять)
+// Пример разнесения темы по уровням (можно расширять правилами под предмет)
 const levelAdjustTopicTitle = (title, level) => {
-  const t = String(title || "").trim();
-  if (!t) return "";
-  const lvl = String(level || "").trim();
+  const t = String(title || '').trim();
+  if (!t) return '';
+  const lvl = String(level || '');
   const low = t.toLowerCase();
-  if (low === "квадратные уравнения") {
-    return lvl.includes("10") ? "Квадратные уравнения (ЕГЭ/углубл.)" : "Квадратные уравнения (база)";
+  if (low === 'квадратные уравнения') {
+    return lvl.includes('10') ? 'Квадратные уравнения (ЕГЭ/углубл.)' : 'Квадратные уравнения (база)';
   }
   return t;
 };
 
-
-
+const parseTopicsInput = (raw) => String(raw || '')
+  .split(/[,;+]/g)
+  .map((s) => s.trim())
+  .filter(Boolean);
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
@@ -356,33 +364,33 @@ const getWeakestTopicFromProgress = (subject, level) => {
 };
 
 
-
-const getTopicsFromProgress = (subject, level, limit = 24) => {
-  if (typeof window === "undefined") return [];
-  const raw = window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
-  const km = safeParse(raw, {});
+const getTopicsFromProgress = (subject, level, limit = 18) => {
+  if (typeof window === 'undefined') return [];
+  const km = safeParse(window.localStorage.getItem(KNOWLEDGE_STORAGE_KEY), {});
   const subj = km?.[subject];
-  const lvl = subj?.[level];
-  if (!lvl || typeof lvl !== "object") return [];
-  const arr = Object.entries(lvl)
-    .map(([k, v]) => {
-      const title = levelAdjustTopicTitle(normalizeTopicKey(k), level);
-      const score = typeof v?.score === "number" ? v.score : 0;
-      return { title, score };
-    })
-    .filter((x) => x.title && x.title !== "Общее")
+  const lvlObj = subj?.[level];
+  if (!lvlObj || typeof lvlObj !== 'object') return [];
+
+  const arr = Object.entries(lvlObj)
+    .map(([k, v]) => ({
+      title: levelAdjustTopicTitle(String(k || ''), level),
+      score: typeof v?.score === 'number' ? v.score : 0,
+    }))
+    .filter((x) => x.title && x.title !== 'Общее')
     .sort((a, b) => a.score - b.score);
-  const uniq = [];
+
+  const res = [];
   const seen = new Set();
   for (const x of arr) {
     const key = x.title.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    uniq.push(x);
-    if (uniq.length >= limit) break;
+    res.push(x);
+    if (res.length >= limit) break;
   }
-  return uniq;
+  return res;
 };
+
 
 const safeParse = (raw, fallback) => {
   try {
@@ -459,14 +467,11 @@ const slugifyId = (s) => {
   return out || `topic-${Math.random().toString(36).slice(2, 9)}`;
 };
 
-const classifyMistake = ({ timeSec, confident, repeats }) => {
+const classifyMistake = ({ timeSec, repeats }) => {
   const t = typeof timeSec === "number" ? timeSec : null;
   const r = typeof repeats === "number" ? repeats : 1;
-  const c = !!confident;
 
   if (r >= 3) return "повторяется";
-  if (c && r >= 2) return "путаю понятия";
-  if (c) return "уверенно ошибся";
   if (t !== null && t < 7 && r <= 1) return "скорее невнимательность";
   if (t !== null && t >= 12 && r >= 2) return "пробел в знании";
   if (r >= 2) return "нужно закрепить";
@@ -507,9 +512,6 @@ const updateMistakeStats = ({ subject, level, topic, mistakes }) => {
     const nextAvgTime =
       t === null ? prevAvgTime : prevAvgTime === null ? t : +(prevAvgTime * 0.7 + t * 0.3).toFixed(2);
 
-    const prevConfWrong = typeof prev.confidentWrongCount === "number" ? prev.confidentWrongCount : 0;
-    const nextConfWrong = prevConfWrong + (m.confident ? 1 : 0);
-
     lvl[key] = {
       key,
       subject,
@@ -520,7 +522,6 @@ const updateMistakeStats = ({ subject, level, topic, mistakes }) => {
       userIndex: m.userIndex,
       count: nextCount,
       avgTimeSec: nextAvgTime,
-      confidentWrongCount: nextConfWrong,
       lastAt: now,
     };
   }
@@ -536,7 +537,7 @@ const getTopRepeatedMistakes = ({ subject, level, limit = 3 }) => {
   if (!lvl || typeof lvl !== "object") return [];
   return Object.values(lvl)
     .filter((x) => x && typeof x === "object" && typeof x.count === "number" && x.count >= 2)
-    .sort((a, b) => (b.count - a.count) || ((b.confidentWrongCount || 0) - (a.confidentWrongCount || 0)))
+    .sort((a, b) => (b.count - a.count))
     .slice(0, limit);
 };
 
@@ -560,29 +561,7 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
     // мягкая корректировка по сигналам (MVP)
     const sig = signals && typeof signals === "object" ? signals : null;
     if (sig) {
-      const confidentWrong = typeof sig.confidentWrong === "number" ? sig.confidentWrong : 0;
-      const uncertainCorrect = typeof sig.uncertainCorrect === "number" ? sig.uncertainCorrect : 0;
-      const confidentCorrect = typeof sig.confidentCorrect === "number" ? sig.confidentCorrect : 0;
       const avgTime = typeof sig.avgTimeSec === "number" ? sig.avgTimeSec : null;
-
-      // уверенные ошибки — сильнее штраф
-      if (confidentWrong > 0) {
-        const frac = confidentWrong / Math.max(1, totalCount);
-        newScore = clamp01(newScore - 0.10 * frac);
-      }
-
-      // уверенные правильные — небольшой бонус (не разгоняем резко)
-      if (confidentCorrect > 0 && newScore < 0.95) {
-        const frac = confidentCorrect / Math.max(1, totalCount);
-        newScore = clamp01(newScore + 0.03 * frac);
-      }
-
-      // неуверенные правильные — маленький бонус, но меньше чем уверенные
-      if (uncertainCorrect > 0 && newScore < 0.95) {
-        const frac = uncertainCorrect / Math.max(1, totalCount);
-        newScore = clamp01(newScore + 0.015 * frac);
-      }
-
       // слишком быстро + плохой результат => чуть-чуть штраф (невнимательность)
       if (avgTime !== null && avgTime < 6 && newScore < 0.6) {
         newScore = clamp01(newScore - 0.04);
@@ -603,9 +582,6 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
         const prevAvg = typeof prevSig.avgTimeSec === "number" ? prevSig.avgTimeSec : null;
         nextSig.avgTimeSec = prevAvg === null ? avgTime : +(prevAvg * 0.7 + avgTime * 0.3).toFixed(2);
       }
-      nextSig.confidentWrong = (typeof prevSig.confidentWrong === "number" ? prevSig.confidentWrong : 0) + (sig.confidentWrong || 0);
-      nextSig.uncertainCorrect = (typeof prevSig.uncertainCorrect === "number" ? prevSig.uncertainCorrect : 0) + (sig.uncertainCorrect || 0);
-      nextSig.confidentCorrect = (typeof prevSig.confidentCorrect === "number" ? prevSig.confidentCorrect : 0) + (sig.confidentCorrect || 0);
       nextSig.lastTestAt = new Date().toISOString();
     }
 
@@ -628,13 +604,29 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
   if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
   try {
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const list = safeParse(raw, []);
-    const next = Array.isArray(list) ? list : [];
+    const subjKey = (subject || "Без предмета").toString().trim() || "Без предмета";
 
-    next.unshift({
+    // читаем/мигрируем
+    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+    let by = safeParse(rawBy, null);
+    if (!by || typeof by !== "object" || Array.isArray(by)) {
+      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
+      const legacyArr = safeParse(rawLegacy, []);
+      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
+      const migrated = {};
+      for (const item of legacy) {
+        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
+        if (!migrated[s]) migrated[s] = [];
+        migrated[s].push(item);
+      }
+      by = migrated;
+    }
+
+    const list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
+
+    list.unshift({
       id: Date.now(),
-      subject,
+      subject: subjKey,
       level,
       topic: topicKey,
       score,
@@ -644,8 +636,10 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       mistakesSummary: mistakesSummary || null,
     });
 
-    const trimmed = next.slice(0, 50);
-    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(trimmed));
+    const trimmed = list.slice(0, 50);
+    by[subjKey] = trimmed;
+    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+
     return { ok: true, count: trimmed.length, error: null };
   } catch (e) {
     return { ok: false, count: 0, error: e?.message || "history-write-failed" };
@@ -661,11 +655,10 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  
-
-  const [difficulty, setDifficulty] = useState("medium");
+  const [difficulty, setDifficulty] = useState('medium');
   const [selectedTopics, setSelectedTopics] = useState([]); // темы (можно несколько)
-const [topic, setTopic] = useState("");
+
+  const [topic, setTopic] = useState("");
   const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -676,7 +669,6 @@ const [topic, setTopic] = useState("");
   const [userAnswers, setUserAnswers] = useState([]); // number|null
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
-  const [confidence, setConfidence] = useState([]); // "low" | "high"
 
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
@@ -699,8 +691,8 @@ const [topic, setTopic] = useState("");
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    const lvl = String(nextCtx?.level || "");
-    const fixedLevel = lvl.includes("10") ? "10–11 класс" : "7–9 класс";
+    const lvl = String(nextCtx?.level || '');
+    const fixedLevel = lvl.includes('10') ? '10–11 класс' : '7–9 класс';
     const safeNext = { ...nextCtx, level: fixedLevel };
     setContext(safeNext);
     if (typeof window !== "undefined") {
@@ -711,35 +703,55 @@ const [topic, setTopic] = useState("");
   const loadTestHistory = () => {
     if (typeof window === "undefined") return;
 
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const arr = safeParse(raw, []);
-    const list = Array.isArray(arr) ? arr : [];
+    // Новый формат: история по предметам
+    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+    let by = safeParse(rawBy, null);
 
-    let scoped = list;
+    // Мягкая миграция со старого массива, если новый формат пуст
+    if (!by || typeof by !== "object" || Array.isArray(by)) {
+      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
+      const legacyArr = safeParse(rawLegacy, []);
+      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
 
-    if (historyScope === "current") {
-      scoped = list.filter((x) => x?.subject === context.subject);
-}
+      const migrated = {};
+      for (const item of legacy) {
+        const subj = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
+        if (!migrated[subj]) migrated[subj] = [];
+        migrated[subj].push(item);
+      }
+      by = migrated;
+      try {
+        window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(migrated));
+      } catch (_) {}
+    }
 
-    setTestHistory(scoped.slice(0, 20));
+    const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
+    const list = Array.isArray(by?.[subjKey]) ? by[subjKey] : [];
+
+    // historyScope=current => только текущий предмет (все уровни)
+    const scoped = historyScope === "current" ? list : Object.values(by || {}).flat();
+
+    setTestHistory((Array.isArray(scoped) ? scoped : []).slice(0, 20));
   };
 
   const clearTestHistory = () => {
     if (typeof window === "undefined") return;
 
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const arr = safeParse(raw, []);
-    const list = Array.isArray(arr) ? arr : [];
-
-    let next = list;
+    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+    let by = safeParse(rawBy, {});
+    if (!by || typeof by !== "object" || Array.isArray(by)) by = {};
 
     if (historyScope === "current") {
-      next = list.filter((x) => !(x?.subject === context.subject));
-} else {
-      next = [];
+      const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
+      by[subjKey] = [];
+    } else {
+      by = {};
     }
 
-    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
+    try {
+      window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+    } catch (_) {}
+
     setHistoryTick((t) => t + 1);
   };
 
@@ -747,13 +759,12 @@ const [topic, setTopic] = useState("");
   // синхронизация: ручной ввод темы через запятую -> selectedTopics
   useEffect(() => {
     const arr = parseTopicsInput(topic)
-      .map(normalizeTopicKey)
-      .filter((t) => t && !isBadManualTopic(t) && t !== "Общее");
-    const adjusted = arr.map((t) => levelAdjustTopicTitle(t, context.level));
-    setSelectedTopics(adjusted);
+      .map((t) => t.trim())
+      .filter((t) => t && !isBadManualTopic(t) && t !== 'Общее')
+      .map((t) => levelAdjustTopicTitle(t, context.level));
+    setSelectedTopics(arr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topic, context.level]);
-
   const canGenerate = useMemo(() => {
     return !generating && context.subject && context.level;
   }, [generating, context.subject, context.level]);
@@ -781,7 +792,6 @@ const [topic, setTopic] = useState("");
     setUserAnswers([]);
     setQuestionShownAt([]);
     setTimeToFirstAnswerSec([]);
-    setConfidence([]);
     setResult(null);
     setAnalysis("");
     setReviewing(false);
@@ -841,7 +851,6 @@ const [topic, setTopic] = useState("");
       const nowMs = Date.now();
       setQuestionShownAt(new Array(q.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(q.length).fill(null));
-      setConfidence(new Array(q.length).fill("low"));
       setTopic(serverTopic);
       setGenerating(false);
     } catch (e) {
@@ -859,7 +868,7 @@ const [topic, setTopic] = useState("");
     try {
       // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
       const manualTopics = (Array.isArray(selectedTopics) && selectedTopics.length ? selectedTopics : parseTopicsInput(topic))
-        .map(normalizeTopicKey)
+        .map((t) => t.trim())
         .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
 
@@ -961,7 +970,6 @@ const [topic, setTopic] = useState("");
       const nowMs = Date.now();
       setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(qWithTopic.length).fill(null));
-      setConfidence(new Array(qWithTopic.length).fill("low"));
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
@@ -987,16 +995,14 @@ const [topic, setTopic] = useState("");
         } else {
           const opts = Array.isArray(q.options) ? q.options : [];
           const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
-          const conf = Array.isArray(confidence) ? confidence[idx] : "low";
           mistakes.push({
             idx,
-            question: q.question || q.text || "",
+            question: q.question || q.text || '',
             options: opts,
-            correctIndex: typeof q.correctIndex === "number" ? q.correctIndex : 0,
-            userIndex: typeof ua === "number" ? ua : null,
-            explanation: q.explanation || "",
-            timeSec: typeof tSec === "number" ? tSec : null,
-            confident: conf === "high",
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+            userIndex: typeof ua === 'number' ? ua : null,
+            explanation: q.explanation || '',
+            timeSec: typeof tSec === 'number' ? tSec : null,
           });
         }
       });
@@ -1020,45 +1026,14 @@ const [topic, setTopic] = useState("");
         topicTitle: finalTopic,
         questions,
       });
-
-
-      // агрегаты по ошибкам
-      const avgTime =
-        mistakes.filter((m) => typeof m.timeSec === "number").reduce((s, m) => s + m.timeSec, 0) /
-        Math.max(1, mistakes.filter((m) => typeof m.timeSec === "number").length);
-      const confidentWrong = mistakes.filter((m) => m.confident).length;
-
-      const _mistakesSummary = {
-        wrongCount: mistakes.length,
-        avgTimeSec: Number.isFinite(avgTime) ? +avgTime.toFixed(1) : null,
-        confidentWrongCount: confidentWrong,
-      };
-
-      // обновляем карту знаний
-            // сигналы для прогресса: уверенность + время
-      let uncertainCorrectCount = 0;
-      let confidentCorrectCount = 0;
-      for (let i = 0; i < questions.length; i++) {
-        const ua = userAnswers[i];
-        const isCorrect = typeof ua === "number" && ua === questions[i].correctIndex;
-        if (!isCorrect) continue;
-        const conf = Array.isArray(confidence) ? confidence[i] : "low";
-        if (conf === "high") confidentCorrectCount += 1;
-        else uncertainCorrectCount += 1;
-      }
-
+      // агрегаты по времени ( временно отключена)
       const timeNums = (Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : []).filter(
-        (x) => typeof x === "number" && Number.isFinite(x)
+        (x) => typeof x === 'number' && Number.isFinite(x)
       );
       const avgTimeAll =
         timeNums.length > 0 ? +(timeNums.reduce((s, x) => s + x, 0) / timeNums.length).toFixed(2) : null;
-
-      const signals = {
-        confidentWrong: confidentWrong,
-        uncertainCorrect: uncertainCorrectCount,
-        confidentCorrect: confidentCorrectCount,
-        avgTimeSec: avgTimeAll,
-      };
+      // сигналы для прогресса: только время
+      const signals = { avgTimeSec: avgTimeAll };
 
       // обновляем карту знаний
       const kmRes = updateKnowledgeFromTest({
@@ -1184,7 +1159,7 @@ const [topic, setTopic] = useState("");
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0B0F] text-white flex relative">
+    <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -1303,9 +1278,8 @@ const [topic, setTopic] = useState("");
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
                   </select>
-                </div>
 
-                <div>
+                <div className="mt-3">
                   <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
                   <select
                     value={difficulty}
@@ -1316,7 +1290,8 @@ const [topic, setTopic] = useState("");
                       <option key={d.key} value={d.key}>{d.label}</option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty)}</p>
+                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty, context.level)}</p>
+                </div>
                 </div>
               </div>
             </section>
@@ -1341,20 +1316,20 @@ const [topic, setTopic] = useState("");
                     <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Темы из прогресса (можно выбрать несколько)</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {getTopicsFromProgress(context.subject, context.level, 18).map((t) => {
-                        const active = selectedTopics.includes(t.title);
+                        const title = levelAdjustTopicTitle(t.title, context.level);
+                        const active = selectedTopics.includes(title);
                         return (
                           <button
-                            key={t.title}
+                            key={title}
                             type="button"
                             onClick={() => {
-                              const next = active ? selectedTopics.filter((x) => x !== t.title) : [...selectedTopics, t.title];
+                              const next = active ? selectedTopics.filter((x) => x !== title) : [...selectedTopics, title];
                               setSelectedTopics(next);
-                              setTopic(next.join(", "));
+                              setTopic(next.join(', '));
                             }}
-                            className={`px-3 py-2 rounded-full border text-[11px] transition ${active ? "bg-white text-black border-white shadow-md" : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"}`}
-                            title={`Слабость: ${Math.round((1 - (t.score || 0)) * 100)}%`}
+                            className={`px-3 py-2 rounded-full border text-[11px] transition ${active ? 'bg-white text-black border-white shadow-md' : 'bg-black/30 border-white/20 text-purple-50 hover:bg-white/5'}`}
                           >
-                            {t.title}
+                            {title}
                           </button>
                         );
                       })}
@@ -1365,10 +1340,9 @@ const [topic, setTopic] = useState("");
                   </div>
 
                   <div className="mt-3 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90">
-                    <span className="text-purple-200/80">Выбрано:</span>{" "}
-                    <b>{selectedTopics.length ? selectedTopics.join(" + ") : "—"}</b>
+                    <span className="text-purple-200/80">Выбрано:</span>{' '}
+                    <b>{selectedTopics.length ? selectedTopics.join(' + ') : '—'}</b>
                   </div>
-
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
@@ -1407,7 +1381,7 @@ const [topic, setTopic] = useState("");
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
                     {historyScope === "current"
-? "Последние попытки по текущему предмету (все уровни)."
+                    ? "Последние попытки по текущему предмету (все уровни)."
                     : "Последние попытки по всем предметам и уровням."}
                   </p>
                 </div>
@@ -1569,59 +1543,8 @@ const [topic, setTopic] = useState("");
                           );
                         })}
                       </div>
-
-                      <div className="pt-1">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          Уверенность
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "low";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] !== "high"
-                                  ? "bg-white/15 border-white/20 text-purple-50"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Не уверен
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "high";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] === "high"
-                                  ? "bg-white text-black border-white shadow-md"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Уверен
-                          </button>
-
-                          <span className="text-[11px] text-purple-200/80 self-center">
-                            {typeof timeToFirstAnswerSec[idx] === "number"
-                              ? `время: ${timeToFirstAnswerSec[idx]}с`
-                              : "время: —"}
-                          </span>
-                        </div>
-                      </div>
-
                     </div>
+                  </div>
                   ))}
                 </div>
 
@@ -1675,7 +1598,6 @@ const [topic, setTopic] = useState("");
                             const repeats = m.count || 2;
                             const tag = classifyMistake({
                               timeSec: typeof m.avgTimeSec === "number" ? m.avgTimeSec : null,
-                              confident: (m.confidentWrongCount || 0) >= 1,
                               repeats,
                             });
                             return (
