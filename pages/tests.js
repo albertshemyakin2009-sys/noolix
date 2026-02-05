@@ -1102,7 +1102,15 @@ setTopic(serverTopic);
         } else {
           const opts = Array.isArray(q.options) ? q.options : [];
           const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
-          confident: false,
+          mistakes.push({
+            idx,
+            question: q.question || q.text || "",
+            options: opts,
+            correctIndex: typeof q.correctIndex === "number" ? q.correctIndex : 0,
+            userIndex: typeof ua === "number" ? ua : null,
+            explanation: q.explanation || "",
+            timeSec: typeof tSec === "number" ? tSec : null,
+            confident: false,
           });
         }
       });
