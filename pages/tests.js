@@ -49,10 +49,6 @@ const levelAdjustTopicTitle = (title, level) => {
   return t;
 };
 
-const parseTopicsInput = (raw) => String(raw || '')
-  .split(/[,;+]/g)
-  .map((s) => s.trim())
-  .filter(Boolean);
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
