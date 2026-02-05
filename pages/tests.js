@@ -1686,7 +1686,6 @@ setTopic(serverTopic);
                           );
                         })}
                       </div>
-                      </div>
 
                     </div>
                   ))}
