@@ -1,3 +1,11 @@
+
+
+const normalizeLevel = (lvl) => {
+  const v = String(lvl || "").trim();
+  if (v === "7–9 класс") return "7–9 класс";
+  if (v === "10–11 класс") return "10–11 класс";
+  return "10–11 класс";
+};
 // pages/library.js
 import { useEffect, useState } from 'react';
 
@@ -13,15 +21,6 @@ const secondaryMenuItems = [
   { label: 'Цели', href: '/goals', icon: '🎯', key: 'goals' },
   { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
 ];
-
-const normalizeLevel = (lvl) => {
-  const s = String(lvl || "").toLowerCase();
-  if (!s) return "10–11 класс";
-  if (s.includes("7") || s.includes("8") || s.includes("9")) return "7–9 класс";
-  if (s.includes("10") || s.includes("11")) return "10–11 класс";
-  if (s.includes("студ") || s.includes("вуз") || s.includes("курс")) return "10–11 класс";
-  return "10–11 класс";
-};
 
 // Моки для MVP — потом можно будет связать с реальными данными
 const mockContinue = [
@@ -64,7 +63,7 @@ const mockSaved = [
     id: 3,
     title: 'Причастные обороты: схема и примеры',
     subject: 'Русский язык',
-    level: '7–9 класс',
+    level: "7–9 класс",
     from: 'из диалога',
     savedAt: 'Сегодня',
   },
@@ -99,7 +98,7 @@ const mockCollections = [
     id: 4,
     title: 'Английский: Основные времена',
     subject: 'Английский язык',
-    level: '7–9 класс',
+    level: "7–9 класс",
     topics: 10,
     tag: 'Грамматика',
   },
@@ -136,7 +135,7 @@ export default function LibraryPage() {
 
     const byLevel =
       levelFilter === 'Все уровни' ||
-      normalizeLevel(item.level) === levelFilter ||
+      item.level === levelFilter ||
       (item.level &&
         item.level.includes(levelFilter.replace('класс', '').trim()));
 
@@ -377,7 +376,7 @@ export default function LibraryPage() {
                           {item.title}
                         </h3>
                         <p className="text-[11px] text-purple-200/90">
-                          {normalizeLevel(item.level)} • {item.from}
+                          {item.level} • {item.from}
                         </p>
                       </div>
                       <div className="mt-3 flex items-center justify-between text-[11px] text-purple-200/80">
@@ -432,7 +431,7 @@ export default function LibraryPage() {
                           {item.title}
                         </h3>
                         <p className="text-[11px] text-purple-200/90">
-                          Уровень: {normalizeLevel(item.level)}
+                          Уровень: {item.level}
                         </p>
                         <p className="text-[11px] text-purple-200/90">
                           Тем в подборке: {item.topics}
