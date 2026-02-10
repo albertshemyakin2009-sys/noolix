@@ -16,19 +16,178 @@ const secondaryMenuItems = [
 const CONTEXT_STORAGE_KEY = "noolixContext";
 const KNOWLEDGE_STORAGE_KEY = "noolixKnowledgeMap";
 const TEST_HISTORY_KEY = "noolixTestsHistory";
+const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
+
+
+
+
+
 const normalizeLevel = (lvl) => {
-  const s = String(lvl || "").toLowerCase();
-  if (!s) return "10–11 класс";
-  if (s.includes("7") || s.includes("8") || s.includes("9")) return "7–9 класс";
-  if (s.includes("10") || s.includes("11")) return "10–11 класс";
-  if (s.includes("студ") || s.includes("вуз") || s.includes("курс")) return "10–11 класс";
+  const v = String(lvl || "").trim();
+  if (v === "7–9 класс") return "7–9 класс";
+  if (v === "10–11 класс") return "10–11 класс";
   return "10–11 класс";
 };
 
+const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
+const DIFFICULTIES = [
+  { key: "easy", label: "Лёгкий" },
+  { key: "medium", label: "Средний" },
+  { key: "hard", label: "Сложный" },
+];
+
+const difficultyHint = (k) => {
+  if (k === "easy") return "Лёгкий: базовые формулы/правила, 1–2 шага, простые числа, без ловушек.";
+  if (k === "hard") return "Сложный: комбинированные задачи, несколько идей/шагов, экзаменационный/углублённый уровень.";
+  return "Средний: стандартные задачи, 2–4 шага, умеренная сложность.";
+};
+
+// 10–12 тем на каждый уровень (7–9 и 10–11) для 4 предметов.
+// Позже расширим и персонализируем под ученика.
+const TOPIC_BANK = {
+  "Математика": {
+    "7–9 класс": [
+      "Линейные уравнения и неравенства",
+      "Системы линейных уравнений",
+      "Проценты и задачи на проценты",
+      "Пропорции и дроби",
+      "Функции и графики (база)",
+      "Квадратные уравнения (база)",
+      "Разложение на множители",
+      "Степени и корни (база)",
+      "Геометрия: треугольники и подобие",
+      "Геометрия: окружность (база)",
+      "Прогрессии (база)",
+      "Вероятность (введение)",
+    ],
+    "10–11 класс": [
+      "Квадратные уравнения (ЕГЭ/углубл.)",
+      "Тригонометрия: формулы и уравнения",
+      "Показательные и логарифмические уравнения",
+      "Производная: правила и вычисления",
+      "Исследование функций (ЕГЭ)",
+      "Планиметрия: окружности (ЕГЭ)",
+      "Стереометрия (ЕГЭ)",
+      "Неравенства (ЕГЭ): интервалы",
+      "Текстовые задачи (ЕГЭ)",
+      "Вероятность и статистика (ЕГЭ)",
+      "Параметры (ЕГЭ): базовые подходы",
+      "Комбинаторика (ЕГЭ)",
+    ],
+  },
+
+  "Русский язык": {
+    "7–9 класс": [
+      "Орфография: гласные и согласные в корне",
+      "Орфография: приставки и суффиксы",
+      "Пунктуация: однородные члены",
+      "Пунктуация: вводные слова и обращения",
+      "Сложное предложение (база)",
+      "Прямая речь и диалог",
+      "Части речи: правописание (база)",
+      "Лексика и фразеология",
+      "Стили речи (база)",
+      "Текст: тема и основная мысль",
+      "Синтаксический разбор (база)",
+      "Орфоэпия (база)",
+    ],
+    "10–11 класс": [
+      "ЕГЭ: орфография (сложные случаи)",
+      "ЕГЭ: пунктуация (СПП/БСП/однородные)",
+      "ЕГЭ: лексические нормы и паронимы",
+      "ЕГЭ: грамматические нормы",
+      "ЕГЭ: орфоэпия",
+      "ЕГЭ: средства выразительности",
+      "ЕГЭ: анализ текста (микротемы)",
+      "ЕГЭ: логика и связность текста",
+      "ЕГЭ: сочинение (структура)",
+      "ЕГЭ: сочинение (аргументация)",
+      "ЕГЭ: типовые ошибки",
+      "ЕГЭ: практика вариантов",
+    ],
+  },
+
+  "Физика": {
+    "7–9 класс": [
+      "Путь, скорость, ускорение (база)",
+      "Силы и законы Ньютона (база)",
+      "Давление и архимедова сила",
+      "Работа, мощность, энергия (база)",
+      "Тепловые явления (база)",
+      "Электрический ток: U, I, R",
+      "Соединение резисторов (база)",
+      "Магнитные явления (введение)",
+      "Оптика: отражение и преломление",
+      "Колебания и волны (введение)",
+      "Графики физических величин",
+      "Перевод единиц и порядок величин",
+    ],
+    "10–11 класс": [
+      "Кинематика (ЕГЭ): графики и формулы",
+      "Динамика (ЕГЭ): силы и движение",
+      "Законы сохранения (ЕГЭ): импульс/энергия",
+      "МКТ и термодинамика (ЕГЭ)",
+      "Электростатика (ЕГЭ)",
+      "Постоянный ток (ЕГЭ): цепи",
+      "Индукция и магнитное поле (ЕГЭ)",
+      "Колебания и волны (ЕГЭ)",
+      "Геометрическая оптика (ЕГЭ)",
+      "Квантовая физика (ЕГЭ)",
+      "Атомная и ядерная физика",
+      "Стратегии решения задач ЕГЭ",
+    ],
+  },
+
+  "Английский язык": {
+    "7–9 класс": [
+      "Present Simple / Continuous",
+      "Past Simple / Continuous",
+      "Future (will / going to)",
+      "Comparatives & Superlatives",
+      "Modal verbs (can/must/should)",
+      "Articles (a/an/the) — база",
+      "Prepositions of time/place",
+      "Reading: main idea & details",
+      "Listening: short dialogues",
+      "Vocabulary: school & hobbies",
+      "Writing: short email/message",
+      "Speaking: describing people/places",
+    ],
+    "10–11 класс": [
+      "Tenses review (all) + signal words",
+      "Conditionals (0–3) & mixed",
+      "Passive voice (exam)",
+      "Reported speech",
+      "Gerund / Infinitive patterns",
+      "Phrasal verbs (core set)",
+      "Reading: inference & context",
+      "Listening: longer texts (exam)",
+      "Writing: essay/opinion (exam)",
+      "Writing: formal email/letter",
+      "Speaking: сравнение картинок",
+      "Use of English: transformations",
+    ],
+  },
+};
+
+const getTopicBank = (subject, level) => {
+  const s = TOPIC_BANK?.[subject];
+  if (!s) return [];
+  return Array.isArray(s[level]) ? s[level] : [];
+};
+
+const pickRandom = (arr, n = 3) => {
+  const a = Array.isArray(arr) ? [...arr] : [];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
+};
 // Anti-repeats (MVP): remember recent question stems per subject+level+topic
 const QUESTION_BANK_KEY = "noolixQuestionBankV1";
 
@@ -579,18 +738,39 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
   }
 };
 
+
 const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
   const topicKey = normalizeTopicKey(topic);
   if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
 
   try {
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const list = safeParse(raw, []);
-    const next = Array.isArray(list) ? list : [];
+    const subjKey = (subject || "Без предмета").toString().trim() || "Без предмета";
 
-    next.unshift({
+    // читаем/мигрируем: сначала новый формат (объект по предметам)
+    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+    let by = safeParse(rawBy, null);
+
+    if (!by || typeof by !== "object" || Array.isArray(by)) {
+      // миграция из legacy массива
+      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
+      const legacyArr = safeParse(rawLegacy, []);
+      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
+      const migrated = {};
+      for (const item of legacy) {
+        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
+        if (!migrated[s]) migrated[s] = [];
+        migrated[s].push(item);
+      }
+      by = migrated;
+      // сохраняем миграцию, чтобы дальше не читать legacy
+      window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+    }
+
+    const list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
+
+    list.unshift({
       id: Date.now(),
-      subject,
+      subject: subjKey,
       level,
       topic: topicKey,
       score,
@@ -600,13 +780,16 @@ const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCoun
       mistakesSummary: mistakesSummary || null,
     });
 
-    const trimmed = next.slice(0, 50);
-    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(trimmed));
+    const trimmed = list.slice(0, 50);
+    by[subjKey] = trimmed;
+    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+
     return { ok: true, count: trimmed.length, error: null };
   } catch (e) {
     return { ok: false, count: 0, error: e?.message || "history-write-failed" };
   }
 };
+
 
 export default function TestsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -617,8 +800,14 @@ export default function TestsPage() {
     mode: "exam_prep",
   });
 
-  const [topic, setTopic] = useState("");
-  const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+  
+
+  const [difficulty, setDifficulty] = useState('medium');
+const [topic, setTopic] = useState("");
+  
+
+  const [suggestedTopics, setSuggestedTopics] = useState([]);
+const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -628,7 +817,6 @@ export default function TestsPage() {
   const [userAnswers, setUserAnswers] = useState([]); // number|null
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
-  const [confidence, setConfidence] = useState([]); // "low" | "high"
 
   const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
@@ -646,56 +834,93 @@ export default function TestsPage() {
     const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
     const parsed = safeParse(rawCtx, null);
     if (parsed && typeof parsed === "object") {
-      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level || prev.level) }));
+      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
     }
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    const safe = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
-    setContext(safe);
+    const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
+    setContext(safeNext);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safe));
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
     }
   };
 
-  const loadTestHistory = () => {
-    if (typeof window === "undefined") return;
-
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const arr = safeParse(raw, []);
-    const list = Array.isArray(arr) ? arr : [];
-
-    let scoped = list;
-
-    if (historyScope === "current") {
-      scoped = list.filter(
-        (x) => x?.subject === context.subject && x?.level === context.level
-      );
-    }
-
-    setTestHistory(scoped.slice(0, 20));
+  const refreshSuggestedTopics = () => {
+    const bank = getTopicBank(context.subject, context.level);
+    setSuggestedTopics(pickRandom(bank, 3));
   };
 
-  const clearTestHistory = () => {
-    if (typeof window === "undefined") return;
+  useEffect(() => {
+    refreshSuggestedTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
 
-    const raw = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const arr = safeParse(raw, []);
-    const list = Array.isArray(arr) ? arr : [];
 
-    let next = list;
+  
+const loadTestHistory = () => {
+  if (typeof window === "undefined") return;
 
-    if (historyScope === "current") {
-      next = list.filter(
-        (x) => !(x?.subject === context.subject && x?.level === context.level)
-      );
-    } else {
-      next = [];
+  // новый формат
+  const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+  let by = safeParse(rawBy, null);
+
+  // если нет — мигрируем из legacy
+  if (!by || typeof by !== "object" || Array.isArray(by)) {
+    const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
+    const legacyArr = safeParse(rawLegacy, []);
+    const legacy = Array.isArray(legacyArr) ? legacyArr : [];
+    const migrated = {};
+    for (const item of legacy) {
+      const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
+      if (!migrated[s]) migrated[s] = [];
+      migrated[s].push(item);
     }
+    by = migrated;
+    try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
+  }
 
-    window.localStorage.setItem(TEST_HISTORY_KEY, JSON.stringify(next));
-    setHistoryTick((t) => t + 1);
-  };
+  const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
+  const curList = Array.isArray(by?.[subjKey]) ? by[subjKey] : [];
+
+  let scoped = curList;
+
+  // scope: current = текущий предмет (все уровни), all = все предметы
+  if (historyScope === "all") {
+    scoped = Object.values(by || {}).flat().filter(Boolean);
+  }
+
+  // newest first
+  scoped = scoped.slice().sort((a, b) => {
+    const da = new Date(a?.createdAt || a?.ts || a?.savedAt || 0).getTime();
+    const db = new Date(b?.createdAt || b?.ts || b?.savedAt || 0).getTime();
+    return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+  });
+
+  setTestHistory(scoped.slice(0, 20));
+};
+
+  
+const clearTestHistory = () => {
+  if (typeof window === "undefined") return;
+
+  const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+  let by = safeParse(rawBy, null);
+  if (!by || typeof by !== "object" || Array.isArray(by)) by = {};
+
+  const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
+
+  if (historyScope === "current") {
+    // очищаем историю только по текущему предмету
+    by[subjKey] = [];
+  } else {
+    // очищаем всю историю
+    by = {};
+  }
+
+  try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
+  setHistoryTick((t) => t + 1);
+};
 
   const canGenerate = useMemo(() => {
     return !generating && context.subject && context.level;
@@ -713,7 +938,17 @@ export default function TestsPage() {
     return true;
   }, [questions.length, submitting]);
 
+  
+  // Сбрасываем тему/сессию при смене предмета или уровня
   useEffect(() => {
+    setTopic("");
+    setSentTopicForGeneration("");
+    setDiagnosticLabel("");
+    resetSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+
+useEffect(() => {
     loadTestHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level, historyScope, historyTick]);
@@ -724,8 +959,7 @@ export default function TestsPage() {
     setUserAnswers([]);
     setQuestionShownAt([]);
     setTimeToFirstAnswerSec([]);
-    setConfidence([]);
-    setResult(null);
+setResult(null);
     setAnalysis("");
     setReviewing(false);
   };
@@ -760,7 +994,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsToSend,
           questionCount: count,
-          difficulty: "medium",
+          difficulty,
           avoid,
         }),
       });
@@ -784,8 +1018,7 @@ export default function TestsPage() {
       const nowMs = Date.now();
       setQuestionShownAt(new Array(q.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(q.length).fill(null));
-      setConfidence(new Array(q.length).fill("low"));
-      setTopic(serverTopic);
+setTopic(serverTopic);
       setGenerating(false);
     } catch (e) {
       setError(e?.message || "Ошибка");
@@ -845,7 +1078,7 @@ export default function TestsPage() {
           subject: context.subject,
           topics: topicsPayload,
           questionCount: 5,
-          difficulty: "medium",
+          difficulty,
           avoid,
           diagnostic: manualTopics.length === 0 && !autoWeakest,
         }),
@@ -904,8 +1137,7 @@ export default function TestsPage() {
       const nowMs = Date.now();
       setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
       setTimeToFirstAnswerSec(new Array(qWithTopic.length).fill(null));
-      setConfidence(new Array(qWithTopic.length).fill("low"));
-    } catch (e) {
+} catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка генерации теста.");
     } finally {
       setGenerating(false);
@@ -930,7 +1162,6 @@ export default function TestsPage() {
         } else {
           const opts = Array.isArray(q.options) ? q.options : [];
           const tSec = Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec[idx] : null;
-          const conf = Array.isArray(confidence) ? confidence[idx] : "low";
           mistakes.push({
             idx,
             question: q.question || q.text || "",
@@ -939,7 +1170,7 @@ export default function TestsPage() {
             userIndex: typeof ua === "number" ? ua : null,
             explanation: q.explanation || "",
             timeSec: typeof tSec === "number" ? tSec : null,
-            confident: conf === "high",
+            confident: false,
           });
         }
       });
@@ -979,16 +1210,8 @@ export default function TestsPage() {
 
       // обновляем карту знаний
             // сигналы для прогресса: уверенность + время
-      let uncertainCorrectCount = 0;
-      let confidentCorrectCount = 0;
-      for (let i = 0; i < questions.length; i++) {
-        const ua = userAnswers[i];
-        const isCorrect = typeof ua === "number" && ua === questions[i].correctIndex;
-        if (!isCorrect) continue;
-        const conf = Array.isArray(confidence) ? confidence[i] : "low";
-        if (conf === "high") confidentCorrectCount += 1;
-        else uncertainCorrectCount += 1;
-      }
+            const uncertainCorrectCount = 0;
+      const confidentCorrectCount = 0;
 
       const timeNums = (Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : []).filter(
         (x) => typeof x === "number" && Number.isFinite(x)
@@ -1221,17 +1444,15 @@ export default function TestsPage() {
                 <div>
                   <p className="text-[11px] text-purple-200/80 mb-1">Предмет</p>
                   <select
-                    value={context.subject}
-                    onChange={(e) =>
-                      applyContextChange({ ...context, subject: e.target.value })
-                    }
-                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                  >
-                    <option>Математика</option>
-                    <option>Физика</option>
-                    <option>Русский язык</option>
-                    <option>Английский язык</option>
-                  </select>
+                      value={context.subject}
+                      onChange={(e) => applyContextChange({ ...context, subject: e.target.value })}
+                      disabled={generating}
+                      className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      {SUBJECTS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                 </div>
 
                 <div>
@@ -1242,11 +1463,30 @@ export default function TestsPage() {
                       applyContextChange({ ...context, level: e.target.value })
                     }
                     className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    disabled={generating}
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
+                    
                   </select>
                 </div>
+
+
+                <div>
+                  <p className="text-[11px] text-purple-200/80 mb-1">Сложность</p>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    disabled={generating}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    {DIFFICULTIES.map((d) => (
+                      <option key={d.key} value={d.key}>{d.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-purple-200/80 mt-1">{difficultyHint(difficulty)}</p>
+                </div>
+
               </div>
             </section>
 
@@ -1259,12 +1499,53 @@ export default function TestsPage() {
                   <input
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
+                    disabled={generating}
                     placeholder="Например: Производная, Кинематика, Причастные обороты…"
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
                   />
                   <p className="text-[11px] text-purple-200/80 mt-2">
                     Можно оставить пустым — NOOLIX возьмёт самую слабую тему из прогресса. Если прогресса ещё нет — введи тему.
                   </p>
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] uppercase tracking-wide text-purple-300/80">Предложенные темы</p>
+                      <button
+                        type="button"
+                        onClick={refreshSuggestedTopics}
+                        disabled={generating}
+                        className="px-3 py-1.5 rounded-full border border-white/15 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Заменить темы
+                      </button>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {suggestedTopics.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          disabled={generating}
+                          onClick={() => {
+                            setTopic((prev) => {
+                              const cur = parseTopicsInput(prev);
+                              const exists = cur.some((x) => x.toLowerCase() === String(t).toLowerCase());
+                              const merged = exists
+                                ? cur.filter((x) => x.toLowerCase() !== String(t).toLowerCase())
+                                : [...cur, t];
+                              return merged.join(", ");
+                            });
+                          }}
+                          className="px-3 py-2 rounded-full border text-[11px] transition bg-black/30 border-white/20 text-purple-50 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {t}
+                        </button>
+                      ))}
+                      {(!suggestedTopics || suggestedTopics.length === 0) ? (
+                        <span className="text-[11px] text-purple-200/70">Пока нет банка тем для этого выбора — введи тему вручную.</span>
+                      ) : null}
+                    </div>
+                  </div>
+
                 </div>
 
                 <div className="flex gap-2 md:justify-end">
@@ -1303,7 +1584,7 @@ export default function TestsPage() {
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
                     {historyScope === "current"
-                    ? "Последние попытки по текущему предмету и уровню."
+                    ? "Последние попытки по текущему предмету (все уровни)."
                     : "Последние попытки по всем предметам и уровням."}
                   </p>
                 </div>
@@ -1327,7 +1608,7 @@ export default function TestsPage() {
                   onClick={() => {
                     const ok = window.confirm(
                       historyScope === "current"
-                        ? "Очистить историю по текущему предмету и уровню?"
+                        ? "Очистить историю по текущему предмету (все уровни)?"
                         : "Очистить ВСЮ историю мини‑тестов?"
                     );
                     if (ok) clearTestHistory();
@@ -1376,7 +1657,7 @@ export default function TestsPage() {
                             {h.topic || "Тема"}
                           </p>
                           <p className="text-[11px] text-purple-200/80">
-                            Результат: {pct}% • {h.correctCount}/{h.totalCount}
+                            Результат: {pct}% • {h.correctCount}/{h.totalCount} • {h.level}
                             {when ? ` • ${when}` : ""}
                           </p>
                         </div>
@@ -1465,56 +1746,6 @@ export default function TestsPage() {
                           );
                         })}
                       </div>
-
-                      <div className="pt-1">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          Уверенность
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "low";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] !== "high"
-                                  ? "bg-white/15 border-white/20 text-purple-50"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Не уверен
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfidence((prev) => {
-                                const next = Array.isArray(prev) ? [...prev] : [];
-                                next[idx] = "high";
-                                return next;
-                              })
-                            }
-                            className={`px-3 py-2 rounded-full border text-[11px] transition
-                              ${
-                                confidence[idx] === "high"
-                                  ? "bg-white text-black border-white shadow-md"
-                                  : "bg-black/30 border-white/20 text-purple-50 hover:bg-white/5"
-                              }`}
-                          >
-                            Уверен
-                          </button>
-
-                          <span className="text-[11px] text-purple-200/80 self-center">
-                            {typeof timeToFirstAnswerSec[idx] === "number"
-                              ? `время: ${timeToFirstAnswerSec[idx]}с`
-                              : "время: —"}
-                          </span>
-                        </div>
                       </div>
 
                     </div>
