@@ -13,12 +13,12 @@ const secondaryMenuItems = [
   { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
 ];
 
+
 const normalizeLevel = (lvl) => {
-  const s = String(lvl || "").toLowerCase();
-  if (!s) return "10–11 класс";
-  if (s.includes("7") || s.includes("8") || s.includes("9")) return "7–9 класс";
-  if (s.includes("10") || s.includes("11")) return "10–11 класс";
-  if (s.includes("студ") || s.includes("вуз") || s.includes("курс")) return "10–11 класс";
+  const v = String(lvl || "").trim();
+  if (v === "7–9 класс") return "7–9 класс";
+  if (v === "10–11 класс") return "10–11 класс";
+  // всё остальное (Студент/вуз/прочее) — временно мапим в 10–11
   return "10–11 класс";
 };
 
@@ -81,7 +81,7 @@ export default function Home() {
     try {
       const payload = {
         subject,
-        level,
+        level: normalizeLevel(level),
         mode: 'exam_prep',
       };
       window.localStorage.setItem('noolixContext', JSON.stringify(payload));
