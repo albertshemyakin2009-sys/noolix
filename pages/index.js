@@ -13,15 +13,6 @@ const secondaryMenuItems = [
   { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
 ];
 
-
-const normalizeLevel = (lvl) => {
-  const v = String(lvl || "").trim();
-  if (v === "7–9 класс") return "7–9 класс";
-  if (v === "10–11 класс") return "10–11 класс";
-  // всё остальное (Студент/вуз/прочее) — временно мапим в 10–11
-  return "10–11 класс";
-};
-
 export default function Home() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -55,7 +46,7 @@ export default function Home() {
       if (rawContext) {
         const data = JSON.parse(rawContext);
         if (data.subject) setSubject(data.subject);
-        if (data.level) setLevel(normalizeLevel(data.level));
+        if (data.level) setLevel(data.level);
       }
 
       const rawHistory = window.localStorage.getItem('noolixChatHistory');
@@ -81,7 +72,7 @@ export default function Home() {
     try {
       const payload = {
         subject,
-        level: normalizeLevel(level),
+        level,
         mode: 'exam_prep',
       };
       window.localStorage.setItem('noolixContext', JSON.stringify(payload));
@@ -300,6 +291,8 @@ export default function Home() {
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
+                    <option>Студент</option>
+                    <option>Просто интересуюсь</option>
                   </select>
                 </div>
               </div>
