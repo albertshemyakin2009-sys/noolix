@@ -1,11 +1,3 @@
-
-
-const normalizeLevel = (lvl) => {
-  const v = String(lvl || "").trim();
-  if (v === "7–9 класс") return "7–9 класс";
-  if (v === "10–11 класс") return "10–11 класс";
-  return "10–11 класс";
-};
 // pages/library.js
 import { useEffect, useState } from 'react';
 
@@ -63,7 +55,7 @@ const mockSaved = [
     id: 3,
     title: 'Причастные обороты: схема и примеры',
     subject: 'Русский язык',
-    level: "7–9 класс",
+    level: '7–9 класс',
     from: 'из диалога',
     savedAt: 'Сегодня',
   },
@@ -98,7 +90,7 @@ const mockCollections = [
     id: 4,
     title: 'Английский: Основные времена',
     subject: 'Английский язык',
-    level: "7–9 класс",
+    level: '7–9 класс',
     topics: 10,
     tag: 'Грамматика',
   },
@@ -291,6 +283,7 @@ export default function LibraryPage() {
                     <option>Все уровни</option>
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
+                    <option>Студент</option>
                   </select>
                 </div>
               </div>
@@ -322,7 +315,7 @@ export default function LibraryPage() {
                     >
                       <div className="space-y-1">
                         <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          {item.subject} • {normalizeLevel(item.level)}
+                          {item.subject} • {item.level}
                         </p>
                         <h3 className="text-sm font-semibold">{item.title}</h3>
                         <p className="text-[11px] text-purple-200">
