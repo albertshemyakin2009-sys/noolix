@@ -409,7 +409,7 @@ const parseTopicsInput = (raw) => {
 };
 
 
-const normalizeTopicKey = (t) => {
+const normalizeTopicKeySingle = (t) => {
   let raw = String(t || "").trim();
   if (!raw) return "Общее";
 
@@ -444,6 +444,33 @@ const normalizeTopicKey = (t) => {
   if (tooLong || tooManyWords || hasSentenceMarks) return "Общее";
 
   return raw || "Общее";
+};
+
+// Supports multi-topic strings like "Тема 1, Тема 2" (used in UI/history).
+// Returns a stable, human-readable key (comma-separated list of normalized topic keys).
+const normalizeTopicKey = (t) => {
+  const raw = String(t || "").trim();
+  if (!raw) return "Общее";
+
+  // If it's a comma-separated list, normalize each part separately.
+  // Keep up to 3 topics in the key to avoid very long entries.
+  if (raw.includes(",")) {
+    const parts = parseTopicsInput(raw);
+    const norm = [];
+    const seen = new Set();
+    for (const p of parts) {
+      const k = normalizeTopicKeySingle(p);
+      if (!k || k === "Общее") continue;
+      const low = k.toLowerCase();
+      if (seen.has(low)) continue;
+      seen.add(low);
+      norm.push(k);
+      if (norm.length >= 3) break;
+    }
+    if (norm.length > 0) return norm.join(", ");
+  }
+
+  return normalizeTopicKeySingle(raw);
 };
 
 
@@ -1056,7 +1083,7 @@ setTopic(serverTopic);
         titles = [gen];
       } else {
         setDiagnosticLabel("");
-        if (manualTopics.length > 0) setTopic(manualTopics[0]);
+        if (manualTopics.length > 0) setTopic(manualTopics.join(", "));
       }
 
       setSentTopicForGeneration(titles[0] || "");
@@ -1104,10 +1131,11 @@ setTopic(serverTopic);
         throw new Error("Сервер вернул пустой тест. Попробуй другую тему.");
       }
 
-      // --- определяем и фиксируем финальную тему ---
+      // --- определяем и фиксируем финальные темы (может быть 1+), но для fallback храним первую ---
       const serverTopicRaw =
         data?.topicTitle || data?.topic || data?.test?.topicTitle || data?.test?.topic || "";
 
+      // Если сервер вернул одну строку, берём её; иначе вытащим темы из вопросов
       let resolvedTopic = normalizeTopicKey(
         serverTopicRaw || q?.[0]?.topicTitle || sentTopicForGeneration || titles[0] || ""
       );
@@ -1120,17 +1148,38 @@ setTopic(serverTopic);
         resolvedTopic = normalizeTopicKey(`Базовые темы по ${context.subject}`);
       }
 
-      try { window.localStorage.setItem(LAST_TOPIC_KEY, resolvedTopic); } catch (_) {}
+      // запоминаем только первую тему, чтобы fallback не превращался в "Общее"
+      try {
+        const firstForRemember = String(resolvedTopic || "").split(",")[0]?.trim() || resolvedTopic;
+        window.localStorage.setItem(LAST_TOPIC_KEY, firstForRemember);
+      } catch (_) {}
 
       // Если показывали диагностику — теперь переключаемся на реальную тему
       setDiagnosticLabel("");
-      setTopic(resolvedTopic);
 
-      const qWithTopic = q.map((qq) => ({
-        ...qq,
-        topicTitle:
-          (typeof qq?.topicTitle === "string" && qq.topicTitle.trim()) ? qq.topicTitle.trim() : resolvedTopic,
-      }));
+      const qWithTopic = q.map((qq) => {
+        const rawT = (typeof qq?.topicTitle === "string" && qq.topicTitle.trim())
+          ? qq.topicTitle.trim()
+          : resolvedTopic;
+        // IMPORTANT: topicTitle per question must be a single topic key
+        const normSingle = normalizeTopicKeySingle(rawT);
+        return { ...qq, topicTitle: normSingle };
+      });
+
+      // UI: показываем список тем теста (уникально), чтобы не оставалась только первая
+      const topicSet = [];
+      const seenTopics = new Set();
+      for (const qq of qWithTopic) {
+        const t = normalizeTopicKeySingle(qq?.topicTitle || "");
+        if (!t || t === "Общее") continue;
+        const low = t.toLowerCase();
+        if (seenTopics.has(low)) continue;
+        seenTopics.add(low);
+        topicSet.push(t);
+        if (topicSet.length >= 3) break;
+      }
+      const displayTopic = topicSet.length > 0 ? topicSet.join(", ") : resolvedTopic;
+      setTopic(displayTopic);
 
       setQuestions(qWithTopic);
       setUserAnswers(new Array(qWithTopic.length).fill(null));
@@ -1181,18 +1230,52 @@ setTopic(serverTopic);
       setResult({ correctCount, totalCount, scorePercent });
 
       const topicRaw = String(topic || "").trim();
-
       const isDiag = /^Диагностика\b/i.test(topicRaw);
-      const finalTopic = normalizeTopicKey((!isDiag && topicRaw)
-        ? topicRaw
-        : (questions?.[0]?.topicTitle || sentTopicForGeneration || `Базовые темы по ${context.subject}`));
 
-      // Remember questions to avoid repeats in future tests
-      pushQuestionsToBank({
-        subject: context.subject,
-        level: context.level,
-        topicTitle: finalTopic,
-        questions,
+      // For history/review: keep a readable multi-topic label.
+      let finalTopicForHistory = (!isDiag && topicRaw)
+        ? normalizeTopicKey(topicRaw)
+        : normalizeTopicKey(questions?.[0]?.topicTitle || sentTopicForGeneration || `Базовые темы по ${context.subject}`);
+
+      // Remember only the FIRST topic for fallback purposes (so it doesn't become "Общее").
+      try {
+        const firstForRemember = String(finalTopicForHistory || "").split(",")[0]?.trim() || finalTopicForHistory;
+        window.localStorage.setItem(LAST_TOPIC_KEY, firstForRemember);
+      } catch (_) {}
+
+      // --- Per-topic aggregation (so progress updates go into correct topics) ---
+      const perTopic = {};
+      for (let idx = 0; idx < questions.length; idx++) {
+        const q = questions[idx];
+        const t = normalizeTopicKeySingle(
+          (typeof q?.topicTitle === "string" && q.topicTitle.trim())
+            ? q.topicTitle.trim()
+            : (sentTopicForGeneration || `Базовые темы по ${context.subject}`)
+        );
+        const key = t || "Общее";
+        if (!perTopic[key]) perTopic[key] = { total: 0, correct: 0, questions: [], mistakes: [] };
+        perTopic[key].total += 1;
+        const ua = userAnswers[idx];
+        const isCorrect = typeof ua === "number" && ua === q.correctIndex;
+        if (isCorrect) perTopic[key].correct += 1;
+        perTopic[key].questions.push(q);
+      }
+
+      // Attach topicTitle to mistakes for accurate per-topic stats
+      const mistakesWithTopic = mistakes.map((m) => {
+        const qt = questions?.[m.idx]?.topicTitle || sentTopicForGeneration || `Базовые темы по ${context.subject}`;
+        return { ...m, topicTitle: normalizeTopicKeySingle(qt) };
+      });
+
+      // Remember questions to avoid repeats in future tests (per topic)
+      Object.entries(perTopic).forEach(([tKey, info]) => {
+        if (!tKey || tKey === "Общее") return;
+        pushQuestionsToBank({
+          subject: context.subject,
+          level: context.level,
+          topicTitle: tKey,
+          questions: info.questions,
+        });
       });
 
 
@@ -1227,28 +1310,44 @@ setTopic(serverTopic);
       };
 
       // обновляем карту знаний
-      const kmRes = updateKnowledgeFromTest({
-        subject: context.subject,
-        level: context.level,
-        topic: finalTopic,
-        correctCount,
-        totalCount,
-        signals,
+      // обновляем карту знаний по каждой теме отдельно
+      const kmErrors = [];
+      Object.entries(perTopic).forEach(([tKey, info]) => {
+        if (!tKey || tKey === "Общее") return;
+        const r = updateKnowledgeFromTest({
+          subject: context.subject,
+          level: context.level,
+          topic: tKey,
+          correctCount: info.correct,
+          totalCount: info.total,
+          signals,
+        });
+        if (!(r?.ok === true)) kmErrors.push(`${tKey}: ${r?.error || "unknown"}`);
       });
+      const kmRes = kmErrors.length > 0 ? { ok: false, error: kmErrors.join("; ") } : { ok: true, error: null };
 
-      // обновляем статистику ошибок
-      updateMistakeStats({
-        subject: context.subject,
-        level: context.level,
-        topic: finalTopic,
-        mistakes,
+      // обновляем статистику ошибок (по каждой теме)
+      const mistakesByTopic = {};
+      for (const m of mistakesWithTopic) {
+        const tKey = normalizeTopicKeySingle(m?.topicTitle || "");
+        if (!tKey || tKey === "Общее") continue;
+        if (!mistakesByTopic[tKey]) mistakesByTopic[tKey] = [];
+        mistakesByTopic[tKey].push(m);
+      }
+      Object.entries(mistakesByTopic).forEach(([tKey, arr]) => {
+        updateMistakeStats({
+          subject: context.subject,
+          level: context.level,
+          topic: tKey,
+          mistakes: arr,
+        });
       });
 
       // пишем историю тестов
       const hRes = pushTestHistory({
         subject: context.subject,
         level: context.level,
-        topic: finalTopic,
+        topic: finalTopicForHistory,
         score: clamp01(score),
         correctCount,
         totalCount,
