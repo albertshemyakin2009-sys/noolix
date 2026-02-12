@@ -584,7 +584,6 @@ export default function ProgressPage() {
                   >
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                    <option>1 курс вуза</option>
                   </select>
                 </div>
               </div>
