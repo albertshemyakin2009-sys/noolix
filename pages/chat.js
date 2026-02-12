@@ -265,6 +265,7 @@ export default function ChatPage() {
   };
 
   const messagesEndRef = useRef(null);
+  const scrollRef = useRef(null);
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
@@ -536,7 +537,7 @@ const callBackend = async (userMessages) => {
 
 
       // обновляем "твои чаты" в библиотеке
-      touchContinueItem();
+      touchContinueItem([...(userMessages || []), assistantMessage]);
 
       setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
 
@@ -728,9 +729,25 @@ const callBackend = async (userMessages) => {
 
   // Автоскролл вниз
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    if (typeof window === "undefined") return;
+
+    // Делаем скролл максимально надёжным для контейнера с overflow-y-auto
+    const el = scrollRef.current;
+    const anchor = messagesEndRef.current;
+
+    // Ждём следующий кадр, чтобы DOM успел дорендериться
+    const raf = window.requestAnimationFrame(() => {
+      try {
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+        if (anchor) {
+          anchor.scrollIntoView({ block: "end", behavior: "auto" });
+        }
+      } catch (_) {}
+    });
+
+    return () => window.cancelAnimationFrame(raf);
   }, [messages, thinking]);
 
   // --- Сохраняем историю конкретного чата ---
@@ -963,7 +980,7 @@ const callBackend = async (userMessages) => {
   };
 
   // Обновление блока "Твои чаты" в библиотеке
-  const touchContinueItem = () => {
+  const touchContinueItem = (chatMessages) => {
     if (typeof window === "undefined") return;
 
     try {
@@ -974,7 +991,23 @@ const callBackend = async (userMessages) => {
         if (Array.isArray(parsed)) list = parsed;
       }
 
-      const title = `Диалог: ${context.subject}, ${context.level}`;
+      const fallbackTitle = `Диалог: ${context.subject}, ${context.level}`;
+
+      // Для блока "Продолжить учёбу": берем последнее сообщение пользователя,
+      // чтобы в карточке не висел "NOOLIX" или служебный текст.
+      let lastUserText = "";
+      try {
+        const arr = Array.isArray(chatMessages) ? chatMessages : [];
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const m = arr[i];
+          if (!m || m.role !== "user") continue;
+          const c = String(m.content || "").trim();
+          if (c) { lastUserText = c; break; }
+        }
+      } catch (_) {}
+
+      const title = (lastUserText ? lastUserText.slice(0, 80) : fallbackTitle);
+
       const nowIso = new Date().toISOString();
 
       let found = false;
@@ -1038,6 +1071,9 @@ const callBackend = async (userMessages) => {
     setMessages(newMessages);
     setInput("");
     setThinking(true);
+
+    // обновляем \"Продолжить учёбу\" сразу после сообщения пользователя
+    touchContinueItem(newMessages);
 
     callBackend(newMessages);
   };
@@ -1440,7 +1476,7 @@ const callBackend = async (userMessages) => {
               )}
 
 
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
                 {messages.map((m, i) => {
                   const prev = i > 0 ? messages[i - 1] : null;
                   const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
