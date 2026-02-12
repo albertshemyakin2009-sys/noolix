@@ -265,11 +265,12 @@ export default function ChatPage() {
   };
 
   const messagesEndRef = useRef(null);
-  const scrollRef = useRef(null);
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
+  const didScrollToMessageRef = useRef(false);
   const [highlightMsgId, setHighlightMsgId] = useState("");
+  const [highlightOpacity, setHighlightOpacity] = useState(0);
 
   // Client-only guard (фикс для prerender/export на Vercel)
   useEffect(() => {
@@ -537,7 +538,7 @@ const callBackend = async (userMessages) => {
 
 
       // обновляем "твои чаты" в библиотеке
-      touchContinueItem([...(userMessages || []), assistantMessage]);
+      touchContinueItem();
 
       setMessages((prev) => clampHistory([...(prev || []), assistantMessage]));
 
@@ -727,27 +728,58 @@ const callBackend = async (userMessages) => {
     }
   }, []);
 
-  // Автоскролл вниз
+  
+  // Скролл к сообщению при переходе из библиотеки (?scrollTo=...)
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isClient) return;
+    const targetId = String(scrollToRef.current || "").trim();
+    if (!targetId) return;
 
-    // Делаем скролл максимально надёжным для контейнера с overflow-y-auto
-    const el = scrollRef.current;
-    const anchor = messagesEndRef.current;
+    const el = document.getElementById(`msg-${targetId}`);
+    if (!el) return;
 
-    // Ждём следующий кадр, чтобы DOM успел дорендериться
-    const raf = window.requestAnimationFrame(() => {
+    didScrollToMessageRef.current = true;
+
+    // даём DOM дорендериться
+    requestAnimationFrame(() => {
       try {
-        if (el) {
-          el.scrollTop = el.scrollHeight;
-        }
-        if (anchor) {
-          anchor.scrollIntoView({ block: "end", behavior: "auto" });
-        }
-      } catch (_) {}
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch {
+        try {
+          el.scrollIntoView();
+        } catch {}
+      }
+      setHighlightMsgId(targetId);
     });
 
-    return () => window.cancelAnimationFrame(raf);
+    // чтобы дальше работал обычный автоскролл вниз
+    scrollToRef.current = "";
+  }, [isClient, messages.length]);
+
+  // Подсветка сообщения на 5 секунд + плавное угасание
+  useEffect(() => {
+    if (!highlightMsgId) return;
+
+    setHighlightOpacity(1);
+
+    const t1 = setTimeout(() => setHighlightOpacity(0), 5000);
+    const t2 = setTimeout(() => setHighlightMsgId(""), 5800);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [highlightMsgId]);
+
+// Автоскролл вниз
+  useEffect(() => {
+    // Если пришли из библиотеки по scrollTo — сначала скроллим к нужному сообщению,
+    // чтобы авто-скролл вниз не "перебил" позицию.
+    if ((scrollToRef.current || "").trim() && !didScrollToMessageRef.current) return;
+
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, thinking]);
 
   // --- Сохраняем историю конкретного чата ---
@@ -980,7 +1012,7 @@ const callBackend = async (userMessages) => {
   };
 
   // Обновление блока "Твои чаты" в библиотеке
-  const touchContinueItem = (chatMessages) => {
+  const touchContinueItem = () => {
     if (typeof window === "undefined") return;
 
     try {
@@ -991,23 +1023,7 @@ const callBackend = async (userMessages) => {
         if (Array.isArray(parsed)) list = parsed;
       }
 
-      const fallbackTitle = `Диалог: ${context.subject}, ${context.level}`;
-
-      // Для блока "Продолжить учёбу": берем последнее сообщение пользователя,
-      // чтобы в карточке не висел "NOOLIX" или служебный текст.
-      let lastUserText = "";
-      try {
-        const arr = Array.isArray(chatMessages) ? chatMessages : [];
-        for (let i = arr.length - 1; i >= 0; i--) {
-          const m = arr[i];
-          if (!m || m.role !== "user") continue;
-          const c = String(m.content || "").trim();
-          if (c) { lastUserText = c; break; }
-        }
-      } catch (_) {}
-
-      const title = (lastUserText ? lastUserText.slice(0, 80) : fallbackTitle);
-
+      const title = `Диалог: ${context.subject}, ${context.level}`;
       const nowIso = new Date().toISOString();
 
       let found = false;
@@ -1071,9 +1087,6 @@ const callBackend = async (userMessages) => {
     setMessages(newMessages);
     setInput("");
     setThinking(true);
-
-    // обновляем \"Продолжить учёбу\" сразу после сообщения пользователя
-    touchContinueItem(newMessages);
 
     callBackend(newMessages);
   };
@@ -1476,7 +1489,7 @@ const callBackend = async (userMessages) => {
               )}
 
 
-              <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
                 {messages.map((m, i) => {
                   const prev = i > 0 ? messages[i - 1] : null;
                   const showUserHeader = m.role === "user" && (!prev || prev.role !== "user");
@@ -1488,8 +1501,13 @@ const callBackend = async (userMessages) => {
                       id={`msg-${m.id}`}
                       className={`flex ${
                         m.role === "user" ? "justify-end" : "justify-start"
-                      } ${String(m.id) === String(highlightMsgId) ? "relative rounded-2xl ring-2 ring-purple-300/40 bg-purple-500/5" : ""}`}
+                      } ${String(m.id) === String(highlightMsgId) ? "relative" : ""}`}
                     >
+                      {String(m.id) === String(highlightMsgId) && (
+                        <div
+                          className={`absolute inset-0 rounded-2xl border border-purple-300/30 bg-white/5 pointer-events-none transition-opacity duration-700 ${highlightOpacity ? "opacity-100" : "opacity-0"}`}
+                        />
+                      )}
                       <div>
                         {showAssistantHeader ? (
                           <div className="mb-1 flex items-center justify-start gap-2 text-[11px] text-purple-200/70">
