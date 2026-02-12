@@ -1,143 +1,282 @@
-
-
-const normalizeLevel = (lvl) => {
-  const v = String(lvl || "").trim();
-  if (v === "7–9 класс") return "7–9 класс";
-  if (v === "10–11 класс") return "10–11 класс";
-  return "10–11 класс";
-};
 // pages/library.js
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 const primaryMenuItems = [
-  { label: 'Главная', href: '/', icon: '🏛', key: 'home' },
-  { label: 'Диалог', href: '/chat', icon: '💬', key: 'chat' },
-  { label: 'Тесты', href: '/tests', icon: '🧪', key: 'tests' },
-  { label: 'Прогресс', href: '/progress', icon: '📈', key: 'progress' },
+  { label: "Главная", href: "/", icon: "🏛", key: "home" },
+  { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
+  { label: "Тесты", href: "/tests", icon: "🧪", key: "tests" },
+  { label: "Прогресс", href: "/progress", icon: "📈", key: "progress" },
 ];
 
 const secondaryMenuItems = [
-  { label: 'Библиотека', href: '/library', icon: '📚', key: 'library' },
-  { label: 'Цели', href: '/goals', icon: '🎯', key: 'goals' },
-  { label: 'Профиль', href: '/profile', icon: '👤', key: 'profile' },
+  { label: "Библиотека", href: "/library", icon: "📚", key: "library" },
+  { label: "Цели", href: "/goals", icon: "🎯", key: "goals" },
+  { label: "Профиль", href: "/profile", icon: "👤", key: "profile" },
 ];
 
-// Моки для MVP — потом можно будет связать с реальными данными
+// Fallback-моки, если localStorage ещё пуст
 const mockContinue = [
   {
     id: 1,
-    title: 'Квадратные уравнения',
-    subject: 'Математика',
-    level: '8–9 класс',
-    type: 'Теория + задачи',
-    updatedAt: 'Вчера',
-  },
-  {
-    id: 2,
-    title: 'Второй закон Ньютона',
-    subject: 'Физика',
-    level: '10–11 класс',
-    type: 'Разбор задач',
-    updatedAt: 'Сегодня',
+    title: "Диалог: Математика, 8–9 класс",
+    subject: "Математика",
+    level: "8–9 класс",
+    type: "Диалог с тьютором",
+    updatedAt: "Вчера",
   },
 ];
 
 const mockSaved = [
   {
     id: 1,
-    title: 'Разбор задачи про вторую космическую скорость',
-    subject: 'Физика',
-    level: '10–11 класс',
-    from: 'из диалога',
-    savedAt: '3 дня назад',
-  },
-  {
-    id: 2,
-    title: 'Краткий конспект по производной',
-    subject: 'Математика',
-    level: '10–11 класс',
-    from: 'из диалога',
-    savedAt: 'Неделю назад',
-  },
-  {
-    id: 3,
-    title: 'Причастные обороты: схема и примеры',
-    subject: 'Русский язык',
-    level: "7–9 класс",
-    from: 'из диалога',
-    savedAt: 'Сегодня',
+    title: "Разбор задачи про вторую космическую скорость",
+    subject: "Физика",
+    level: "10–11 класс",
+    from: "из диалога",
+    savedAt: "3 дня назад",
   },
 ];
 
 const mockCollections = [
   {
     id: 1,
-    title: 'ОГЭ: База по математике',
-    subject: 'Математика',
-    level: '9 класс',
+    title: "ОГЭ: База по математике",
+    subject: "Математика",
+    level: "9 класс",
     topics: 14,
-    tag: 'ОГЭ',
+    tag: "ОГЭ",
   },
   {
     id: 2,
-    title: 'ЕГЭ: Кинематика',
-    subject: 'Физика',
-    level: '10–11 класс',
+    title: "ЕГЭ: Кинематика",
+    subject: "Физика",
+    level: "10–11 класс",
     topics: 9,
-    tag: 'ЕГЭ',
+    tag: "ЕГЭ",
   },
   {
     id: 3,
-    title: 'Русский: Подготовка к сочинению',
-    subject: 'Русский язык',
-    level: '9–11 класс',
+    title: "Русский: Подготовка к сочинению",
+    subject: "Русский язык",
+    level: "9–11 класс",
     topics: 7,
-    tag: 'Сочинение',
+    tag: "Сочинение",
   },
   {
     id: 4,
-    title: 'Английский: Основные времена',
-    subject: 'Английский язык',
+    title: "Английский: Основные времена",
+    subject: "Английский язык",
     level: "7–9 класс",
     topics: 10,
-    tag: 'Грамматика',
+    tag: "Грамматика",
   },
 ];
 
+const CONTEXT_STORAGE_KEY = "noolixContext";
+
 export default function LibraryPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [subjectFilter, setSubjectFilter] = useState('Все предметы');
-  const [levelFilter, setLevelFilter] = useState('Все уровни');
-  const [search, setSearch] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState("Все предметы");
+  const [levelFilter, setLevelFilter] = useState("Все уровни");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Подтягиваем предмет/уровень из контекста, чтобы фильтры чувствовали систему
+  const [savedFromStorage, setSavedFromStorage] = useState(null);
+  const [continueFromStorage, setContinueFromStorage] = useState(null);
+  const [showSaved, setShowSaved] = useState(false);
+
+  // Подтягиваем предмет/уровень из контекста, чтобы фильтры были "в теме"
   useEffect(() => {
     try {
-      const rawContext = window.localStorage.getItem('noolixContext');
+      if (typeof window === "undefined") return;
+      const rawContext = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
       if (rawContext) {
         const ctx = JSON.parse(rawContext);
         if (ctx.subject) setSubjectFilter(ctx.subject);
         if (ctx.level) setLevelFilter(ctx.level);
       }
     } catch (e) {
-      console.warn('Failed to load context for library', e);
+      // eslint-disable-next-line no-console
+      console.warn("Failed to load context for library", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const normalize = (s) => (s || '').toLowerCase();
+  // Читаем сохранённые объяснения из localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibrarySaved");
+      if (!raw) {
+        setSavedFromStorage(null);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedFromStorage(parsed);
+      } else {
+        setSavedFromStorage(null);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to read noolixLibrarySaved", e);
+      setSavedFromStorage(null);
+    }
+  }, []);
+
+  // Читаем "твои чаты" (раньше "Продолжить") из localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("noolixLibraryContinue");
+      if (!raw) {
+        setContinueFromStorage(null);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setContinueFromStorage(parsed);
+      } else {
+        setContinueFromStorage(null);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to read noolixLibraryContinue", e);
+      setContinueFromStorage(null);
+    }
+  }, []);
+
+  const normalize = (s) => (s || "").toLowerCase();
+
+  const safeString = (v) => (v == null ? "" : String(v));
+
+  const parseDateMaybe = (value) => {
+    if (value == null) return null;
+
+    // number (ms or sec)
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const ms = value < 1e12 ? value * 1000 : value;
+      const dt = new Date(ms);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    const s = String(value).trim();
+    if (!s) return null;
+
+    // numeric string (ms or sec)
+    if (/^\d{10,13}$/.test(s)) {
+      const num = Number(s);
+      const ms = s.length == 10 ? num * 1000 : num;
+      const dt = new Date(ms);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    const dt = new Date(s);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+
+
+  const formatRelativeTime = (value) => {
+    const s = safeString(value).trim();
+    // If already human text like "3 дня назад" — keep it
+    if (!s) return "";
+    if (/[а-яА-Я]/.test(s) && /назад|вчера|сегодня|дн|час|мин/.test(s)) return s;
+
+    const dt = parseDateMaybe(value) || parseDateMaybe(s);
+    if (!dt) return s;
+
+    let diffMs = Date.now() - dt.getTime();
+    if (!Number.isFinite(diffMs)) return s;
+    if (diffMs < 0) diffMs = 0;
+
+    const min = Math.round(diffMs / 60000);
+    if (min < 1) return "только что";
+    if (min < 60) return `${min} мин назад`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `${h} ч назад`;
+    const d = Math.round(h / 24);
+    if (d === 1) return "вчера";
+    if (d < 30) return `${d} дн назад`;
+    const mo = Math.round(d / 30);
+    if (mo < 12) return `${mo} мес назад`;
+    const y = Math.round(mo / 12);
+    return `${y} г назад`;
+  };
+
+  const formatSavedAt = (value) => {
+    const s = safeString(value).trim();
+    if (!s) return "";
+    const dt = parseDateMaybe(value) || parseDateMaybe(s);
+    if (!dt) return s;
+    try {
+      return dt.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (_) {
+      return s;
+    }
+  };
+
+
+const sanitizeTopicTitle = (input) => {
+  let raw = String(input || "").trim();
+  if (!raw) return "";
+
+  raw = raw.replace(/[«»"]/g, "").trim();
+  raw = raw.replace(/\s+/g, " ").trim();
+  raw = raw.replace(/^Тема\s*[:\-—]\s*/i, "").trim();
+  raw = raw.replace(/[?!\.]+$/g, "").trim();
+
+  const low = raw.toLowerCase();
+  if (!raw) return "";
+  if (low === "общее" || low === "general" || low === "без темы" || low === "без названия") return "";
+  if (/^сохран(е|ё)нн(ое|ая)\s+объяснение/i.test(raw)) return "";
+
+  if (raw.length > 60) return "";
+  if (raw.includes("\n")) return "";
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length > 8) return "";
+  if (/[.!?]/.test(raw)) return "";
+
+  raw = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return raw;
+};
+  const titleFromSaved = (item) => {
+    const t = safeString(item?.title).trim();
+    const topic = safeString(item?.topic).trim();
+    if (t && t.toLowerCase() !== "без названия") return t;
+    if (topic) return topic;
+    return "Сохранённое объяснение";
+  };
+
+  const topicFromSaved = (item) => {
+  // Используем только явную тему из сохранения (или legacy-поля),
+  // НО НИКОГДА не подставляем title/preview, чтобы в чат не улетал текст ответа.
+  const direct = safeString(item?.topic).trim();
+  const legacy1 = safeString(item?.explainTopicTitle).trim();
+  const legacy2 = safeString(item?.meta?.explainTopicTitle).trim();
+  const topic = legacy2 || legacy1 || direct;
+
+  return sanitizeTopicTitle(topic);
+};
+
+
 
   const matchesFilters = (item) => {
     const bySubject =
-      subjectFilter === 'Все предметы' || item.subject === subjectFilter;
+      subjectFilter === "Все предметы" || item.subject === subjectFilter;
 
     const byLevel =
-      levelFilter === 'Все уровни' ||
+      levelFilter === "Все уровни" ||
       item.level === levelFilter ||
       (item.level &&
-        item.level.includes(levelFilter.replace('класс', '').trim()));
+        item.level.toLowerCase().includes(levelFilter.toLowerCase()));
 
     const bySearch =
       !search.trim() ||
@@ -147,11 +286,49 @@ export default function LibraryPage() {
     return bySubject && byLevel && bySearch;
   };
 
-  const filteredContinue = mockContinue.filter(matchesFilters);
-  const filteredSaved = mockSaved.filter(matchesFilters);
+  // Источник для "Твои чаты"
+  const baseContinueRaw =
+    continueFromStorage &&
+    Array.isArray(continueFromStorage) &&
+    continueFromStorage.length > 0
+      ? continueFromStorage
+      : mockContinue;
+
+  // Дедуп по (subject, level), чтобы не было 10 карточек одного и того же чата
+  const seenChatKeys = new Set();
+  const baseContinue = baseContinueRaw.filter((item) => {
+    const key = `${item.subject}__${item.level}`;
+    if (seenChatKeys.has(key)) return false;
+    seenChatKeys.add(key);
+    return true;
+  });
+
+  const filteredContinue = baseContinue.filter(matchesFilters);
+
+  // Источник для "Сохранённые объяснения"
+  const baseSaved =
+    savedFromStorage &&
+    Array.isArray(savedFromStorage) &&
+    savedFromStorage.length > 0
+      ? savedFromStorage
+      : mockSaved;
+  const filteredSaved = baseSaved
+    .slice()
+    .sort((a, b) => {
+      const da = new Date(a?.savedAt || a?.ts || a?.createdAt || 0).getTime();
+      const db = new Date(b?.savedAt || b?.ts || b?.createdAt || 0).getTime();
+      return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+    })
+    .filter(matchesFilters);
+  const savedCount = baseSaved.length;
+
   const filteredCollections = mockCollections.filter(matchesFilters);
 
-  // Экран загрузки, чтобы не было мерцания
+  const nothingFound =
+    filteredContinue.length === 0 &&
+    filteredSaved.length === 0 &&
+    filteredCollections.length === 0;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex items-center justify-center">
@@ -159,7 +336,9 @@ export default function LibraryPage() {
           <div className="text-4xl font-extrabold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent tracking-wide">
             NOOLIX
           </div>
-          <p className="text-xs text-purple-100/80">Загружаем библиотеку…</p>
+          <p className="text-xs text-purple-100/80">
+            Загружаем твою библиотеку…
+          </p>
           <div className="flex gap-1 text-sm text-purple-100">
             <span className="animate-pulse">•</span>
             <span className="animate-pulse opacity-70">•</span>
@@ -172,6 +351,7 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
+      {/* Оверлей для мобилки */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden"
@@ -179,6 +359,7 @@ export default function LibraryPage() {
         />
       )}
 
+      {/* Кнопка меню на мобилке */}
       <button
         className="absolute top-4 left-4 z-50 bg-white/95 text-black px-4 py-2 rounded shadow-md md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -186,9 +367,10 @@ export default function LibraryPage() {
         ☰ Меню
       </button>
 
+      {/* Левое меню — тот же градиент, что и на других страницах */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-60 md:w-64 p-6 space-y-6 transform transition-transform duration-300 z-40
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
         bg-gradient-to-b from-black/40 via-[#2E003E]/85 to-transparent`}
       >
         <div className="mb-3">
@@ -223,18 +405,20 @@ export default function LibraryPage() {
               <a
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition
-                  ${item.key === 'library' ? 'bg-white/15' : 'hover:bg.white/5'}
-                `}
+                className={`flex items-center gap-3 px-2 py-2 rounded-2xl transition ${
+                  item.key === "library" ? "bg-white/15" : "hover:bg-white/5"
+                }`}
               >
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white
-                    ${item.key === 'library' ? 'ring-2 ring-purple-200' : ''}
-                  `}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-black text-sm shadow-md bg-gradient-to-br from-purple-100 to-white ${
+                    item.key === "library" ? "ring-2 ring-purple-200" : ""
+                  }`}
                 >
                   {item.icon}
                 </span>
-                <span className={item.key === 'library' ? 'font-semibold' : ''}>
+                <span
+                  className={item.key === "library" ? "font-semibold" : ""}
+                >
                   {item.label}
                 </span>
               </a>
@@ -243,6 +427,7 @@ export default function LibraryPage() {
         </nav>
       </aside>
 
+      {/* Основная зона */}
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
@@ -258,12 +443,13 @@ export default function LibraryPage() {
                     Библиотека
                   </h1>
                   <p className="text-xs md:text-sm text-purple-200 mt-1 max-w-xl">
-                    Здесь собираются сохранённые объяснения из диалога и готовые подборки тем от NOOLIX.
+                    Здесь собираются твои чаты, сохранённые объяснения и
+                    подборки тем от NOOLIX.
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 w.full md:w-[260px]">
+              <div className="flex flex-col gap-2 w-full md:w-[260px]">
                 <input
                   type="text"
                   value={search}
@@ -291,101 +477,69 @@ export default function LibraryPage() {
                     <option>Все уровни</option>
                     <option>7–9 класс</option>
                     <option>10–11 класс</option>
-                  </select>
+                                      </select>
                 </div>
               </div>
             </section>
 
-            {/* Блок "Продолжить изучение" */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Продолжить изучение
-                  </p>
-                  <p className="text-xs text-purple-200">
-                    Темы, которые ты недавно открывал или разбирал в диалоге.
-                  </p>
-                </div>
-              </div>
+            {/* Если по фильтрам вообще ничего не найдено */}
+            {nothingFound && (
+              <section className="bg-black/30 border border-dashed border-purple-300/70 rounded-2xl p-4 space-y-2">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  По текущим фильтрам ничего не найдено
+                </p>
+                <p className="text-xs text-purple-100/85">
+                  Попробуй изменить фильтры или задать вопрос напрямую в
+                  диалоге — мы поможем найти или создать нужное объяснение.
+                </p>
+                <a
+                  href="/chat"
+                  className="inline-flex items-center justify-center mt-1 px-3 py-1.5 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                >
+                  Спросить в диалоге
+                </a>
+              </section>
+            )}
 
+            {/* Твои чаты */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Твои чаты
+                </p>
+              </div>
               {filteredContinue.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
-                  Пока здесь пусто. Попробуй изменить фильтры или задать тему в диалоге — потом её можно будет сохранить.
+                  Пока нет активных чатов. Начни с диалога — и здесь появятся
+                  сессии по предметам и уровням.
                 </p>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid md:grid-cols-2 gap-3">
                   {filteredContinue.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col justify-between text-xs text-purple-100"
                     >
-                      <div className="space-y-1">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          {item.subject} • {normalizeLevel(item.level)}
-                        </p>
-                        <h3 className="text-sm font-semibold">{item.title}</h3>
-                        <p className="text-[11px] text-purple-200">
-                          {item.type}
-                        </p>
-                      </div>
-                      <div className="mt-3 flex items-center justify-between text-[11px] text-purple-200/80">
-                        <span>Обновлено: {item.updatedAt}</span>
-                        <a
-                          href="/chat"
-                          className="px-3 py-1 rounded-full bg.white text-black text-[11px] font-semibold shadow hover:bg-purple-100 transition"
-                        >
-                          Продолжить в диалоге
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* Блок "Сохранённые объяснения" */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Сохранённые объяснения
-                  </p>
-                  <p className="text-xs text-purple-200">
-                    Всё, что ты пометишь в диалоге как важное, будет появляться здесь.
-                  </p>
-                </div>
-              </div>
-
-              {filteredSaved.length === 0 ? (
-                <p className="text-xs text-purple-200/80">
-                  У тебя пока нет сохранённых объяснений. Позже здесь можно будет хранить “избранные” ответы NOOLIX.
-                </p>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-3">
-                  {filteredSaved.map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col justify-between"
-                    >
-                      <div className="space-y-1">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          {item.subject}
-                        </p>
-                        <h3 className="text-xs font-semibold leading-snug">
+                      <div>
+                        <p className="font-semibold text-sm mb-1">
                           {item.title}
-                        </h3>
-                        <p className="text-[11px] text-purple-200/90">
-                          {item.level} • {item.from}
                         </p>
+                        <p className="text-[11px] text-purple-200/80">
+                          {item.subject} • {item.level}
+                        </p>
+                        {item.type && (
+                          <p className="text-[11px] text-purple-200/80 mt-0.5">
+                            Формат: {item.type}
+                          </p>
+                        )}
                       </div>
-                      <div className="mt-3 flex items-center justify-between text-[11px] text-purple-200/80">
-                        <span>Сохранено: {item.savedAt}</span>
+                      <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
+                        <span>Обновлено: {item.updatedAt || "Недавно"}</span>
                         <a
                           href="/chat"
-                          className="hover:underline text-purple-100"
+                          className="underline underline-offset-2 hover:text-white"
                         >
-                          Открыть в диалоге
+                          Открыть чат
                         </a>
                       </div>
                     </div>
@@ -394,56 +548,132 @@ export default function LibraryPage() {
               )}
             </section>
 
-            {/* Блок "Подборки от NOOLIX" */}
-            <section className="space-y-3">
+            {/* Сохранённые объяснения (свёрнуты по умолчанию) */}
+            <section className="space-y-2">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Подборки от NOOLIX
-                  </p>
-                  <p className="text-xs text-purple-200">
-                    Готовые наборы тем по экзаменам и ключевым разделам.
-                  </p>
-                </div>
+                <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                  Сохранённые объяснения
+                </p>
+                {savedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSaved((v) => !v)}
+                    className="text-[11px] px-2 py-1 rounded-full bg-black/30 border border-white/15 hover:bg-white/5 transition"
+                  >
+                    {showSaved
+                      ? `Скрыть (${savedCount})`
+                      : `Показать (${savedCount})`}
+                  </button>
+                )}
               </div>
 
-              {filteredCollections.length === 0 ? (
+              {!showSaved ? (
                 <p className="text-xs text-purple-200/80">
-                  По текущим фильтрам нет подборок. Попробуй выбрать другой предмет или уровень.
+                  Здесь будут твои сохранённые объяснения из диалога. Любое
+                  сообщение NOOLIX можно сохранить кнопкой «⭐ Сохранить в
+                  библиотеку» прямо в чате.
+                </p>
+              ) : filteredSaved.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Пока здесь пусто. Сохрани первое объяснение из диалога —
+                  например, мини‑конспект по теме. NOOLIX сохранит тему и стиль объяснения.
                 </p>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredCollections.map((item) => (
-                    <div
+                <div className="space-y-2">
+                  {filteredSaved.map((item) => {
+                    const topic = topicFromSaved(item);
+                    const scrollId = String(item?.messageId || item?.id || "");
+                    const href = topic && String(topic).trim()
+                      ? `/chat?topic=${encodeURIComponent(String(topic).trim())}&scrollTo=${encodeURIComponent(scrollId)}`
+                      : `/chat?scrollTo=${encodeURIComponent(scrollId)}`;
+
+                    return (
+                      <div
                       key={item.id}
-                      className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-col justify-between"
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-purple-100"
                     >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 text-[10px] uppercase tracking-wide text-purple-100">
-                            {item.tag}
-                          </span>
-                          <span className="text-[11px] text-purple-200/80">
-                            {item.subject}
+                      <div>
+                        <p className="font-semibold text-sm mb-0.5">
+                          {titleFromSaved(item)}
+                        </p>
+                        <p className="text-[11px] text-purple-200/80">
+                          {item.subject} • {item.level}
+                        </p>
+
+                        {/* chips */}
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {topicFromSaved(item) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                              🏷 {topicFromSaved(item)}
+                            </span>
+                          ) : null}
+
+                          {item?.explainStyleLabel ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-300/20 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-100/90">
+                              🎛 {item.explainStyleLabel}
+                            </span>
+                          ) : null}
+
+                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-purple-100/90">
+                            📌 {item?.from || "из диалога"}
                           </span>
                         </div>
-                        <h3 className="text-sm font-semibold">
-                          {item.title}
-                        </h3>
-                        <p className="text-[11px] text-purple-200/90">
-                          Уровень: {item.level}
+                      </div>
+                      <div className="flex flex-col items-start md:items-end gap-1 text-[11px]">
+                        <span className="text-purple-200/80">
+                          Сохранено: {formatSavedAt(item.savedAt || item.ts || item.createdAt)}
+                          {item.savedAt || item.ts || item.createdAt ? (
+                            <span className="text-[10px] text-purple-200/60"> • {formatRelativeTime(item.savedAt || item.ts || item.createdAt)}</span>
+                          ) : null}
+                        </span>
+                        <a
+                          href={href}
+                          className="underline underline-offset-2 hover:text-white"
+                        >
+                          Продолжить в диалоге →
+                        </a>
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Подборки от NOOLIX */}
+            <section className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                Подборки NOOLIX
+              </p>
+              {filteredCollections.length === 0 ? (
+                <p className="text-xs text-purple-200/80">
+                  Подборки по текущим фильтрам не найдены. Можно снять часть
+                  фильтров или начать с диалога — и мы подберём темы под тебя.
+                </p>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-3">
+                  {filteredCollections.map((c) => (
+                    <div
+                      key={c.id}
+                      className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col justify-between text-xs text-purple-100"
+                    >
+                      <div>
+                        <p className="font-semibold text-sm mb-0.5">
+                          {c.title}
                         </p>
-                        <p className="text-[11px] text-purple-200/90">
-                          Тем в подборке: {item.topics}
+                        <p className="text-[11px] text-purple-200/80">
+                          {c.subject} • {c.level}
+                        </p>
+                        <p className="text-[11px] text-purple-200/80 mt-0.5">
+                          Тем в подборке: {c.topics} • {c.tag}
                         </p>
                       </div>
-                      <div className="mt-3 flex items.center justify-between text-[11px] text-purple-200/80">
-                        <span>Режим: теория + практика</span>
+                      <div className="flex items-center justify-between mt-2 text-[11px] text-purple-200/80">
                         <a
-                          href="/chat"
-                          className="px-3 py-1 rounded-full border border-white/25 text-[11px] hover:bg.white/10 transition"
+                          href={`/chat?topic=${encodeURIComponent(c.title)}`}
+                          className="underline underline-offset-2 hover:text-white"
                         >
-                          Начать с этой подборки
+                          Попросить объяснить подборку →
                         </a>
                       </div>
                     </div>
@@ -455,7 +685,8 @@ export default function LibraryPage() {
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь: support@noolix.ai
+          © 2025 NOOLIX — образовательная платформа будущего. Связь:
+          support@noolix.ai
         </footer>
       </div>
     </div>
