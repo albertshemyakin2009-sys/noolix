@@ -1,5 +1,5 @@
 // pages/tests.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -831,6 +831,10 @@ export default function TestsPage() {
 
   const [difficulty, setDifficulty] = useState('medium');
 const [topic, setTopic] = useState("");
+
+  // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
+  const pendingAutoTopicRef = useRef(null);
+  const autoStartedFromQueryRef = useRef(false);
   
 
   const [suggestedTopics, setSuggestedTopics] = useState([]);
@@ -866,7 +870,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   }, []);
 
   // If user came from Progress page ("Мини‑тест" button), we may have ?topic=...
-  // In that case, prefill the topic input (does not auto-generate).
+  // In that case, prefill the topic input and auto-generate a short mini-test once.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -874,6 +878,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       const t = params.get("topic");
       if (t && String(t).trim()) {
         const decoded = String(t).trim();
+        pendingAutoTopicRef.current = decoded;
         setTopic(decoded);
       }
     } catch (_) {}
@@ -982,7 +987,13 @@ const clearTestHistory = () => {
   
   // Сбрасываем тему/сессию при смене предмета или уровня
   useEffect(() => {
-    setTopic("");
+    // Если пришли из прогресса с ?topic=..., не затираем тему (иначе пользователь видит пустой экран)
+    const pending = pendingAutoTopicRef.current;
+    if (pending && String(pending).trim()) {
+      setTopic(String(pending).trim());
+    } else {
+      setTopic("");
+    }
     setSentTopicForGeneration("");
     setDiagnosticLabel("");
     resetSession();
@@ -1066,6 +1077,34 @@ setTopic(serverTopic);
       setGenerating(false);
     }
   };
+
+  // Auto-generate mini-test when opened as /tests?topic=...
+  useEffect(() => {
+    const pending = pendingAutoTopicRef.current;
+    if (!pending || autoStartedFromQueryRef.current) return;
+    if (generating) return;
+    if (!context?.subject || !context?.level) return;
+    if (questions.length) return;
+
+    autoStartedFromQueryRef.current = true;
+
+    // Generate a short mini-test (5 questions) for the chosen topic.
+    // Defer to next paint so UI can render the prefilled topic first.
+    const id = window.requestAnimationFrame(() => {
+      generateFocusedTest([String(pending).trim()], 5);
+      // Clear query param to avoid re-trigger on back/forward
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("topic");
+        window.history.replaceState({}, "", url.toString());
+      } catch (_) {}
+    });
+
+    return () => {
+      try { window.cancelAnimationFrame(id); } catch (_) {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level, generating, questions.length]);
 
   const generateTest = async () => {
     setError("");
