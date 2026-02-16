@@ -865,6 +865,20 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     }
   }, []);
 
+  // If user came from Progress page ("Мини‑тест" button), we may have ?topic=...
+  // In that case, prefill the topic input (does not auto-generate).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("topic");
+      if (t && String(t).trim()) {
+        const decoded = String(t).trim();
+        setTopic(decoded);
+      }
+    } catch (_) {}
+  }, []);
+
   const applyContextChange = (nextCtx) => {
     const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
     setContext(safeNext);
