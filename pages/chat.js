@@ -445,7 +445,7 @@ export default function ChatPage() {
 
       // prefilling message from /tests "Разобрать в диалоге"
       if (prefill && String(prefill).trim()) {
-        let decoded = \"\";
+        let decoded = "";
         try {
           decoded = decodeURIComponent(String(prefill));
         } catch (_) {
@@ -453,11 +453,11 @@ export default function ChatPage() {
         }
         prefillRef.current = decoded;
         // если autosend не включён — просто подставим текст в инпут
-        if (String(autosend || \"\") !== \"1\") {
-          setInput((prev) => (String(prev || \"\").trim() ? prev : decoded));
+        if (String(autosend || "") !== "1") {
+          setInput((prev) => (String(prev || "").trim() ? prev : decoded));
         }
       }
-      autosendRef.current = String(autosend || \"\") === \"1\";
+      autosendRef.current = String(autosend || "") === "1";
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
@@ -1775,3 +1775,4 @@ const callBackend = async (userMessages) => {
     </div>
   );
 }
+
