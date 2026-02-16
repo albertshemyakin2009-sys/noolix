@@ -270,7 +270,7 @@ export default function ChatPage() {
   const scrollToRef = useRef("");
   const prefillRef = useRef("");
   const autosendRef = useRef(false);
-  const didAutosendRef = useRef(false);
+  const didPrefillSendRef = useRef(false);
   const didScrollToMessageRef = useRef(false);
   const [highlightMsgId, setHighlightMsgId] = useState("");
   const [highlightOpacity, setHighlightOpacity] = useState(0);
@@ -435,6 +435,7 @@ export default function ChatPage() {
       const params = new URLSearchParams(window.location.search);
       const topicFromQuery = params.get("topic");
       const scrollTo = params.get("scrollTo");
+
       const prefill = params.get("prefill");
       const autosend = params.get("autosend");
 
@@ -442,15 +443,21 @@ export default function ChatPage() {
         scrollToRef.current = String(scrollTo).trim();
       }
 
+      // prefilling message from /tests "Разобрать в диалоге"
       if (prefill && String(prefill).trim()) {
-        const p = String(prefill).trim();
-        prefillRef.current = p;
-        setInput(p);
+        let decoded = \"\";
+        try {
+          decoded = decodeURIComponent(String(prefill));
+        } catch (_) {
+          decoded = String(prefill);
+        }
+        prefillRef.current = decoded;
+        // если autosend не включён — просто подставим текст в инпут
+        if (String(autosend || \"\") !== \"1\") {
+          setInput((prev) => (String(prev || \"\").trim() ? prev : decoded));
+        }
       }
-
-      if (autosend === "1" || String(autosend || "").toLowerCase() === "true") {
-        autosendRef.current = true;
-      }
+      autosendRef.current = String(autosend || \"\") === \"1\";
 
       if (topicFromQuery && topicFromQuery.trim()) {
         const t = topicFromQuery.trim();
@@ -468,30 +475,6 @@ export default function ChatPage() {
     } catch (e) {
       console.warn("Failed to parse params from URL", e);
     }
-
-  // Авто-отправка текста из URL (?prefill=...&autosend=1)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (loading) return;
-    if (thinking) return;
-    if (!autosendRef.current) return;
-    if (didAutosendRef.current) return;
-
-    const p = String(prefillRef.current || "").trim();
-    if (!p) return;
-
-    didAutosendRef.current = true;
-
-    // отправляем напрямую, не полагаясь на успевший setState
-    try {
-      sendMessage(p);
-    } catch (e) {
-      // если что-то пошло не так — просто оставим текст в инпуте
-      console.warn("Failed to autosend prefill", e);
-      didAutosendRef.current = false;
-    }
-  }, [loading, thinking]);
-
   }, []);
 
   // --- Вызов backend (объявлен выше автостарта) ---
@@ -654,6 +637,46 @@ const callBackend = async (userMessages) => {
     // если пришли из библиотеки для просмотра сохранённого сообщения — не авто-стартуем объяснение
     if ((scrollToRef.current || "").trim()) {
       didAutoStartRef.current = true;
+      return;
+    }
+
+    // если пришли из /tests на разбор ошибки: отправляем prefill (один раз)
+    const prefillText = String(prefillRef.current || "").trim();
+    if (prefillText && autosendRef.current && !didPrefillSendRef.current) {
+      didPrefillSendRef.current = true;
+      didAutoStartRef.current = true;
+
+      const safePrefill = prefillText.length > 2000 ? prefillText.slice(0, 2000) : prefillText;
+
+      const userMessage = {
+        id: Date.now(),
+        role: "user",
+        content: safePrefill,
+        createdAt: new Date().toISOString(),
+      };
+
+      const newMessages = clampHistory([...(messages || []), userMessage]);
+
+      // очистим URL, чтобы не повторять при refresh
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("prefill");
+        url.searchParams.delete("autosend");
+        window.history.replaceState(
+          {},
+          "",
+          url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "")
+        );
+      } catch (_) {}
+
+      prefillRef.current = "";
+      autosendRef.current = false;
+
+      setMessages(newMessages);
+      setThinking(true);
+      setInput("");
+
+      callBackend(newMessages);
       return;
     }
 
@@ -1102,8 +1125,8 @@ const callBackend = async (userMessages) => {
     }
   };
 
-  const sendMessage = (overrideText) => {
-    const text = (typeof overrideText === "string" ? overrideText : input).trim();
+  const sendMessage = () => {
+    const text = input.trim();
     if (!text || thinking) return;
 
     const userMessage = {
