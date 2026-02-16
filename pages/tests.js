@@ -1943,6 +1943,66 @@ setTopic(serverTopic);
                       </p>
                     ) : null}
 
+
+                    {result && Array.isArray(questions) && Array.isArray(userAnswers) && questions.length > 0 ? (
+                      <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
+                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
+                          Ошибки по этому тесту
+                        </p>
+
+                        <div className="space-y-2">
+                          {questions
+                            .map((q, i) => ({ q, i }))
+                            .filter(({ q, i }) => userAnswers[i] !== q.correctIndex)
+                            .map(({ q, i }) => {
+                              const userIdx = userAnswers[i];
+                              const userText =
+                                typeof userIdx === "number" && q.options?.[userIdx]
+                                  ? q.options[userIdx]
+                                  : "—";
+                              const correctText =
+                                typeof q.correctIndex === "number" && q.options?.[q.correctIndex]
+                                  ? q.options[q.correctIndex]
+                                  : "—";
+                              const topicTitle = q.topicTitle || (parseTopicsInput(topic)[0] || "");
+                              const chatHref = `/chat?topic=${encodeURIComponent(topicTitle || "Разбор ошибки")}&prefill=${encodeURIComponent(
+                                `Разбери ошибку по вопросу: "${q.question}". Я ответил: "${userText}", правильный ответ: "${correctText}". Объясни, где ошибка, и дай 1 похожий пример.`
+                              )}&autosend=1`;
+
+                              return (
+                                <div
+                                  key={i}
+                                  className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold truncate">
+                                      {i + 1}. {q.question}
+                                    </p>
+                                    <p className="text-[11px] text-purple-200/80">
+                                      Твой ответ: {userText} • Правильно: {correctText}
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-2 flex-wrap md:justify-end">
+                                    <a
+                                      href={chatHref}
+                                      className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                    >
+                                      Разобрать в диалоге →
+                                    </a>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                          {questions.filter((q, i) => userAnswers[i] !== q.correctIndex).length === 0 ? (
+                            <p className="text-xs text-purple-200/80">
+                              Ошибок нет — отлично.
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {topRepeatedMistakes.length > 0 && (
                       <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
                         <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
