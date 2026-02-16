@@ -1,5 +1,5 @@
 // pages/chat.js
-import React, { useEffect, useRef, useState  } from "react";
+import { useEffect, useRef, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
