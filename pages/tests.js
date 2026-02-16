@@ -849,6 +849,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
+  const [explaining, setExplaining] = useState(false);
+  const [explainTarget, setExplainTarget] = useState("");
   const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
@@ -1227,7 +1229,19 @@ setTopic(serverTopic);
       const score = totalCount > 0 ? correctCount / totalCount : 0;
       const scorePercent = Math.round(score * 100);
 
-      setResult({ correctCount, totalCount, scorePercent });
+      const perTopicSummary = Object.entries(perTopic || {})
+        .map(([tKey, info]) => {
+          const total = info?.total || 0;
+          const correct = info?.correct || 0;
+          const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+          return { topic: tKey, correct, total, scorePercent: pct };
+        })
+        .filter((x) => x.topic && x.topic !== "Общее")
+        .sort((a, b) => (a.scorePercent - b.scorePercent) || (b.total - a.total));
+
+      const weakTopics = perTopicSummary.filter((x) => x.scorePercent < 70);
+
+      setResult({ correctCount, totalCount, scorePercent, perTopicSummary, weakTopics });
 
       const topicRaw = String(topic || "").trim();
       const isDiag = /^Диагностика\b/i.test(topicRaw);
@@ -1447,6 +1461,44 @@ setTopic(serverTopic);
       setReviewing(false);
     }
   };
+
+  const explainTopic = async (topicTitle) => {
+    if (!topicTitle || !context?.subject) return;
+    setError("");
+    setAnalysis("");
+    setExplaining(true);
+    setExplainTarget(topicTitle);
+
+    try {
+      const res = await fetch("/api/explain-topic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: context.subject,
+          topic: topicTitle,
+          level: context.level,
+        }),
+      });
+
+      if (!res.ok) {
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        throw new Error(data?.error || "Не удалось получить объяснение.");
+      }
+
+      const data = await res.json();
+      const explanation = (data?.explanation || "").toString().trim();
+      if (!explanation) throw new Error("Пустое объяснение. Попробуй ещё раз.");
+
+      setAnalysis(explanation);
+    } catch (e) {
+      setError(typeof e?.message === "string" ? e.message : "Ошибка");
+    } finally {
+      setExplaining(false);
+      setExplainTarget("");
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2E003E] via-[#200026] to-black text-white flex relative">
@@ -1884,6 +1936,44 @@ setTopic(serverTopic);
                     <p className="text-[11px] text-purple-200/80">
                       Прогресс по теме обновлён (см. страницу “Прогресс”).
                     </p>
+
+                    {Array.isArray(result?.weakTopics) && result.weakTopics.length > 0 ? (
+                      <div className="mt-2">
+                        <p className="text-[11px] text-purple-200/80">
+                          Слабые темы по этому тесту:
+                        </p>
+                        <div className="mt-1 flex flex-col gap-2">
+                          {result.weakTopics.map((t) => (
+                            <div
+                              key={t.topic}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                            >
+                              <div className="text-[12px]">
+                                <span className="font-semibold">{t.topic}</span>{" "}
+                                <span className="text-purple-200/80">· {t.scorePercent}%</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => generateFocusedTest([t.topic], 5)}
+                                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                >
+                                  Ещё 5 вопросов
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => explainTopic(t.topic)}
+                                  disabled={explaining && explainTarget === t.topic}
+                                  className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {explaining && explainTarget === t.topic ? "Объясняем…" : "Объяснить"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {saveInfo ? (
                       <p className="text-[11px] text-purple-200/80">
                         Сохранение: история {saveInfo.historyOk ? "✓" : "✕"} (в памяти: {saveInfo.historyCount}) • прогресс {saveInfo.kmOk ? "✓" : "✕"}
