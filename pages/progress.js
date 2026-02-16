@@ -802,7 +802,7 @@ export default function ProgressPage() {
                             Разобрать →
                           </a>
                           <a
-                            href="/tests"
+                            href={`/tests?topic=${encodeURIComponent(t.topic)}`}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Мини-тест
