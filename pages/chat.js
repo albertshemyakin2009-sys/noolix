@@ -268,6 +268,9 @@ export default function ChatPage() {
   const didAutoStartRef = useRef(false);
   const pendingExplainRef = useRef(null);
   const scrollToRef = useRef("");
+  const prefillRef = useRef("");
+  const autosendRef = useRef(false);
+  const didAutosendRef = useRef(false);
   const didScrollToMessageRef = useRef(false);
   const [highlightMsgId, setHighlightMsgId] = useState("");
   const [highlightOpacity, setHighlightOpacity] = useState(0);
@@ -432,9 +435,21 @@ export default function ChatPage() {
       const params = new URLSearchParams(window.location.search);
       const topicFromQuery = params.get("topic");
       const scrollTo = params.get("scrollTo");
+      const prefill = params.get("prefill");
+      const autosend = params.get("autosend");
 
       if (scrollTo && String(scrollTo).trim()) {
         scrollToRef.current = String(scrollTo).trim();
+      }
+
+      if (prefill && String(prefill).trim()) {
+        const p = String(prefill).trim();
+        prefillRef.current = p;
+        setInput(p);
+      }
+
+      if (autosend === "1" || String(autosend || "").toLowerCase() === "true") {
+        autosendRef.current = true;
       }
 
       if (topicFromQuery && topicFromQuery.trim()) {
@@ -453,6 +468,30 @@ export default function ChatPage() {
     } catch (e) {
       console.warn("Failed to parse params from URL", e);
     }
+
+  // Авто-отправка текста из URL (?prefill=...&autosend=1)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+    if (thinking) return;
+    if (!autosendRef.current) return;
+    if (didAutosendRef.current) return;
+
+    const p = String(prefillRef.current || "").trim();
+    if (!p) return;
+
+    didAutosendRef.current = true;
+
+    // отправляем напрямую, не полагаясь на успевший setState
+    try {
+      sendMessage(p);
+    } catch (e) {
+      // если что-то пошло не так — просто оставим текст в инпуте
+      console.warn("Failed to autosend prefill", e);
+      didAutosendRef.current = false;
+    }
+  }, [loading, thinking]);
+
   }, []);
 
   // --- Вызов backend (объявлен выше автостарта) ---
@@ -1063,8 +1102,8 @@ const callBackend = async (userMessages) => {
     }
   };
 
-  const sendMessage = () => {
-    const text = input.trim();
+  const sendMessage = (overrideText) => {
+    const text = (typeof overrideText === "string" ? overrideText : input).trim();
     if (!text || thinking) return;
 
     const userMessage = {
