@@ -20,6 +20,10 @@ const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
+const ACTION_BTN = "inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition no-underline";
+const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-not-allowed";
+
+
 
 
 
@@ -1704,7 +1708,7 @@ setTopic(serverTopic);
                   <button
                     type="button"
                     onClick={() => { setTopic(""); resetSession(); }}
-                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                    className={ACTION_BTN}
                   >
                     Сброс
                   </button>
@@ -1713,7 +1717,7 @@ setTopic(serverTopic);
                     type="button"
                     onClick={generateTest}
                     disabled={!canGenerate}
-                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={ACTION_BTN_DISABLED}
                   >
                     {generating ? "Генерация…" : "Сгенерировать тест"}
                   </button>
@@ -1744,14 +1748,14 @@ setTopic(serverTopic);
                 <button
                   type="button"
                   onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
-                  className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  className={ACTION_BTN}
                 >
                   {historyScope === "current" ? "Показать все" : "Только текущие"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setHistoryTick((t) => t + 1)}
-                  className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  className={ACTION_BTN}
                 >
                   Обновить
                 </button>
@@ -1816,13 +1820,13 @@ setTopic(serverTopic);
                         <div className="flex flex-wrap gap-2 md:justify-end">
                           <a
                             href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                            className={ACTION_BTN}
                           >
                             Разобрать в чате →
                           </a>
                           <a
                             href="/progress"
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                            className={ACTION_BTN}
                           >
                             Прогресс
                           </a>
@@ -1985,7 +1989,7 @@ setTopic(serverTopic);
                                   <div className="flex gap-2 flex-wrap md:justify-end">
                                     <a
                                       href={chatHref}
-                                      className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                      className={ACTION_BTN}
                                     >
                                       Разобрать в диалоге →
                                     </a>
@@ -2034,13 +2038,13 @@ setTopic(serverTopic);
                                   <button
                                     type="button"
                                     onClick={() => generateFocusedTest([m.topic || topic?.trim() || "Базовые понятия"], 2)}
-                                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                    className={ACTION_BTN}
                                   >
                                     Закрепить (2)
                                   </button>
                                   <a
                                     href={`/chat?topic=${encodeURIComponent(m.topic || "")}`}
-                                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                    className={ACTION_BTN}
                                   >
                                     Разобрать в чате →
                                   </a>
@@ -2058,14 +2062,14 @@ setTopic(serverTopic);
                         type="button"
                         onClick={reviewMistakes}
                         disabled={reviewing}
-                        className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={ACTION_BTN_DISABLED}
                       >
                         {reviewing ? "Делаем разбор…" : "Разобрать ошибки"}
                       </button>
 
                       <a
                         href="/chat"
-                        className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                        className={ACTION_BTN}
                       >
                         Обсудить в диалоге →
                       </a>
@@ -2133,7 +2137,7 @@ setTopic(serverTopic);
                             <div className="mt-3 flex gap-2">
                               <a
                                 href={chatHref}
-                                className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                className={ACTION_BTN}
                               >
                                 Разобрать в диалоге →
                               </a>
