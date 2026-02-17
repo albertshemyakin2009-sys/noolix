@@ -20,7 +20,7 @@ const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
 
-const ACTION_BTN = "inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition no-underline";
+const ACTION_BTN = "inline-flex items-center justify-center whitespace-nowrap px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition no-underline";
 const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-not-allowed";
 
 
@@ -862,6 +862,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
   const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
+  const [historyOpen, setHistoryOpen] = useState(true);
 
   // init context
   useEffect(() => {
@@ -1018,6 +1019,7 @@ useEffect(() => {
 setResult(null);
     setAnalysis("");
     setReviewing(false);
+    setHistoryOpen(true);
   };
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
@@ -1239,6 +1241,7 @@ setTopic(serverTopic);
       setTopic(displayTopic);
 
       setQuestions(qWithTopic);
+      setHistoryOpen(false);
       setUserAnswers(new Array(qWithTopic.length).fill(null));
       const nowMs = Date.now();
       setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
@@ -1747,6 +1750,13 @@ setTopic(serverTopic);
                 <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
+                  onClick={() => setHistoryOpen((v) => !v)}
+                  className={ACTION_BTN}
+                >
+                  {historyOpen ? "Свернуть" : "Развернуть"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
                   className={ACTION_BTN}
                 >
@@ -1775,6 +1785,9 @@ setTopic(serverTopic);
                 </button>
               </div>
               </div>
+
+              {historyOpen ? (
+                <>
 
               {testHistory.length > 0 && (
                 <div className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 flex flex-wrap gap-2">
@@ -1836,6 +1849,9 @@ setTopic(serverTopic);
                   })}
                 </div>
               )}
+
+                </>
+              ) : null}
             </section>
 
             {/* questions */}
