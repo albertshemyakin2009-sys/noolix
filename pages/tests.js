@@ -1816,7 +1816,7 @@ setTopic(serverTopic);
                         <div className="flex flex-wrap gap-2 md:justify-end">
                           <a
                             href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Разобрать в чате →
                           </a>
@@ -1985,7 +1985,7 @@ setTopic(serverTopic);
                                   <div className="flex gap-2 flex-wrap md:justify-end">
                                     <a
                                       href={chatHref}
-                                      className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                      className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                                     >
                                       Разобрать в диалоге →
                                     </a>
@@ -2133,7 +2133,7 @@ setTopic(serverTopic);
                             <div className="mt-3 flex gap-2">
                               <a
                                 href={chatHref}
-                                className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                               >
                                 Разобрать в диалоге →
                               </a>
