@@ -1704,7 +1704,7 @@ setTopic(serverTopic);
                   <button
                     type="button"
                     onClick={() => { setTopic(""); resetSession(); }}
-                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                   >
                     Сброс
                   </button>
@@ -1713,7 +1713,7 @@ setTopic(serverTopic);
                     type="button"
                     onClick={generateTest}
                     disabled={!canGenerate}
-                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {generating ? "Генерация…" : "Сгенерировать тест"}
                   </button>
@@ -1744,14 +1744,14 @@ setTopic(serverTopic);
                 <button
                   type="button"
                   onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
-                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
                   {historyScope === "current" ? "Показать все" : "Только текущие"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setHistoryTick((t) => t + 1)}
-                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
                   Обновить
                 </button>
@@ -2040,7 +2040,7 @@ setTopic(serverTopic);
                                   </button>
                                   <a
                                     href={`/chat?topic=${encodeURIComponent(m.topic || "")}`}
-                                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                                    className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                                   >
                                     Разобрать в чате →
                                   </a>
@@ -2058,14 +2058,14 @@ setTopic(serverTopic);
                         type="button"
                         onClick={reviewMistakes}
                         disabled={reviewing}
-                        className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {reviewing ? "Делаем разбор…" : "Разобрать ошибки"}
                       </button>
 
                       <a
                         href="/chat"
-                        className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                        className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                       >
                         Обсудить в диалоге →
                       </a>
