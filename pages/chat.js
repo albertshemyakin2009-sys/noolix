@@ -613,34 +613,7 @@ const callBackend = async (userMessages) => {
     if (!isClient) return;
     if (loading) return;
 
-    const topic = (currentTopic || "").trim();
-    if (!topic) return;
-    if (didAutoStartRef.current) return;
-
-    // если пользователь уже писал в этом чате — не вмешиваемся
-    const hasUser =
-      Array.isArray(messages) && messages.some((m) => m?.role === "user");
-    if (hasUser) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
-    const assistantCount = Array.isArray(messages)
-      ? messages.filter((m) => m?.role === "assistant").length
-      : 0;
-    if (assistantCount > 1) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    // если пришли из библиотеки для просмотра сохранённого сообщения — не авто-стартуем объяснение
-    if ((scrollToRef.current || "").trim()) {
-      didAutoStartRef.current = true;
-      return;
-    }
-
-    // если пришли из /tests на разбор ошибки: отправляем prefill (один раз)
+// если пришли из /tests на разбор ошибки: отправляем prefill (один раз)
     const prefillText = String(prefillRef.current || "").trim();
     if (prefillText && autosendRef.current && !didPrefillSendRef.current) {
       didPrefillSendRef.current = true;
@@ -677,6 +650,34 @@ const callBackend = async (userMessages) => {
       setInput("");
 
       callBackend(newMessages);
+      return;
+    }
+
+    
+    const topic = (currentTopic || "").trim();
+    if (!topic) return;
+    if (didAutoStartRef.current) return;
+
+    // если пользователь уже писал в этом чате — не вмешиваемся
+    const hasUser =
+      Array.isArray(messages) && messages.some((m) => m?.role === "user");
+    if (hasUser) {
+      didAutoStartRef.current = true;
+      return;
+    }
+
+    // если уже есть ответ ассистента после стартового — тоже не вмешиваемся
+    const assistantCount = Array.isArray(messages)
+      ? messages.filter((m) => m?.role === "assistant").length
+      : 0;
+    if (assistantCount > 1) {
+      didAutoStartRef.current = true;
+      return;
+    }
+
+    // если пришли из библиотеки для просмотра сохранённого сообщения — не авто-стартуем объяснение
+    if ((scrollToRef.current || "").trim()) {
+      didAutoStartRef.current = true;
       return;
     }
 
@@ -1775,4 +1776,3 @@ const callBackend = async (userMessages) => {
     </div>
   );
 }
-
