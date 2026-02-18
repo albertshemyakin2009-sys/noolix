@@ -1,82 +1,214 @@
 // pages/api/generate-test.js
 
-const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
 
-function normalizeText(v) {
-  return String(v ?? "").replace(/\s+/g, " ").trim();
-}
+const extractJsonObject = (text) => {
+  if (!text || typeof text !== "string") return null;
+  const s = text.trim();
 
-function validateAndNormalizeQuestions({
-  parsed,
-  topics,
-  safeQuestionCount,
-  difficultyToken,
-}) {
-  let questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+  // Fast path: already pure JSON
+  if (s.startsWith("{") && s.endsWith("}")) return s;
 
-  // Basic schema validation
-  questions = questions
-    .filter(
-      (q) =>
-        q &&
-        isNonEmptyString(q.question) &&
-        Array.isArray(q.options) &&
-        q.options.length === 4 &&
-        Number.isInteger(q.correctIndex) &&
-        q.correctIndex >= 0 &&
-        q.correctIndex < 4
-    )
-    .slice(0, safeQuestionCount);
+  // Try to find the first {...} JSON object in the text
+  const firstBrace = s.indexOf("{");
+  if (firstBrace === -1) return null;
 
-  // Normalize + deeper validation
-  const seenQuestions = new Set();
-  const cleaned = [];
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
 
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
+  for (let i = firstBrace; i < s.length; i++) {
+    const ch = s[i];
 
-    const questionText = normalizeText(q.question);
-    if (!questionText) continue;
-
-    const key = questionText.toLowerCase();
-    if (seenQuestions.has(key)) continue;
-
-    const options = q.options.map((opt) => normalizeText(opt));
-    if (options.some((opt) => !opt)) continue;
-
-    // Disallow duplicate options (case-insensitive)
-    const optSet = new Set(options.map((o) => o.toLowerCase()));
-    if (optSet.size !== 4) continue;
-
-    const correctIndex = q.correctIndex;
-    if (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3)
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
       continue;
-
-    const topicTitle =
-      isNonEmptyString(q.topicTitle) ? normalizeText(q.topicTitle) : topics?.[0]?.title || "Тема";
-    const topicId =
-      isNonEmptyString(q.topicId) ? normalizeText(q.topicId) : topics?.[0]?.id || "custom";
-
-    let normalizedDifficulty = q.difficulty;
-    if (!['easy', 'medium', 'hard'].includes(normalizedDifficulty)) {
-      normalizedDifficulty = difficultyToken;
     }
 
-    cleaned.push({
-      question: questionText,
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+
+    if (depth === 0) {
+      return s.slice(firstBrace, i + 1);
+    }
+  }
+  return null;
+};
+
+const normalizeQuestions = ({ parsed, topics, difficultyToken, safeQuestionCount }) => {
+  let questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+
+  const topicById = new Map(
+    (Array.isArray(topics) ? topics : [])
+      .map((t) => ({
+        id: typeof t?.id === "string" ? t.id.trim() : "",
+        title: typeof t?.title === "string" ? t.title.trim() : "",
+      }))
+      .filter((t) => t.id)
+      .map((t) => [t.id, t])
+  );
+
+  const normalizeDifficulty = (d) =>
+    ["easy", "medium", "hard"].includes(d) ? d : difficultyToken;
+
+  const cleanStr = (v) => String(v ?? "").trim();
+
+  const cleanOptions = (opts) =>
+    (Array.isArray(opts) ? opts : [])
+      .map((o) => cleanStr(o))
+      .filter(Boolean)
+      .slice(0, 4);
+
+  const isOkIndex = (x) =>
+    Number.isInteger(x) && x >= 0 && x < 4;
+
+  const seenStems = new Set();
+  const out = [];
+
+  for (const q of questions) {
+    if (!q || typeof q.question !== "string") continue;
+
+    const question = cleanStr(q.question);
+    if (!question) continue;
+
+    const options = cleanOptions(q.options);
+    if (options.length !== 4) continue;
+
+    // avoid duplicate options
+    const optKey = options.map((o) => o.toLowerCase()).join("||");
+    if (new Set(options.map((o) => o.toLowerCase())).size !== 4) continue;
+
+    const correctIndex = Number(q.correctIndex);
+    if (!isOkIndex(correctIndex)) continue;
+
+    const stem = question.toLowerCase().replace(/\s+/g, " ").slice(0, 140);
+    if (seenStems.has(stem)) continue;
+    seenStems.add(stem);
+
+    let topicId = cleanStr(q.topicId);
+    let topicTitle = cleanStr(q.topicTitle);
+
+    if (!topicId) topicId = topics?.[0]?.id || "custom";
+    if (!topicTitle) topicTitle = topics?.[0]?.title || "Тема";
+
+    if (topicById.has(topicId)) {
+      const t = topicById.get(topicId);
+      if (!topicTitle) topicTitle = t.title || topicTitle;
+    }
+
+    out.push({
+      question,
       options,
       correctIndex,
       topicId,
       topicTitle,
-      difficulty: normalizedDifficulty,
-      index: cleaned.length,
+      difficulty: normalizeDifficulty(q.difficulty),
     });
 
-    seenQuestions.add(key);
+    if (out.length >= safeQuestionCount) break;
   }
 
-  return cleaned;
+  return out.map((q, index) => ({ ...q, index }));
+};
+
+const lower = (v) => String(v || "").toLowerCase();
+
+const detectTopicMode = (topics) => {
+  const t = (Array.isArray(topics) ? topics : []).map((x) => lower(x?.title)).join(" ");
+  const isGeometry =
+    /(геометр|треуголь|окружн|угол|вектор|площад|параллел|трапец|ромб)/.test(t);
+  const isAlgebra =
+    /(алгебр|уравнен|квадратн|неравенств|функц|логарифм|степен|прогресс|многочлен|корен)/.test(t);
+  if (isGeometry && !isAlgebra) return "geometry";
+  if (isAlgebra && !isGeometry) return "algebra";
+  return "mixed";
+};
+
+const buildForbiddenText = (topics, subject) => {
+  const mode = detectTopicMode(topics);
+  const subj = lower(subject);
+  if (subj.includes("матем")) {
+    if (mode === "algebra") {
+      return [
+        "Запрещено уходить в геометрию (треугольники/окружности/углы/площади/векторы/подобие).",
+        "Все вопросы должны быть именно по алгебре и строго по выбранным темам.",
+      ].join("\n");
+    }
+    if (mode === "geometry") {
+      return [
+        "Запрещено уходить в алгебру (уравнения/неравенства/логарифмы/функции/прогрессии), если это не часть выбранных тем.",
+        "Все вопросы должны быть именно по геометрии и строго по выбранным темам.",
+      ].join("\n");
+    }
+  }
+  return "Не уходи в другие разделы предмета: все вопросы должны строго соответствовать выбранным темам.";
+};
+
+const looksOffTopic = (questions, topics, subject) => {
+  const subj = lower(subject);
+  if (!subj.includes("матем")) return false;
+  const mode = detectTopicMode(topics);
+  if (mode === "mixed") return false;
+
+  const geoKw = /(треуголь|окружн|угол|площад|вектор|параллел|трапец|ромб|диагонал)/i;
+  const algKw = /(уравнен|неравенств|функц|логарифм|степен|прогресс|корен|многочлен)/i;
+
+  let bad = 0;
+  for (const q of questions || []) {
+    const s = String(q?.question || "");
+    if (mode === "algebra" && geoKw.test(s)) bad++;
+    if (mode === "geometry" && algKw.test(s)) bad++;
+  }
+  // if 2+ questions clearly from the other area — treat as drift
+  return bad >= 2;
+};
+
+const buildRepairPrompt = ({ rawText, subject, topicsListForPrompt, safeQuestionCount, difficultyToken, difficultyLabel, avoidText }) => {
+  return `
+Твоя задача — ИСПРАВИТЬ ответ так, чтобы он стал строго валидным JSON по схеме теста.
+Не меняй смысл предмета/уровня сложности, но исправь структуру, недостающие поля, количество вариантов, индексы и т.д.
+Если в исходном тексте несколько объектов — оставь один.
+
+Предмет: ${subject}
+Количество вопросов: ${safeQuestionCount}
+Сложность: ${difficultyToken} (${difficultyLabel})
+
+Темы:
+${topicsListForPrompt}
+
+${avoidText ? `Ограничение: НЕ используй формулировки, близкие к этим стемам:\n${avoidText}\n` : ""}
+
+Верни СТРОГО ОДИН JSON без текста до/после:
+
+{
+  "questions": [
+    {
+      "question": "текст вопроса",
+      "options": ["вариант 1", "вариант 2", "вариант 3", "вариант 4"],
+      "correctIndex": 0,
+      "topicId": "topicId из списка или custom",
+      "topicTitle": "название темы",
+      "difficulty": "easy" | "medium" | "hard"
+    }
+  ]
 }
+
+Ниже исходный ответ, который нужно поправить:
+
+${rawText}
+`.trim();
+};
+
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -99,6 +231,7 @@ export default async function handler(req, res) {
       topics,
       questionCount = 5,
       difficulty = "medium",
+      avoid,
     } = req.body || {};
 
     if (!subject || !Array.isArray(topics) || topics.length === 0) {
@@ -137,6 +270,14 @@ export default async function handler(req, res) {
       })
       .join("\n");
 
+    const avoidArr = Array.isArray(avoid) ? avoid : [];
+    const avoidText = avoidArr
+      .map((s) => String(s || "").trim())
+      .filter(Boolean)
+      .slice(0, 30)
+      .map((s) => `- ${s}`)
+      .join("\n");
+
     const systemPrompt =
       "Ты — опытный преподаватель и составитель школьных тестов (ЕГЭ, ОГЭ, олимпиадных заданий) по разным предметам. " +
       "Твоя задача — генерировать проверяемые тестовые вопросы с одним правильным ответом и понятной структурой JSON.";
@@ -146,6 +287,8 @@ export default async function handler(req, res) {
 
 Темы для теста (используй их содержательно, НЕ игнорируй):
 ${topicsListForPrompt}
+
+${buildForbiddenText(topics, subject)}
 
 Количество вопросов: ${safeQuestionCount}
 
@@ -159,8 +302,7 @@ ${topicsListForPrompt}
 - Варианты ответа должны быть правдоподобными (никаких очевидно шуточных или бессмысленных вариантов).
 - Нельзя повторять один и тот же вопрос.
 - Формулировки должны быть естественными для школьных заданий.
-
-Обязательный формат ответа (СТРОГО JSON, без текста до или после):
+\nЕсли передан список avoid — НЕ повторяй и не перефразируй вопросы, похожие на эти стемы (это чтобы не повторять тесты):\n${avoidText || "(нет)"}.\n\nОбязательный формат ответа (СТРОГО JSON, без текста до или после):
 
 {
   "questions": [
@@ -186,101 +328,153 @@ ${topicsListForPrompt}
 Только один корректный JSON-объект.
 `;
 
-    const temperature = difficultyToken === "hard" ? 0.5 : 0.3;
-
-    const requestOnce = async (extraInstruction = "") => {
-      const combinedUserPrompt = `${userPrompt}\n\n${extraInstruction}`.trim();
-
-      const openaiResponse = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4.1-mini",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: combinedUserPrompt },
-            ],
-            temperature,
-            max_tokens: 1200,
-          }),
-        }
-      );
-
-      if (!openaiResponse.ok) {
-        const errorBody = await openaiResponse.text();
-        return { ok: false, errorBody, status: openaiResponse.status };
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: difficultyToken === "hard" ? 0.5 : 0.3,
+          max_tokens: 1200,
+        }),
       }
+    );
 
-      const completion = await openaiResponse.json();
-      const raw =
-        completion.choices?.[0]?.message?.content &&
-        String(completion.choices[0].message.content).trim();
-
-      return { ok: true, raw: raw || "" };
-    };
-
-    const strictFixInstruction = `
-Проверь ответ перед отправкой и исправь формат. Требования:
-- Верни только один JSON-объект (без текста/markdown).
-- questions: массив объектов.
-- Для каждого вопроса: ровно 4 уникальных непустых options.
-- correctIndex: целое 0..3.
-- topicId/topicTitle: соответствуют списку тем.
-Если сомневаешься — переформулируй вопрос и варианты так, чтобы формат был валиден.
-`;
-
-    const attempts = [
-      { extra: "" },
-      { extra: strictFixInstruction },
-    ];
-
-    let lastRaw = "";
-    let questions = [];
-
-    for (let attempt = 0; attempt < attempts.length; attempt++) {
-      const r = await requestOnce(attempts[attempt].extra);
-
-      if (!r.ok) {
-        console.error("OpenAI API error:", r.status, r.errorBody);
-        return res.status(500).json({
-          error: "Ошибка при обращении к OpenAI API",
-          details: r.errorBody,
-        });
-      }
-
-      lastRaw = r.raw;
-      if (!lastRaw) continue;
-
-      let parsed;
-      try {
-        parsed = JSON.parse(lastRaw);
-      } catch (e) {
-        console.error("JSON parse error in /api/generate-test:", e);
-        continue;
-      }
-
-      questions = validateAndNormalizeQuestions({
-        parsed,
-        topics,
-        safeQuestionCount,
-        difficultyToken,
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      console.error("OpenAI API error:", openaiResponse.status, errorBody);
+      return res.status(500).json({
+        error: "Ошибка при обращении к OpenAI API",
+        details: errorBody,
       });
-
-      // Consider generation "good" if we have at least 2 questions (or 1 if asked for 1)
-      const minAcceptable = safeQuestionCount === 1 ? 1 : 2;
-      if (questions.length >= minAcceptable) break;
     }
 
-    if (questions.length === 0) {
-      console.error("Failed to generate valid questions. Last raw:", lastRaw);
+    const completion = await openaiResponse.json();
+    const raw =
+      completion.choices?.[0]?.message?.content &&
+      String(completion.choices[0].message.content).trim();
+
+    if (!raw) {
       return res.status(500).json({
-        error:
-          "Не удалось сгенерировать корректный тест (формат/варианты ответов). Попробуй ещё раз.",
+        error: "Модель не вернула контент при генерации теста.",
+      });
+    }
+
+    let parsed;
+    let rawForParse = raw;
+
+    // 1) Try parse directly, then try extract JSON object from surrounding text.
+    const extracted = extractJsonObject(rawForParse);
+    if (extracted) rawForParse = extracted;
+
+    try {
+      parsed = JSON.parse(rawForParse);
+    } catch (e) {
+      parsed = null;
+    }
+
+    // 2) Normalize & validate.
+    let questions = parsed ? normalizeQuestions({ parsed, topics, difficultyToken, safeQuestionCount }) : [];
+// 2.5) If the model drifted away from the selected topics (e.g., algebra topic but geometry questions),
+// try one strict re-generation pass (content fix, not just JSON repair).
+if (questions && questions.length > 0 && looksOffTopic(questions, topics, subject)) {
+  const strictSystem =
+    systemPrompt +
+    " ВАЖНО: ты строго соблюдаешь темы теста и НЕ уходишь в другие разделы. Если тема алгебра — никакой геометрии и наоборот.";
+
+  const strictUser = userPrompt + "\n\nПроверь каждый вопрос: он должен быть строго по выбранным темам. Если не по теме — замени на вопрос по теме.";
+
+  const strictResp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: strictSystem },
+        { role: "user", content: strictUser },
+      ],
+      temperature: 0.0,
+      max_tokens: 1200,
+    }),
+  });
+
+  if (strictResp.ok) {
+    const strictData = await strictResp.json();
+    const strictRaw = String(strictData?.choices?.[0]?.message?.content || "").trim();
+    const strictExtracted = extractJsonObject(strictRaw) || strictRaw;
+    try {
+      const strictParsed = JSON.parse(strictExtracted);
+      const strictQuestions = normalizeQuestions({
+        parsed: strictParsed,
+        topics,
+        difficultyToken,
+        safeQuestionCount,
+      });
+      if (strictQuestions && strictQuestions.length > 0 && !looksOffTopic(strictQuestions, topics, subject)) {
+        questions = strictQuestions;
+      }
+    } catch (_) {}
+  }
+}
+
+    // 3) If failed, attempt a single repair pass with the model.
+    if (!questions || questions.length === 0) {
+      const systemFix =
+        "Ты — строгий валидатор и редактор JSON. Ты возвращаешь только валидный JSON без пояснений.";
+
+      const userFix = buildRepairPrompt({
+        rawText: raw,
+        subject,
+        topicsListForPrompt,
+        safeQuestionCount,
+        difficultyToken,
+        difficultyLabel,
+        avoidText,
+      });
+
+      const fixResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: systemFix },
+            { role: "user", content: userFix },
+          ],
+          temperature: 0.0,
+          max_tokens: 1400,
+        }),
+      });
+
+      if (fixResp.ok) {
+        const fixData = await fixResp.json();
+        const fixRaw = String(fixData?.choices?.[0]?.message?.content || "").trim();
+        const fixExtracted = extractJsonObject(fixRaw) || fixRaw;
+        try {
+          const fixParsed = JSON.parse(fixExtracted);
+          questions = normalizeQuestions({ parsed: fixParsed, topics, difficultyToken, safeQuestionCount });
+        } catch (_) {}
+      }
+    }
+
+    if (!questions || questions.length === 0) {
+      console.error("generate-test: could not validate questions", { raw: raw?.slice?.(0, 500) });
+      return res.status(500).json({
+        error: "Не удалось получить валидные вопросы теста. Попробуй ещё раз.",
       });
     }
 
