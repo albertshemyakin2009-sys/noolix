@@ -1700,8 +1700,6 @@ setTopic(serverTopic);
                 <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
-                  <button
-                  type="button"
                   onClick={() => setHistoryCollapsed((v) => !v)}
                   className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
