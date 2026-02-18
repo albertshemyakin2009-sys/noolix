@@ -834,10 +834,13 @@ export default function TestsPage() {
   
 
   const [difficulty, setDifficulty] = useState('medium');
-  const [topic, setTopic] = useState("");
-  // IMPORTANT: keep the latest topic synchronously to avoid "Общее" during generation
-  // when user clicks a suggested topic and immediately hits "Generate".
+const [topic, setTopic] = useState("");
+
+  // Keep a synchronous copy of the topic input to avoid stale state on быстрых кликах.
   const topicLiveRef = useRef("");
+  useEffect(() => {
+    topicLiveRef.current = String(topic || "");
+  }, [topic]);
 
   // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
   const pendingAutoTopicRef = useRef(null);
@@ -888,7 +891,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
         const decoded = String(t).trim();
         pendingAutoTopicRef.current = decoded;
         setTopic(decoded);
-        topicLiveRef.current = decoded;
       }
     } catch (_) {}
   }, []);
@@ -999,12 +1001,9 @@ const clearTestHistory = () => {
     // Если пришли из прогресса с ?topic=..., не затираем тему (иначе пользователь видит пустой экран)
     const pending = pendingAutoTopicRef.current;
     if (pending && String(pending).trim()) {
-      const v = String(pending).trim();
-      setTopic(v);
-      topicLiveRef.current = v;
+      setTopic(String(pending).trim());
     } else {
       setTopic("");
-      topicLiveRef.current = "";
     }
     setSentTopicForGeneration("");
     setDiagnosticLabel("");
@@ -1044,7 +1043,7 @@ setResult(null);
       if (!titles.length) throw new Error("Нет темы для закрепления.");
 
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      setSentTopicForGeneration(titles.join(", ") || "");
+      setSentTopicForGeneration((titles.filter((t) => String(t || "").trim() && normalizeTopicKey(t) !== "Общее").join(", ")) || titles[0] || "");
 
       const avoid = getAvoidStems({
         subject: context.subject,
@@ -1121,16 +1120,23 @@ setTopic(serverTopic);
 
   const generateTest = async () => {
     setError("");
+    // Snapshot topic synchronously (user may click a suggested topic and immediately press Generate).
+    const topicSnapshot = String(topicLiveRef.current || topic || "");
+    const manualTopics = parseTopicsInput(topicSnapshot)
+      .map(normalizeTopicKey)
+      .filter((t) => t && !isBadManualTopic(t));
+
+    // Show the real chosen topic(s) while generating (avoid "Общее").
+    if (manualTopics.length > 0) {
+      setSentTopicForGeneration(manualTopics.join(", "));
+    }
+
     setGenerating(true);
     setAnalysis("");
     setResult(null);
 
     try {
       // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
-      const topicInputNow = (topicLiveRef.current || topic || "").toString();
-      const manualTopics = parseTopicsInput(topicInputNow)
-        .map(normalizeTopicKey)
-        .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
 
       if (!context.subject) {
@@ -1145,17 +1151,13 @@ setTopic(serverTopic);
       if (!titles.length) {
         const diag = `Диагностика по ${toDativeRu(context.subject)}`;
         setDiagnosticLabel(diag);
-        setTopic(diag);
         topicLiveRef.current = diag;
+        setTopic(diag);
         const gen = `Базовые темы по ${context.subject}`;
         titles = [gen];
       } else {
         setDiagnosticLabel("");
-        if (manualTopics.length > 0) {
-          const v = manualTopics.join(", ");
-          setTopic(v);
-          topicLiveRef.current = v;
-        }
+        if (manualTopics.length > 0) { const v = manualTopics.join(", "); topicLiveRef.current = v; setTopic(v); }
       }
 
       setSentTopicForGeneration(titles.join(", ") || "");
@@ -1252,7 +1254,6 @@ setTopic(serverTopic);
       }
       const displayTopic = topicSet.length > 0 ? topicSet.join(", ") : resolvedTopic;
       setTopic(displayTopic);
-      topicLiveRef.current = displayTopic;
 
       setQuestions(qWithTopic);
       setHistoryOpen(false);
@@ -1671,11 +1672,7 @@ setTopic(serverTopic);
                   </p>
                   <input
                     value={topic}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      topicLiveRef.current = v;
-                      setTopic(v);
-                    }}
+                    onChange={(e) => { const v = e.target.value; topicLiveRef.current = v; setTopic(v); }}
                     disabled={generating}
                     placeholder="Например: Производная, Кинематика, Причастные обороты…"
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
