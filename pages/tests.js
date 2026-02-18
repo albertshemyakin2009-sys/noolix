@@ -835,12 +835,8 @@ export default function TestsPage() {
 
   const [difficulty, setDifficulty] = useState('medium');
 const [topic, setTopic] = useState("");
-
-  // Keep a synchronous copy of the topic input to avoid stale state on быстрых кликах.
-  const topicLiveRef = useRef("");
-  useEffect(() => {
-    topicLiveRef.current = String(topic || "");
-  }, [topic]);
+  const topicInputRef = useRef("");
+  useEffect(() => { topicInputRef.current = topic; }, [topic]);
 
   // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
   const pendingAutoTopicRef = useRef(null);
@@ -1043,7 +1039,7 @@ setResult(null);
       if (!titles.length) throw new Error("Нет темы для закрепления.");
 
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      setSentTopicForGeneration((titles.filter((t) => String(t || "").trim() && normalizeTopicKey(t) !== "Общее").join(", ")) || titles[0] || "");
+      setSentTopicForGeneration(titles.join(", ") || "");
 
       const avoid = getAvoidStems({
         subject: context.subject,
@@ -1120,23 +1116,15 @@ setTopic(serverTopic);
 
   const generateTest = async () => {
     setError("");
-    // Snapshot topic synchronously (user may click a suggested topic and immediately press Generate).
-    const topicSnapshot = String(topicLiveRef.current || topic || "");
-    const manualTopics = parseTopicsInput(topicSnapshot)
-      .map(normalizeTopicKey)
-      .filter((t) => t && !isBadManualTopic(t));
-
-    // Show the real chosen topic(s) while generating (avoid "Общее").
-    if (manualTopics.length > 0) {
-      setSentTopicForGeneration(manualTopics.join(", "));
-    }
-
     setGenerating(true);
     setAnalysis("");
     setResult(null);
 
     try {
       // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
+      const manualTopics = parseTopicsInput(topicInputRef.current || topic)
+        .map(normalizeTopicKey)
+        .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
 
       if (!context.subject) {
@@ -1151,13 +1139,13 @@ setTopic(serverTopic);
       if (!titles.length) {
         const diag = `Диагностика по ${toDativeRu(context.subject)}`;
         setDiagnosticLabel(diag);
-        topicLiveRef.current = diag;
+        topicInputRef.current = diag;
         setTopic(diag);
         const gen = `Базовые темы по ${context.subject}`;
         titles = [gen];
       } else {
         setDiagnosticLabel("");
-        if (manualTopics.length > 0) { const v = manualTopics.join(", "); topicLiveRef.current = v; setTopic(v); }
+        if (manualTopics.length > 0) { const v = manualTopics.join(", "); topicInputRef.current = v; setTopic(v); }
       }
 
       setSentTopicForGeneration(titles.join(", ") || "");
@@ -1672,7 +1660,7 @@ setTopic(serverTopic);
                   </p>
                   <input
                     value={topic}
-                    onChange={(e) => { const v = e.target.value; topicLiveRef.current = v; setTopic(v); }}
+                    onChange={(e) => { const v = e.target.value; topicInputRef.current = v; setTopic(v); }}
                     disabled={generating}
                     placeholder="Например: Производная, Кинематика, Причастные обороты…"
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
@@ -1707,7 +1695,7 @@ setTopic(serverTopic);
                                 ? cur.filter((x) => x.toLowerCase() !== String(t).toLowerCase())
                                 : [...cur, t];
                               const next = merged.join(", ");
-                              topicLiveRef.current = next;
+                              topicInputRef.current = next;
                               return next;
                             });
                           }}
@@ -1727,7 +1715,7 @@ setTopic(serverTopic);
                 <div className="flex gap-2 md:justify-end">
                   <button
                     type="button"
-                    onClick={() => { topicLiveRef.current = ""; setTopic(""); resetSession(); }}
+                    onClick={() => { topicInputRef.current = ""; setTopic(""); resetSession(); }}
                     className={ACTION_BTN}
                   >
                     Сброс
