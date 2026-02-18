@@ -1,5 +1,5 @@
 // pages/tests.js
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -857,8 +857,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
-  const [historyScope, setHistoryScope] = useState("current");
-  const [historyCollapsed, setHistoryCollapsed] = useState(false); // "current" | "all"
+  const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
 
   // init context
   useEffect(() => {
@@ -999,7 +998,6 @@ setResult(null);
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
     setError("");
     setGenerating(true);
-    setHistoryCollapsed(true);
     setAnalysis("");
     setResult(null);
     try {
@@ -1067,7 +1065,7 @@ setTopic(serverTopic);
 
     try {
       // если в инпуте отображалась "Диагностика..." — не принимаем это как настоящую тему
-      const manualTopics = parseTopicsInput(topic)
+      const manualTopics = parseTopicsInput(topicRef.current || topic)
         .map(normalizeTopicKey)
         .filter((t) => t && !isBadManualTopic(t));
       const autoWeakest = getWeakestTopicFromProgress(context.subject, context.level);
@@ -1700,13 +1698,6 @@ setTopic(serverTopic);
                 <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => setHistoryCollapsed((v) => !v)}
-                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
-                >
-                  {historyCollapsed ? "Развернуть" : "Свернуть"}
-                </button>
-                <button
-                  type="button"
                   onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
                   className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
@@ -1736,7 +1727,7 @@ setTopic(serverTopic);
               </div>
               </div>
 
-              {!historyCollapsed && testHistory.length > 0 && (
+              {testHistory.length > 0 && (
                 <div className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 flex flex-wrap gap-2">
                   <span>Показано: <b>{testHistory.length}</b></span>
                   <span>•</span>
@@ -1754,9 +1745,7 @@ setTopic(serverTopic);
                 </div>
               )}
 
-              {historyCollapsed ? (
-                <p className="text-xs text-purple-200/80">История свернута.</p>
-              ) : testHistory.length === 0 ? (
+              {testHistory.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
                   Пока нет попыток. Пройди мини-тест — и здесь появится история.
                 </p>
