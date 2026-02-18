@@ -1,5 +1,5 @@
 // pages/tests.js
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
@@ -19,10 +19,6 @@ const TEST_HISTORY_KEY = "noolixTestsHistory";
 const TEST_HISTORY_BY_SUBJECT_KEY = "noolixTestsHistoryBySubject";
 const MISTAKE_STATS_KEY = "noolixMistakeStats";
 const LAST_TOPIC_KEY = "noolixLastTopicCandidate";
-
-const ACTION_BTN = "inline-flex items-center justify-center whitespace-nowrap px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition no-underline";
-const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-not-allowed";
-
 
 
 
@@ -836,9 +832,9 @@ export default function TestsPage() {
   const [difficulty, setDifficulty] = useState('medium');
 const [topic, setTopic] = useState("");
 
-  // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
-  const pendingAutoTopicRef = useRef(null);
-  const autoStartedFromQueryRef = useRef(false);
+  // Keep latest topic synchronously (avoids stale state when clicking suggested topic then immediately generating).
+  const topicRef = useRef("");
+  useEffect(() => { topicRef.current = topic; }, [topic]);
   
 
   const [suggestedTopics, setSuggestedTopics] = useState([]);
@@ -861,8 +857,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
-  const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyScope, setHistoryScope] = useState("current");
+  const [historyCollapsed, setHistoryCollapsed] = useState(false); // "current" | "all"
 
   // init context
   useEffect(() => {
@@ -872,21 +868,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (parsed && typeof parsed === "object") {
       setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
     }
-  }, []);
-
-  // If user came from Progress page ("Мини‑тест" button), we may have ?topic=...
-  // In that case, prefill the topic input and auto-generate a short mini-test once.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get("topic");
-      if (t && String(t).trim()) {
-        const decoded = String(t).trim();
-        pendingAutoTopicRef.current = decoded;
-        setTopic(decoded);
-      }
-    } catch (_) {}
   }, []);
 
   const applyContextChange = (nextCtx) => {
@@ -992,13 +973,7 @@ const clearTestHistory = () => {
   
   // Сбрасываем тему/сессию при смене предмета или уровня
   useEffect(() => {
-    // Если пришли из прогресса с ?topic=..., не затираем тему (иначе пользователь видит пустой экран)
-    const pending = pendingAutoTopicRef.current;
-    if (pending && String(pending).trim()) {
-      setTopic(String(pending).trim());
-    } else {
-      setTopic("");
-    }
+    setTopic("");
     setSentTopicForGeneration("");
     setDiagnosticLabel("");
     resetSession();
@@ -1019,12 +994,12 @@ useEffect(() => {
 setResult(null);
     setAnalysis("");
     setReviewing(false);
-    setHistoryOpen(true);
   };
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
     setError("");
     setGenerating(true);
+    setHistoryCollapsed(true);
     setAnalysis("");
     setResult(null);
     try {
@@ -1037,7 +1012,7 @@ setResult(null);
       if (!titles.length) throw new Error("Нет темы для закрепления.");
 
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      setSentTopicForGeneration(titles.join(", ") || "");
+      setSentTopicForGeneration((titles.filter((t) => String(t||"").trim() && String(t).trim() !== "Общее").join(", ") || titles[0] || ""));
 
       const avoid = getAvoidStems({
         subject: context.subject,
@@ -1084,34 +1059,6 @@ setTopic(serverTopic);
     }
   };
 
-  // Auto-generate mini-test when opened as /tests?topic=...
-  useEffect(() => {
-    const pending = pendingAutoTopicRef.current;
-    if (!pending || autoStartedFromQueryRef.current) return;
-    if (generating) return;
-    if (!context?.subject || !context?.level) return;
-    if (questions.length) return;
-
-    autoStartedFromQueryRef.current = true;
-
-    // Generate a short mini-test (5 questions) for the chosen topic.
-    // Defer to next paint so UI can render the prefilled topic first.
-    const id = window.requestAnimationFrame(() => {
-      generateFocusedTest([String(pending).trim()], 5);
-      // Clear query param to avoid re-trigger on back/forward
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("topic");
-        window.history.replaceState({}, "", url.toString());
-      } catch (_) {}
-    });
-
-    return () => {
-      try { window.cancelAnimationFrame(id); } catch (_) {}
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level, generating, questions.length]);
-
   const generateTest = async () => {
     setError("");
     setGenerating(true);
@@ -1137,15 +1084,17 @@ setTopic(serverTopic);
       if (!titles.length) {
         const diag = `Диагностика по ${toDativeRu(context.subject)}`;
         setDiagnosticLabel(diag);
+        topicRef.current = diag;
         setTopic(diag);
         const gen = `Базовые темы по ${context.subject}`;
         titles = [gen];
       } else {
         setDiagnosticLabel("");
-        if (manualTopics.length > 0) setTopic(manualTopics.join(", "));
+        if (manualTopics.length > 0) topicRef.current = manualTopics.join(", ");
+        setTopic(topicRef.current);
       }
 
-      setSentTopicForGeneration(titles.join(", ") || "");
+      setSentTopicForGeneration((titles.filter((t) => String(t||"").trim() && String(t).trim() !== "Общее").join(", ") || titles[0] || ""));
 
       // 2) В API отправляем объекты {id,title}.
       // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
@@ -1241,7 +1190,6 @@ setTopic(serverTopic);
       setTopic(displayTopic);
 
       setQuestions(qWithTopic);
-      setHistoryOpen(false);
       setUserAnswers(new Array(qWithTopic.length).fill(null));
       const nowMs = Date.now();
       setQuestionShownAt(new Array(qWithTopic.length).fill(nowMs));
@@ -1657,7 +1605,7 @@ setTopic(serverTopic);
                   </p>
                   <input
                     value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; topicRef.current = v; setTopic(v); }}
                     disabled={generating}
                     placeholder="Например: Производная, Кинематика, Причастные обороты…"
                     className="mt-2 w-full text-xs md:text-sm px-3 py-2 rounded-xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder:text-purple-300/70"
@@ -1691,7 +1639,9 @@ setTopic(serverTopic);
                               const merged = exists
                                 ? cur.filter((x) => x.toLowerCase() !== String(t).toLowerCase())
                                 : [...cur, t];
-                              return merged.join(", ");
+                              const next = merged.join(", ");
+                              topicRef.current = next;
+                              return next;
                             });
                           }}
                           className="px-3 py-2 rounded-full border text-[11px] transition bg-black/30 border-white/20 text-purple-50 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1711,7 +1661,7 @@ setTopic(serverTopic);
                   <button
                     type="button"
                     onClick={() => { setTopic(""); resetSession(); }}
-                    className={ACTION_BTN}
+                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                   >
                     Сброс
                   </button>
@@ -1720,7 +1670,7 @@ setTopic(serverTopic);
                     type="button"
                     onClick={generateTest}
                     disabled={!canGenerate}
-                    className={ACTION_BTN_DISABLED}
+                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {generating ? "Генерация…" : "Сгенерировать тест"}
                   </button>
@@ -1750,22 +1700,22 @@ setTopic(serverTopic);
                 <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => setHistoryOpen((v) => !v)}
-                  className={ACTION_BTN}
-                >
-                  {historyOpen ? "Свернуть" : "Развернуть"}
-                </button>
-                <button
+                  <button
                   type="button"
-                  onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
-                  className={ACTION_BTN}
+                  onClick={() => setHistoryCollapsed((v) => !v)}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  {historyCollapsed ? "Развернуть" : "Свернуть"}
+                </button>
+                onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
                   {historyScope === "current" ? "Показать все" : "Только текущие"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setHistoryTick((t) => t + 1)}
-                  className={ACTION_BTN}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
                   Обновить
                 </button>
@@ -1786,10 +1736,7 @@ setTopic(serverTopic);
               </div>
               </div>
 
-              {historyOpen ? (
-                <>
-
-              {testHistory.length > 0 && (
+              {!historyCollapsed && testHistory.length > 0 && (
                 <div className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 flex flex-wrap gap-2">
                   <span>Показано: <b>{testHistory.length}</b></span>
                   <span>•</span>
@@ -1807,7 +1754,9 @@ setTopic(serverTopic);
                 </div>
               )}
 
-              {testHistory.length === 0 ? (
+              {historyCollapsed ? (
+                <p className="text-xs text-purple-200/80">История свернута.</p>
+              ) : testHistory.length === 0 ? (
                 <p className="text-xs text-purple-200/80">
                   Пока нет попыток. Пройди мини-тест — и здесь появится история.
                 </p>
@@ -1833,13 +1782,13 @@ setTopic(serverTopic);
                         <div className="flex flex-wrap gap-2 md:justify-end">
                           <a
                             href={`/chat?topic=${encodeURIComponent(h.topic || "")}`}
-                            className={ACTION_BTN}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                           >
                             Разобрать в чате →
                           </a>
                           <a
                             href="/progress"
-                            className={ACTION_BTN}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                           >
                             Прогресс
                           </a>
@@ -1849,9 +1798,6 @@ setTopic(serverTopic);
                   })}
                 </div>
               )}
-
-                </>
-              ) : null}
             </section>
 
             {/* questions */}
@@ -1963,66 +1909,6 @@ setTopic(serverTopic);
                       </p>
                     ) : null}
 
-
-                    {result && Array.isArray(questions) && Array.isArray(userAnswers) && questions.length > 0 ? (
-                      <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
-                        <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                          Ошибки по этому тесту
-                        </p>
-
-                        <div className="space-y-2">
-                          {questions
-                            .map((q, i) => ({ q, i }))
-                            .filter(({ q, i }) => userAnswers[i] !== q.correctIndex)
-                            .map(({ q, i }) => {
-                              const userIdx = userAnswers[i];
-                              const userText =
-                                typeof userIdx === "number" && q.options?.[userIdx]
-                                  ? q.options[userIdx]
-                                  : "—";
-                              const correctText =
-                                typeof q.correctIndex === "number" && q.options?.[q.correctIndex]
-                                  ? q.options[q.correctIndex]
-                                  : "—";
-                              const topicTitle = q.topicTitle || (parseTopicsInput(topic)[0] || "");
-                              const chatHref = `/chat?topic=${encodeURIComponent(topicTitle || "Разбор ошибки")}&prefill=${encodeURIComponent(
-                                `Разбери ошибку по вопросу: "${q.question}". Я ответил: "${userText}", правильный ответ: "${correctText}". Объясни, где ошибка, и дай 1 похожий пример.`
-                              )}&autosend=1`;
-
-                              return (
-                                <div
-                                  key={i}
-                                  className="bg-black/30 border border-white/10 rounded-2xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
-                                >
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-semibold truncate">
-                                      {i + 1}. {q.question}
-                                    </p>
-                                    <p className="text-[11px] text-purple-200/80">
-                                      Твой ответ: {userText} • Правильно: {correctText}
-                                    </p>
-                                  </div>
-                                  <div className="flex gap-2 flex-wrap md:justify-end">
-                                    <a
-                                      href={chatHref}
-                                      className={ACTION_BTN}
-                                    >
-                                      Разобрать в диалоге →
-                                    </a>
-                                  </div>
-                                </div>
-                              );
-                            })}
-
-                          {questions.filter((q, i) => userAnswers[i] !== q.correctIndex).length === 0 ? (
-                            <p className="text-xs text-purple-200/80">
-                              Ошибок нет — отлично.
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-
                     {topRepeatedMistakes.length > 0 && (
                       <div className="mt-3 bg-black/20 border border-white/10 rounded-2xl p-3 space-y-2">
                         <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
@@ -2054,13 +1940,13 @@ setTopic(serverTopic);
                                   <button
                                     type="button"
                                     onClick={() => generateFocusedTest([m.topic || topic?.trim() || "Базовые понятия"], 2)}
-                                    className={ACTION_BTN}
+                                    className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                                   >
                                     Закрепить (2)
                                   </button>
                                   <a
                                     href={`/chat?topic=${encodeURIComponent(m.topic || "")}`}
-                                    className={ACTION_BTN}
+                                    className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                                   >
                                     Разобрать в чате →
                                   </a>
@@ -2078,14 +1964,14 @@ setTopic(serverTopic);
                         type="button"
                         onClick={reviewMistakes}
                         disabled={reviewing}
-                        className={ACTION_BTN_DISABLED}
+                        className="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {reviewing ? "Делаем разбор…" : "Разобрать ошибки"}
                       </button>
 
                       <a
                         href="/chat"
-                        className={ACTION_BTN}
+                        className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                       >
                         Обсудить в диалоге →
                       </a>
@@ -2132,7 +2018,7 @@ setTopic(serverTopic);
                         const topicTitle = q.topicTitle || (parseTopicsInput(topic)[0] || "");
                         const chatHref = `/chat?topic=${encodeURIComponent(topicTitle || "Разбор ошибки")}&prefill=${encodeURIComponent(
                           `Разбери ошибку по вопросу: "${q.question}". Я ответил: "${userText}", правильный ответ: "${correctText}". Объясни и дай 1 похожий пример.`
-                        )}&autosend=1`;
+                        )}`;
 
                         return (
                           <div key={i} className="bg-black/30 border border-white/10 rounded-2xl p-3">
@@ -2153,7 +2039,7 @@ setTopic(serverTopic);
                             <div className="mt-3 flex gap-2">
                               <a
                                 href={chatHref}
-                                className={ACTION_BTN}
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                               >
                                 Разобрать в диалоге →
                               </a>
