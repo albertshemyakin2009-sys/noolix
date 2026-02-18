@@ -1705,7 +1705,9 @@ setTopic(serverTopic);
                 >
                   {historyCollapsed ? "Развернуть" : "Свернуть"}
                 </button>
-                onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
+                <button
+                  type="button"
+                  onClick={() => setHistoryScope((s) => (s === "current" ? "all" : "current"))}
                   className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
                 >
                   {historyScope === "current" ? "Показать все" : "Только текущие"}
