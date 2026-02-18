@@ -1037,7 +1037,7 @@ setResult(null);
       if (!titles.length) throw new Error("Нет темы для закрепления.");
 
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
-      setSentTopicForGeneration(titles[0] || "");
+      setSentTopicForGeneration(titles.join(", ") || "");
 
       const avoid = getAvoidStems({
         subject: context.subject,
@@ -1145,7 +1145,7 @@ setTopic(serverTopic);
         if (manualTopics.length > 0) setTopic(manualTopics.join(", "));
       }
 
-      setSentTopicForGeneration(titles[0] || "");
+      setSentTopicForGeneration(titles.join(", ") || "");
 
       // 2) В API отправляем объекты {id,title}.
       // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
