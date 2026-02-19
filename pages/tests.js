@@ -859,12 +859,78 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
+  const [mistakeExplanations, setMistakeExplanations] = useState({}); // { [questionIndex]: string }
+  const [mistakeExplaining, setMistakeExplaining] = useState(false);
   const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
   const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
   const [historyOpen, setHistoryOpen] = useState(true);
+
+  const mistakeExpRef = useRef({});
+  useEffect(() => {
+    mistakeExpRef.current = mistakeExplanations || {};
+  }, [mistakeExplanations]);
+
+  // Auto-generate short explanations for wrong answers (once per question)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!result) return;
+    if (!Array.isArray(questions) || !Array.isArray(userAnswers)) return;
+    if (!questions.length) return;
+    const wrong = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q) continue;
+      if (userAnswers[i] === q.correctIndex) continue;
+      if ((mistakeExpRef.current || {})[i]) continue;
+      wrong.push(i);
+    }
+    if (!wrong.length) return;
+
+    let cancelled = false;
+    (async () => {
+      setMistakeExplaining(true);
+      try {
+        for (const idx of wrong) {
+          if (cancelled) return;
+          if ((mistakeExpRef.current || {})[idx]) continue;
+          const q = questions[idx];
+          const payload = {
+            subject: context?.subject || "Математика",
+            topicTitle: q?.topicTitle || (parseTopicsInput(topic)[0] || ""),
+            question: q?.question,
+            options: q?.options,
+            correctIndex: q?.correctIndex,
+            userAnswerIndex: userAnswers[idx],
+          };
+          try {
+            const resp = await fetch("/api/explain-question", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data?.error || "explain-failed");
+            const explanation = typeof data?.explanation === "string" ? data.explanation.trim() : "";
+            if (!explanation) continue;
+            if (cancelled) return;
+            setMistakeExplanations((prev) => ({ ...(prev || {}), [idx]: explanation }));
+          } catch (_) {
+            // silently ignore per-question failures
+          }
+        }
+      } finally {
+        if (!cancelled) setMistakeExplaining(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
   // init context
   useEffect(() => {
@@ -2006,6 +2072,13 @@ setTopic(serverTopic);
                                     <p className="text-[11px] text-purple-200/80">
                                       Твой ответ: {userText} • Правильно: {correctText}
                                     </p>
+                                    {mistakeExplanations[i] ? (
+                                      <p className=\"mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed\">
+                                        <span className=\"text-purple-300/80\">Объяснение:</span> {mistakeExplanations[i]}
+                                      </p>
+                                    ) : (mistakeExplaining ? (
+                                      <p className=\"mt-1 text-[11px] text-purple-200/50\">Готовим объяснение…</p>
+                                    ) : null)}
                                   </div>
                                   <div className="flex gap-2 flex-wrap md:justify-end">
                                     <a
@@ -2149,6 +2222,14 @@ setTopic(serverTopic);
                                 <span className="text-purple-300/80">Твой ответ:</span>{" "}
                                 {userText}
                               </div>
+
+                            {mistakeExplanations[i] ? (
+                              <p className=\"mt-2 text-[12px] text-purple-100/90 whitespace-pre-wrap leading-relaxed\">
+                                <span className=\"text-purple-300/80\">Объяснение:</span> {mistakeExplanations[i]}
+                              </p>
+                            ) : (mistakeExplaining ? (
+                              <p className=\"mt-2 text-[11px] text-purple-200/50\">Готовим объяснение…</p>
+                            ) : null)}
                               <div className="text-[12px] text-purple-100/90">
                                 <span className="text-purple-300/80">Правильно:</span>{" "}
                                 {correctText}
