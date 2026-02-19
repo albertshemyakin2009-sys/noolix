@@ -1057,6 +1057,26 @@ const clearTestHistory = () => {
     return true;
   }, [questions.length, submitting]);
 
+  const makeMistakesTopics = () => {
+    try {
+      if (!Array.isArray(questions) || !Array.isArray(userAnswers)) return [];
+      const set = new Set();
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        if (!q) continue;
+        if (userAnswers[i] === q.correctIndex) continue;
+        const t = normalizeTopicKey(q.topicTitle || "");
+        if (t) set.add(t);
+      }
+      const arr = Array.from(set);
+      if (arr.length) return arr;
+      const fallback = normalizeTopicKey(parseTopicsInput(topic)[0] || topic || "");
+      return fallback ? [fallback] : [];
+    } catch (_) {
+      return [];
+    }
+  };
+
   
   // Сбрасываем тему/сессию при смене предмета или уровня
   useEffect(() => {
@@ -2152,6 +2172,18 @@ setTopic(serverTopic);
 
 
                     <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const topicsForMistakes = makeMistakesTopics();
+                          if (topicsForMistakes.length) generateFocusedTest(topicsForMistakes, 5);
+                        }}
+                        disabled={generating || !result || questions.filter((q, i) => userAnswers[i] !== q.correctIndex).length === 0}
+                        className={ACTION_BTN_DISABLED}
+                      >
+                        Ещё 5 вопросов по ошибкам
+                      </button>
+
                       <button
                         type="button"
                         onClick={reviewMistakes}
