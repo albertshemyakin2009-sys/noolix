@@ -121,58 +121,6 @@ const normalizeQuestions = ({ parsed, topics, difficultyToken, safeQuestionCount
   return out.map((q, index) => ({ ...q, index }));
 };
 
-const lower = (v) => String(v || "").toLowerCase();
-
-const detectTopicMode = (topics) => {
-  const t = (Array.isArray(topics) ? topics : []).map((x) => lower(x?.title)).join(" ");
-  const isGeometry =
-    /(геометр|треуголь|окружн|угол|вектор|площад|параллел|трапец|ромб)/.test(t);
-  const isAlgebra =
-    /(алгебр|уравнен|квадратн|неравенств|функц|логарифм|степен|прогресс|многочлен|корен)/.test(t);
-  if (isGeometry && !isAlgebra) return "geometry";
-  if (isAlgebra && !isGeometry) return "algebra";
-  return "mixed";
-};
-
-const buildForbiddenText = (topics, subject) => {
-  const mode = detectTopicMode(topics);
-  const subj = lower(subject);
-  if (subj.includes("матем")) {
-    if (mode === "algebra") {
-      return [
-        "Запрещено уходить в геометрию (треугольники/окружности/углы/площади/векторы/подобие).",
-        "Все вопросы должны быть именно по алгебре и строго по выбранным темам.",
-      ].join("\n");
-    }
-    if (mode === "geometry") {
-      return [
-        "Запрещено уходить в алгебру (уравнения/неравенства/логарифмы/функции/прогрессии), если это не часть выбранных тем.",
-        "Все вопросы должны быть именно по геометрии и строго по выбранным темам.",
-      ].join("\n");
-    }
-  }
-  return "Не уходи в другие разделы предмета: все вопросы должны строго соответствовать выбранным темам.";
-};
-
-const looksOffTopic = (questions, topics, subject) => {
-  const subj = lower(subject);
-  if (!subj.includes("матем")) return false;
-  const mode = detectTopicMode(topics);
-  if (mode === "mixed") return false;
-
-  const geoKw = /(треуголь|окружн|угол|площад|вектор|параллел|трапец|ромб|диагонал)/i;
-  const algKw = /(уравнен|неравенств|функц|логарифм|степен|прогресс|корен|многочлен)/i;
-
-  let bad = 0;
-  for (const q of questions || []) {
-    const s = String(q?.question || "");
-    if (mode === "algebra" && geoKw.test(s)) bad++;
-    if (mode === "geometry" && algKw.test(s)) bad++;
-  }
-  // if 2+ questions clearly from the other area — treat as drift
-  return bad >= 2;
-};
-
 const buildRepairPrompt = ({ rawText, subject, topicsListForPrompt, safeQuestionCount, difficultyToken, difficultyLabel, avoidText }) => {
   return `
 Твоя задача — ИСПРАВИТЬ ответ так, чтобы он стал строго валидным JSON по схеме теста.
@@ -207,7 +155,46 @@ ${avoidText ? `Ограничение: НЕ используй формулир�
 
 ${rawText}
 `.trim();
+};const buildFillPrompt = ({ subject, topicsListForPrompt, missingCount, difficultyToken, difficultyLabel, avoidText, existingStems }) => {
+  const existing = (Array.isArray(existingStems) ? existingStems : [])
+    .map((s) => String(s || "").trim())
+    .filter(Boolean)
+    .slice(0, 30);
+
+  return `
+Сгенерируй ДОПОЛНИТЕЛЬНО ещё ${missingCount} новых вопросов в строгом JSON (без текста до/после).
+Не повторяй и не перефразируй вопросы, похожие на уже имеющиеся.
+Соблюдай предмет и темы, не уходи в другой раздел.
+
+Предмет: ${subject}
+Количество НОВЫХ вопросов: ${missingCount}
+Сложность: ${difficultyToken} (${difficultyLabel})
+
+Темы:
+${topicsListForPrompt}
+
+${avoidText ? `Ограничение: НЕ используй формулировки, близкие к этим стемам:\n${avoidText}\n` : ""}
+
+Уже есть вопросы (не повторяй):
+${existing.length ? `- ${existing.join("\n- ")}` : "- (нет)"}
+
+Верни строго один JSON:
+
+{
+  "questions": [
+    {
+      "question": "текст вопроса",
+      "options": ["вариант 1", "вариант 2", "вариант 3", "вариант 4"],
+      "correctIndex": 0,
+      "topicId": "topicId из списка или custom",
+      "topicTitle": "название темы",
+      "difficulty": "easy" | "medium" | "hard"
+    }
+  ]
+}
+`.trim();
 };
+
 
 
 export default async function handler(req, res) {
@@ -287,8 +274,6 @@ export default async function handler(req, res) {
 
 Темы для теста (используй их содержательно, НЕ игнорируй):
 ${topicsListForPrompt}
-
-${buildForbiddenText(topics, subject)}
 
 Количество вопросов: ${safeQuestionCount}
 
@@ -383,53 +368,9 @@ ${buildForbiddenText(topics, subject)}
 
     // 2) Normalize & validate.
     let questions = parsed ? normalizeQuestions({ parsed, topics, difficultyToken, safeQuestionCount }) : [];
-// 2.5) If the model drifted away from the selected topics (e.g., algebra topic but geometry questions),
-// try one strict re-generation pass (content fix, not just JSON repair).
-if (questions && questions.length > 0 && looksOffTopic(questions, topics, subject)) {
-  const strictSystem =
-    systemPrompt +
-    " ВАЖНО: ты строго соблюдаешь темы теста и НЕ уходишь в другие разделы. Если тема алгебра — никакой геометрии и наоборот.";
-
-  const strictUser = userPrompt + "\n\nПроверь каждый вопрос: он должен быть строго по выбранным темам. Если не по теме — замени на вопрос по теме.";
-
-  const strictResp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      messages: [
-        { role: "system", content: strictSystem },
-        { role: "user", content: strictUser },
-      ],
-      temperature: 0.0,
-      max_tokens: 1200,
-    }),
-  });
-
-  if (strictResp.ok) {
-    const strictData = await strictResp.json();
-    const strictRaw = String(strictData?.choices?.[0]?.message?.content || "").trim();
-    const strictExtracted = extractJsonObject(strictRaw) || strictRaw;
-    try {
-      const strictParsed = JSON.parse(strictExtracted);
-      const strictQuestions = normalizeQuestions({
-        parsed: strictParsed,
-        topics,
-        difficultyToken,
-        safeQuestionCount,
-      });
-      if (strictQuestions && strictQuestions.length > 0 && !looksOffTopic(strictQuestions, topics, subject)) {
-        questions = strictQuestions;
-      }
-    } catch (_) {}
-  }
-}
 
     // 3) If failed, attempt a single repair pass with the model.
-    if (!questions || questions.length === 0) {
+    if (!questions || questions.length < safeQuestionCount) {
       const systemFix =
         "Ты — строгий валидатор и редактор JSON. Ты возвращаешь только валидный JSON без пояснений.";
 
@@ -470,8 +411,69 @@ if (questions && questions.length > 0 && looksOffTopic(questions, topics, subjec
         } catch (_) {}
       }
     }
+    // 4) If we still have too few valid questions, try to "fill" missing ones once.
+    if (questions && questions.length > 0 && questions.length < safeQuestionCount) {
+      const missingCount = safeQuestionCount - questions.length;
 
-    if (!questions || questions.length === 0) {
+      const systemFill =
+        "Ты — генератор тестовых вопросов. Ты возвращаешь только валидный JSON без пояснений.";
+
+      const userFill = buildFillPrompt({
+        subject,
+        topicsListForPrompt,
+        missingCount,
+        difficultyToken,
+        difficultyLabel,
+        avoidText,
+        existingStems: questions.map((q) => q.question),
+      });
+
+      const fillResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: systemFill },
+            { role: "user", content: userFill },
+          ],
+          temperature: 0.2,
+          max_tokens: 1400,
+        }),
+      });
+
+      if (fillResp.ok) {
+        try {
+          const fillData = await fillResp.json();
+          const fillRaw = String(fillData?.choices?.[0]?.message?.content || "").trim();
+          const fillExtracted = extractJsonObject(fillRaw) || fillRaw;
+          const fillParsed = JSON.parse(fillExtracted);
+
+          const extra = normalizeQuestions({
+            parsed: fillParsed,
+            topics,
+            difficultyToken,
+            safeQuestionCount: missingCount,
+          });
+
+          // Merge and normalize again to enforce uniqueness and the final count.
+          const merged = { questions: [...questions, ...(extra || [])] };
+          questions = normalizeQuestions({
+            parsed: merged,
+            topics,
+            difficultyToken,
+            safeQuestionCount,
+          });
+        } catch (_) {}
+      }
+    }
+
+
+
+    if (!questions || questions.length < safeQuestionCount) {
       console.error("generate-test: could not validate questions", { raw: raw?.slice?.(0, 500) });
       return res.status(500).json({
         error: "Не удалось получить валидные вопросы теста. Попробуй ещё раз.",
