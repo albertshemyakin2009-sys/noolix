@@ -417,7 +417,7 @@ const normalizeTopicKeySingle = (t) => {
   let raw = String(t || "").trim();
   if (!raw) return "Общее";
 
-  raw = raw.replace(/^[\"'«]+/, "").replace(/[\\"'»]+$/, "").trim();
+  raw = raw.replace(/^["'«]+/, "").replace(/[\"'»]+$/, "").trim();
   raw = raw.replace(/\s+/g, " ");
 
   const q1 = raw.match(/«([^»]{2,80})»/);
@@ -2073,11 +2073,11 @@ setTopic(serverTopic);
                                       Твой ответ: {userText} • Правильно: {correctText}
                                     </p>
                                     {mistakeExplanations[i] ? (
-                                      <p className=\"mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed\">
-                                        <span className=\"text-purple-300/80\">Объяснение:</span> {mistakeExplanations[i]}
+                                      <p className="mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed">
+                                        <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
                                       </p>
                                     ) : (mistakeExplaining ? (
-                                      <p className=\"mt-1 text-[11px] text-purple-200/50\">Готовим объяснение…</p>
+                                      <p className="mt-1 text-[11px] text-purple-200/50">Готовим объяснение…</p>
                                     ) : null)}
                                   </div>
                                   <div className="flex gap-2 flex-wrap md:justify-end">
@@ -2224,11 +2224,11 @@ setTopic(serverTopic);
                               </div>
 
                             {mistakeExplanations[i] ? (
-                              <p className=\"mt-2 text-[12px] text-purple-100/90 whitespace-pre-wrap leading-relaxed\">
-                                <span className=\"text-purple-300/80\">Объяснение:</span> {mistakeExplanations[i]}
+                              <p className="mt-2 text-[12px] text-purple-100/90 whitespace-pre-wrap leading-relaxed">
+                                <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
                               </p>
                             ) : (mistakeExplaining ? (
-                              <p className=\"mt-2 text-[11px] text-purple-200/50\">Готовим объяснение…</p>
+                              <p className="mt-2 text-[11px] text-purple-200/50">Готовим объяснение…</p>
                             ) : null)}
                               <div className="text-[12px] text-purple-100/90">
                                 <span className="text-purple-300/80">Правильно:</span>{" "}
