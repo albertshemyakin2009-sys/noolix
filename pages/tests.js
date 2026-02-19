@@ -1107,7 +1107,7 @@ useEffect(() => {
 setResult(null);
     setAnalysis("");
     setReviewing(false);
-    setHistoryOpen(true);
+    // keep historyOpen as-is
   };
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
