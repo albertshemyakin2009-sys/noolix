@@ -1115,6 +1115,7 @@ setResult(null);
     setGenerating(true);
     setAnalysis("");
     setResult(null);
+    setHistoryOpen(false);
     try {
       if (!context?.subject || !context?.level) {
         throw new Error("Нужно выбрать предмет и уровень, чтобы сгенерировать тест.");
