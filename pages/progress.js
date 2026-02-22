@@ -415,7 +415,23 @@ export default function ProgressPage() {
       : byBand;
 
     // сначала слабее (или выбранный фильтр), дальше по релевантности поиска не усложняем — MVP
-    return bySearch;
+    const bandRank = (t) => {
+      const b = getBand(t.score);
+      if (b === "weak") return 0;
+      if (b === "mid") return 1;
+      return 2;
+    };
+
+    return [...bySearch].sort((a, b) => {
+      const ra = bandRank(a);
+      const rb = bandRank(b);
+      if (ra !== rb) return ra - rb;
+      // within band: weaker first
+      const da = clamp01(a.score);
+      const db = clamp01(b.score);
+      if (da !== db) return da - db;
+      return normalize(a.topic).localeCompare(normalize(b.topic));
+    });
   }, [subjectTopics, search, bandFilter]);
 
   const setTopicState = (topicKey, patch) => {
@@ -687,6 +703,14 @@ export default function ProgressPage() {
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
                           >
                             Разобрать →
+                          </a>
+                          <a
+                            href={`/chat?prefill=${encodeURIComponent(
+                              `Объясни тему "${t.topic}" простыми словами. Дай краткий конспект (ключевые идеи/формулы), затем 3 примера и 2 короткие задачи с ответами.`
+                            )}&autosend=1`}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
+                          >
+                            Объяснить →
                           </a>
                           <button
                             onClick={() =>
