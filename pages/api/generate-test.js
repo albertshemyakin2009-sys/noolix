@@ -49,7 +49,7 @@ const normalizeQuestions = ({ parsed, topics: topicsNorm, difficultyToken, safeQ
   let questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
   const topicById = new Map(
-    (Array.isArray(topics) ? topics : [])
+    (Array.isArray(topicsNorm) ? topicsNorm : [])
       .map((t) => ({
         id: typeof t?.id === "string" ? t.id.trim() : "",
         title: typeof t?.title === "string" ? t.title.trim() : "",
@@ -98,8 +98,8 @@ const normalizeQuestions = ({ parsed, topics: topicsNorm, difficultyToken, safeQ
     let topicId = cleanStr(q.topicId);
     let topicTitle = cleanStr(q.topicTitle);
 
-    if (!topicId) topicId = topics?.[0]?.id || "custom";
-    if (!topicTitle) topicTitle = topics?.[0]?.title || "Тема";
+    if (!topicId) topicId = topicsNorm?.[0]?.id || "custom";
+    if (!topicTitle) topicTitle = topicsNorm?.[0]?.title || "Тема";
 
     if (topicById.has(topicId)) {
       const t = topicById.get(topicId);
@@ -439,7 +439,7 @@ ${topicsListForPrompt}
         const fixExtracted = extractJsonObject(fixRaw) || fixRaw;
         try {
           const fixParsed = JSON.parse(fixExtracted);
-          questions = normalizeQuestions({ parsed: fixParsed, topics, difficultyToken, safeQuestionCount });
+          questions = normalizeQuestions({ parsed: fixParsed, topics: topicsNorm, difficultyToken, safeQuestionCount });
         } catch (_) {}
       }
     }
@@ -486,7 +486,7 @@ ${topicsListForPrompt}
 
           const extra = normalizeQuestions({
             parsed: fillParsed,
-            topics,
+            topics: topicsNorm,
             difficultyToken,
             safeQuestionCount: missingCount,
           });
@@ -495,7 +495,7 @@ ${topicsListForPrompt}
           const merged = { questions: [...questions, ...(extra || [])] };
           questions = normalizeQuestions({
             parsed: merged,
-            topics,
+            topics: topicsNorm,
             difficultyToken,
             safeQuestionCount,
           });
