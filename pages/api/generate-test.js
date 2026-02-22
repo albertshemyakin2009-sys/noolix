@@ -280,13 +280,14 @@ const topicsNorm = normalizeTopics(topics);
 
     const difficultyLabel = difficultyLabelMap[difficultyToken];
 
-    const topicsNormListForPrompt = topics
+    const topicsListForPrompt = topicsNorm
       .map((t, i) => {
         const id = t.id || `topic_${i + 1}`;
         const title = t.title || "Без названия";
         return `- topicId: "${id}", title: "${title}"`;
       })
-      .join("\n");
+      .join("
+");
 
     const avoidArr = Array.isArray(avoid) ? avoid : [];
     const avoidText = avoidArr
