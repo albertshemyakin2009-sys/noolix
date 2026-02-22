@@ -698,12 +698,7 @@ export default function ProgressPage() {
                         </div>
 
                         <div className="flex gap-2 flex-shrink-0">
-                          <a
-                            href={`/chat?topic=${encodeURIComponent(t.topic)}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                          >
-                            Разобрать →
-                          </a>
+                          
                           <a
                             href={`/chat?prefill=${encodeURIComponent(
                               `Объясни тему "${t.topic}" простыми словами. Дай краткий конспект (ключевые идеи/формулы), затем 3 примера и 2 короткие задачи с ответами.`
@@ -819,12 +814,7 @@ export default function ProgressPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2 md:justify-end">
-                          <a
-                            href={`/chat?topic=${encodeURIComponent(t.topic)}`}
-                            className="inline-flex items-center justify-center px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold shadow-md hover:bg-purple-100 transition"
-                          >
-                            Разобрать →
-                          </a>
+                          
                           <a
                             href={`/tests?topic=${encodeURIComponent(t.topic)}`}
                             className="inline-flex items-center justify-center px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition"
