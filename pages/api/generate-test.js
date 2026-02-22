@@ -286,8 +286,8 @@ const topicsNorm = normalizeTopics(topics);
         const title = t.title || "Без названия";
         return `- topicId: "${id}", title: "${title}"`;
       })
-      .join("
-");
+      .join("\n");
+
 
     const avoidArr = Array.isArray(avoid) ? avoid : [];
     const avoidText = avoidArr
