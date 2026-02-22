@@ -280,6 +280,24 @@ const markReviewStyleUsed = (topicKey, styleKey) => {
 const QUESTION_BANK_MAX_PER_TOPIC = 220;
 const QUESTION_AVOID_LIMIT = 24;
 
+// Combine avoid stems across multiple topics (so multi-topic tests don't repeat)
+const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOID_LIMIT }) => {
+  const titles = Array.isArray(topicTitles) ? topicTitles.map(String).map((s) => s.trim()).filter(Boolean) : [];
+  const merged = [];
+  const seen = new Set();
+  for (const t of titles) {
+    const arr = getAvoidStems({ subject, level, topicTitle: t, limit });
+    for (const s of arr) {
+      const k = String(s || "").toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      merged.push(s);
+      if (merged.length >= limit) return merged;
+    }
+  }
+  return merged;
+};
+
 const safeJsonParse = (raw, fallback) => {
   try { return JSON.parse(raw); } catch (_) { return fallback; }
 };
@@ -1128,10 +1146,10 @@ setResult(null);
       const topicsToSend = titles.map((t) => ({ id: slugifyId(t), title: t }));
       setSentTopicForGeneration(titles.join(", ") || "");
 
-      const avoid = getAvoidStems({
+      const avoid = getAvoidStemsMulti({
         subject: context.subject,
         level: context.level,
-        topicTitle: titles[0] || "",
+        topicTitles: titles,
       });
 
       const res = await fetch("/api/generate-test", {
@@ -1241,10 +1259,10 @@ setTopic(serverTopic);
       // Если отправить строки, /api/generate-test подставит "Без названия" в промпт.
       const topicsPayload = titles.map((t) => ({ id: slugifyId(t), title: t }));
 
-      const avoid = getAvoidStems({
+      const avoid = getAvoidStemsMulti({
         subject: context.subject,
         level: context.level,
-        topicTitle: titles[0] || "",
+        topicTitles: titles,
       });
 
       const res = await fetch("/api/generate-test", {
