@@ -45,7 +45,7 @@ const extractJsonObject = (text) => {
   return null;
 };
 
-const normalizeQuestions = ({ parsed, topics, difficultyToken, safeQuestionCount }) => {
+const normalizeQuestions = ({ parsed, topics: topicsNorm, difficultyToken, safeQuestionCount }) => {
   let questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
   const topicById = new Map(
@@ -220,8 +220,39 @@ export default async function handler(req, res) {
       difficulty = "medium",
       avoid,
     } = req.body || {};
+const slugify = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/["'`]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_а-яё]+/gi, "")
+    .slice(0, 48) || "topic";
 
-    if (!subject || !Array.isArray(topics) || topics.length === 0) {
+const normalizeTopics = (raw) => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((t, i) => {
+      // Allow both {id,title} and plain string titles
+      if (typeof t === "string") {
+        const title = t.trim();
+        if (!title) return null;
+        return { id: slugify(title) || `topic_${i + 1}`, title };
+      }
+      if (t && typeof t === "object") {
+        const title = String(t.title || t.name || "").trim();
+        const id = String(t.id || t.topicId || "").trim() || (title ? slugify(title) : "");
+        if (!title) return null;
+        return { id: id || `topic_${i + 1}`, title };
+      }
+      return null;
+    })
+    .filter(Boolean);
+};
+
+const topicsNorm = normalizeTopics(topics);
+
+    if (!subject || topicsNorm.length === 0) {
       return res.status(400).json({
         error:
           "Нужно передать subject и массив topics (минимум одна тема) для генерации теста.",
@@ -249,7 +280,7 @@ export default async function handler(req, res) {
 
     const difficultyLabel = difficultyLabelMap[difficultyToken];
 
-    const topicsListForPrompt = topics
+    const topicsNormListForPrompt = topics
       .map((t, i) => {
         const id = t.id || `topic_${i + 1}`;
         const title = t.title || "Без названия";
@@ -367,7 +398,7 @@ ${topicsListForPrompt}
     }
 
     // 2) Normalize & validate.
-    let questions = parsed ? normalizeQuestions({ parsed, topics, difficultyToken, safeQuestionCount }) : [];
+    let questions = parsed ? normalizeQuestions({ parsed, topics: topicsNorm, difficultyToken, safeQuestionCount }) : [];
 
     // 3) If failed, attempt a single repair pass with the model.
     if (!questions || questions.length < safeQuestionCount) {
