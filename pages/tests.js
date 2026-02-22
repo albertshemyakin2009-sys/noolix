@@ -2194,6 +2194,42 @@ setTopic(serverTopic);
                         {reviewing ? "Делаем разбор…" : "Разобрать ошибки"}
                       </button>
 
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            const topicsForExplain = makeMistakesTopics();
+                            const topicText = topicsForExplain && topicsForExplain.length
+                              ? topicsForExplain.join(", ")
+                              : (parseTopicsInput(topic)[0] || topic || "эту тему");
+
+                            const prefill =
+                              `Объясни тему: ${topicText}.
+
+` +
+                              `Сделай так:
+` +
+                              `1) Очень простое объяснение.
+` +
+                              `2) 3 коротких примера.
+` +
+                              `3) 2 тренировочные задачи (с ответами).
+` +
+                              `4) Типичные ошибки и как их избежать.
+`;
+
+                            const href = `/chat?prefill=${encodeURIComponent(prefill)}&autosend=1`;
+                            window.location.href = href;
+                          } catch (_) {
+                            window.location.href = "/chat";
+                          }
+                        }}
+                        disabled={generating || !result}
+                        className={ACTION_BTN_DISABLED}
+                      >
+                        Объяснить тему →
+                      </button>
+
                       <a
                         href="/chat"
                         className={ACTION_BTN}
