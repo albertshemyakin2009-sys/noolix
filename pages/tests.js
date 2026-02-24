@@ -955,34 +955,83 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   }, [historyOpen]);
 
 
-  // RESTORE_SESSION: restore unfinished test after reload/navigation
+  
+
+  // RESTORE_TEST_SESSION: restore unfinished test after reload/navigation
   useEffect(() => {
+    if (typeof window === "undefined") return;
     try {
       const saved = loadTestSession();
-      if (!saved || saved.finished) return;
+      if (!saved) return;
 
-      // Must match current subject/level (avoid restoring wrong context)
-      if (saved.subject !== context.subject || saved.level !== context.level) return;
+      // Match context (subject/level/mode) to avoid restoring wrong test
+      if (!saved.context || saved.context.subject !== context.subject || saved.context.level !== context.level) return;
+
       if (!Array.isArray(saved.questions) || !saved.questions.length) return;
 
       setQuestions(saved.questions);
       setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-      setCurrentQuestionIndex(Number.isFinite(saved.currentQuestionIndex) ? saved.currentQuestionIndex : 0);
-      setIsGenerating(false);
-      setHasStarted(true);
-      setHasFinished(false);
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
+      setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : null);
+      setResult(saved.result && typeof saved.result === "object" ? saved.result : null);
+      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+      setTimeToFirstAnswerSec(Number.isFinite(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : null);
+      setQuestionShownAt(Number.isFinite(saved.questionShownAt) ? saved.questionShownAt : null);
 
-      if (typeof saved.topicRaw === "string") setTopicRaw(saved.topicRaw);
-      if (Array.isArray(saved.topicsPayload)) setTopicsPayload(saved.topicsPayload);
+      setError(null);
+      setGenerating(false);
+      setSubmitting(false);
 
-      // keep history collapsed while continuing
+      // Keep history collapsed while continuing a session
       setHistoryOpen(false);
     } catch (_) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // SAVE_TEST_SESSION: persist current test while in progress (and also results)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (!Array.isArray(questions) || !questions.length) return;
 
-  // SAVE_SESSION: persist current test while in progress
+      const session = {
+        context: { subject: context.subject, level: context.level, mode: context.mode },
+        difficulty,
+        topic,
+        sentTopicForGeneration,
+        diagnosticLabel,
+        questions,
+        userAnswers,
+        questionShownAt,
+        timeToFirstAnswerSec,
+        result,
+        analysis,
+        ts: Date.now(),
+      };
+      saveTestSession(session);
+    } catch (_) {}
+  }, [
+    context.subject,
+    context.level,
+    context.mode,
+    difficulty,
+    topic,
+    sentTopicForGeneration,
+    diagnosticLabel,
+    questions,
+    userAnswers,
+    questionShownAt,
+    timeToFirstAnswerSec,
+    result,
+    analysis,
+  ]);
+
+  // CLEAR_TEST_SESSION: when user starts a brand new generation explicitly, clear old saved session first
+  const clearSavedSessionBeforeNewTest = () => {
+    try { clearTestSession(); } catch (_) {}
+  };
+// SAVE_SESSION: persist current test while in progress
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!hasStarted) return;
@@ -1003,13 +1052,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       saveTestSession(session);
     }
   }, [hasStarted, hasFinished, questions, userAnswers, currentQuestionIndex, topicRaw, topicsPayload, context.subject, context.level]);
-
-
-  // CLEAR_SESSION_ON_FINISH: clear persisted session after finishing
-  useEffect(() => {
-    if (!hasFinished) return;
-    try { clearTestSession(); } catch (_) {}
-  }, [hasFinished]);
 if (v === null) return false;
       return v === "1";
     } catch (_) {
@@ -1265,6 +1307,7 @@ setResult(null);
   };
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
+    clearSavedSessionBeforeNewTest();
     setError("");
     setGenerating(true);
     setAnalysis("");
@@ -1356,6 +1399,7 @@ setTopic(serverTopic);
   }, [context.subject, context.level, generating, questions.length]);
 
   const generateTest = async () => {
+    clearSavedSessionBeforeNewTest();
     setError("");
     setGenerating(true);
     setAnalysis("");
