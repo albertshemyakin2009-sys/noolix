@@ -910,6 +910,8 @@ export default function TestsPage() {
   const [difficulty, setDifficulty] = useState('medium');
 const [topic, setTopic] = useState("");
   const mistakeExplainAbortRef = useRef(null);
+  const restoredSessionRef = useRef(false);
+
   const topicInputRef = useRef("");
   useEffect(() => { topicInputRef.current = topic; }, [topic]);
 
@@ -958,36 +960,69 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   
 
   // RESTORE_TEST_SESSION: restore unfinished test after reload/navigation
+  // Runs when context (subject/level/mode) is known; guarded so it restores only once.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (restoredSessionRef.current) return;
+
+    // wait until context is loaded
+    if (!context?.subject || !context?.level) return;
+
+    // don't override an already started test in this view
+    if (Array.isArray(questions) && questions.length) {
+      restoredSessionRef.current = true;
+      return;
+    }
+
     try {
       const saved = loadTestSession();
-      if (!saved) return;
+      if (!saved || saved.finished) {
+        restoredSessionRef.current = true;
+        return;
+      }
 
       // Match context (subject/level/mode) to avoid restoring wrong test
-      if (!saved.context || saved.context.subject !== context.subject || saved.context.level !== context.level) return;
+      if (!saved.context || saved.context.subject !== context.subject || saved.context.level !== context.level) {
+        restoredSessionRef.current = true;
+        return;
+      }
+      if (saved.context.mode && context.mode && saved.context.mode !== context.mode) {
+        restoredSessionRef.current = true;
+        return;
+      }
 
-      if (!Array.isArray(saved.questions) || !saved.questions.length) return;
+      if (!Array.isArray(saved.questions) || !saved.questions.length) {
+        restoredSessionRef.current = true;
+        return;
+      }
 
       setQuestions(saved.questions);
       setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-      setTopic(typeof saved.topic === "string" ? saved.topic : "");
       setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setDifficulty(typeof saved.difficulty === "string" ? saved.difficulty : "ЕГЭ");
       setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : null);
-      setResult(saved.result && typeof saved.result === "object" ? saved.result : null);
-      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
-      setTimeToFirstAnswerSec(Number.isFinite(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : null);
-      setQuestionShownAt(Number.isFinite(saved.questionShownAt) ? saved.questionShownAt : null);
 
-      setError(null);
+      setQuestionShownAt(saved.questionShownAt || null);
+      setTimeToFirstAnswerSec(saved.timeToFirstAnswerSec || null);
+
+      setResult(saved.result || null);
+      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+
+      // While restoring, make sure we are not in generating/submitting state
       setGenerating(false);
       setSubmitting(false);
+      setError("");
 
-      // Keep history collapsed while continuing a session
+      // Keep history collapsed while continuing
       setHistoryOpen(false);
-    } catch (_) {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+      restoredSessionRef.current = true;
+    } catch (_) {
+      restoredSessionRef.current = true;
+    }
+  }, [context.subject, context.level, context.mode, questions]);
+
 
   // SAVE_TEST_SESSION: persist current test while in progress (and also results)
   useEffect(() => {
