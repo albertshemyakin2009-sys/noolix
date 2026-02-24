@@ -883,6 +883,7 @@ export default function TestsPage() {
 
   const [difficulty, setDifficulty] = useState('medium');
 const [topic, setTopic] = useState("");
+  const mistakeExplainAbortRef = useRef(null);
   const topicInputRef = useRef("");
   useEffect(() => { topicInputRef.current = topic; }, [topic]);
 
@@ -907,7 +908,9 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
-  const [mistakeExplanations, setMistakeExplanations] = useState({}); // { [questionIndex]: string }
+  const [mistakeExplanations, setMistakeExplanations] = useState({});
+  const [mistakeExplainErrors, setMistakeExplainErrors] = useState({}); // { [index]: string }
+ // { [questionIndex]: string }
   const [mistakeExplaining, setMistakeExplaining] = useState(false);
   const [saveInfo, setSaveInfo] = useState(null); // {historyCount, kmTouched, ts, error}
 
@@ -955,6 +958,10 @@ if (v === null) return false;
     let cancelled = false;
     (async () => {
       setMistakeExplaining(true);
+    setMistakeExplainErrors({});
+    try { mistakeExplainAbortRef.current && mistakeExplainAbortRef.current.abort(); } catch (_) {}
+    const controller = new AbortController();
+    mistakeExplainAbortRef.current = controller;
       try {
         for (const idx of wrong) {
           if (cancelled) return;
@@ -972,6 +979,7 @@ if (v === null) return false;
             const resp = await fetch("/api/explain-question", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
               body: JSON.stringify(payload),
             });
             const data = await resp.json().catch(() => ({}));
@@ -2159,6 +2167,47 @@ setTopic(serverTopic);
                                     {mistakeExplanations[i] ? (
                                       <p className="mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed">
                                         <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
+                                        {mistakeExplainErrors[i] ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              (async () => {
+                                                try {
+                                                  const controller = new AbortController();
+                                                  mistakeExplainAbortRef.current = controller;
+                                                  const resp = await fetch("/api/explain-question", {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    signal: controller.signal,
+                                                    body: JSON.stringify({
+                                                      question: mistakes[i]?.question,
+                                                      options: mistakes[i]?.options,
+                                                      correctIndex: mistakes[i]?.correctIndex,
+                                                      topicTitle: mistakes[i]?.topicTitle,
+                                                      subject: context.subject,
+                                                      level: context.level,
+                                                    }),
+                                                  });
+                                                  const data = await resp.json();
+                                                  const exp = data?.explanation || data?.text || "";
+                                                  setMistakeExplanations((prev) => {
+                                                    const next = Array.isArray(prev) ? [...prev] : [];
+                                                    next[i] = exp || "Не удалось получить объяснение.";
+                                                    return next;
+                                                  });
+                                                  setMistakeExplainErrors((prev) => {
+                                                    const n = { ...(prev || {}) };
+                                                    delete n[i];
+                                                    return n;
+                                                  });
+                                                } catch (_) {}
+                                              })();
+                                            }}
+                                            className="ml-2 underline text-[11px] text-purple-200/80 hover:text-purple-100"
+                                          >
+                                            Повторить
+                                          </button>
+                                        ) : null}
                                       </p>
                                     ) : (mistakeExplaining ? (
                                       <p className="mt-1 text-[11px] text-purple-200/50">Готовим объяснение…</p>
