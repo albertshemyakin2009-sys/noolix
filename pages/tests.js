@@ -964,6 +964,10 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     // wait until context is available
     const subj = (context && context.subject) ? String(context.subject) : "";
     const lvl = (context && context.level) ? String(context.level) : "";
+    // Preserve non-empty subject/level from previous saved session if context not ready yet
+    const prevSaved = loadTestSession();
+    const subjToSave = subj || String(prevSaved?.subject || "");
+    const lvlToSave = lvl || String(prevSaved?.level || "");
 
     // do not override an active test already in memory
     if (Array.isArray(questions) && questions.length) {
@@ -977,7 +981,9 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       return;
     }
 
-        if (String(saved.subject || "") !== subj) {
+        const savedSubj = String(saved.subject || "");
+    // If either side is empty, don't block restore (context may load after mount)
+    if (savedSubj && subj && savedSubj !== subj) {
       restoredSessionRef.current = true;
       return;
     }
@@ -1023,8 +1029,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!Array.isArray(questions) || !questions.length) return;
 
     const session = {
-      subject: subj,
-      level: lvl,
+      subject: subjToSave,
+      level: lvlToSave,
       topic: typeof topic === "string" ? topic : "",
       sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
