@@ -964,7 +964,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     // wait until context is available
     const subj = (context && context.subject) ? String(context.subject) : "";
     const lvl = (context && context.level) ? String(context.level) : "";
-    if (!subj || !lvl) return;
 
     // do not override an active test already in memory
     if (Array.isArray(questions) && questions.length) {
@@ -978,7 +977,12 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       return;
     }
 
-    if (String(saved.subject || "") !== subj || String(saved.level || "") !== lvl) {
+        if (String(saved.subject || "") !== subj) {
+      restoredSessionRef.current = true;
+      return;
+    }
+    // If both sides have a non-empty level, require match; otherwise ignore level.
+    if (lvl && String(saved.level || "") && String(saved.level || "") !== lvl) {
       restoredSessionRef.current = true;
       return;
     }
@@ -1014,7 +1018,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
     const subj = (context && context.subject) ? String(context.subject) : "";
     const lvl = (context && context.level) ? String(context.level) : "";
-    if (!subj || !lvl) return;
 
     // If nothing to save, don't overwrite
     if (!Array.isArray(questions) || !questions.length) return;
