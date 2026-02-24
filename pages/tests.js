@@ -301,7 +301,7 @@ const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOI
 // ---- Explanation cache (localStorage) ----
 const EXPL_CACHE_KEY = "noolix_mistake_expl_cache_v1";
 const HISTORY_OPEN_KEY = "noolix_tests_history_open_v1";
-const TEST_SESSION_KEY = "noolix_tests_session_v2";
+const TEST_SESSION_KEY = "noolix_tests_session_v3";
 const hashQuestion = (q) => {
   const s = String(q || "").trim().toLowerCase();
   let h = 2166136261;
@@ -923,6 +923,8 @@ const [topic, setTopic] = useState("");
 const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [restoredNotice, setRestoredNotice] = useState(false);
+  const restoredSessionRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -956,7 +958,82 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   }, [historyOpen]);
 
 
-  // RESTORE_TEST_SESSION: restore unfinished test after reload/navigation (once per subject/level)
+  
+
+  // RESTORE_TEST_SESSION_V3: restore unfinished test after reload/navigation
+  useEffect(() => {
+    if (restoredSessionRef.current) return;
+    restoredSessionRef.current = true;
+
+    try {
+      const saved = loadTestSession();
+      if (!saved) return;
+
+      // Only restore if there is a real unfinished session
+      const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      const savedResult = saved.result ?? null;
+      if (!savedQuestions.length) return;
+      if (savedResult !== null) return;
+
+      // Do not override an already active session in memory
+      if (Array.isArray(questions) && questions.length) return;
+
+      setGenerating(false);
+      setSubmitting(false);
+      setError("");
+
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
+      setQuestions(savedQuestions);
+      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
+
+
+  // SAVE_TEST_SESSION_V3: persist current test while in progress (no subject/level binding)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Save only when we have a real generated test, and we are not generating right now
+    if (generating) return;
+    if (!Array.isArray(questions) || !questions.length) return;
+
+    // Do not persist finished sessions
+    if (result !== null) return;
+
+    const session = {
+      topic: typeof topic === "string" ? topic : "",
+      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
+      questions,
+      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+      questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
+      timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
+      analysis: typeof analysis === "string" ? analysis : "",
+      reviewing: !!reviewing,
+      result: null,
+      ts: Date.now(),
+    };
+
+    saveTestSession(session);
+  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration]);
+
+  // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
+  useEffect(() => {
+    if (result === null) return;
+    try { clearTestSession(); } catch (_) {}
+  }, [result]);
+      setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
+      setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
+      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+      setReviewing(!!saved.reviewing);
+
+      setResult(null);
+      setRestoredNotice(true);
+
+      // keep history collapsed while continuing
+      setHistoryOpen(false);
+    } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+// RESTORE_TEST_SESSION: restore unfinished test after reload/navigation (once per subject/level)
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (restoredSessionRef.current) return;
@@ -1299,6 +1376,7 @@ useEffect(() => {
   }, [context.subject, context.level, historyScope, historyTick]);
 
   const resetSession = () => {
+    try { clearTestSession(); } catch (_) {}
     setError("");
     setQuestions([]);
     setUserAnswers([]);
@@ -2002,7 +2080,8 @@ setTopic(serverTopic);
                 <div className="flex gap-2 md:justify-end">
                   <button
                     type="button"
-                    onClick={() => { topicInputRef.current = ""; setTopic(""); resetSession(); }}
+                    disabled={generating}
+                    onClick={() => { if (generating) return; topicInputRef.current = ""; setTopic(""); resetSession(); }}
                     className={ACTION_BTN}
                   >
                     Сброс
@@ -2024,6 +2103,23 @@ setTopic(serverTopic);
                   {error}
                 </div>
               )}
+
+            {restoredNotice ? (
+              <div className="mt-3 px-4 py-3 rounded-2xl border border-white/10 bg-white/5 text-[12px] text-purple-50/90 flex items-center justify-between gap-3">
+                <span>Восстановлен незавершённый тест.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetSession();
+                    setRestoredNotice(false);
+                  }}
+                  className="px-3 py-2 rounded-full border border-white/20 bg-black/30 text-[11px] text-purple-50 hover:bg-white/5 transition whitespace-nowrap"
+                >
+                  Сбросить
+                </button>
+              </div>
+            ) : null}
+
             </section>
 
             {/* История тестов */}
