@@ -301,6 +301,7 @@ const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOI
 // ---- Explanation cache (localStorage) ----
 const EXPL_CACHE_KEY = "noolix_mistake_expl_cache_v1";
 const HISTORY_OPEN_KEY = "noolix_tests_history_open_v1";
+const TEST_SESSION_KEY = "noolix_tests_session_v1";
 const hashQuestion = (q) => {
   const s = String(q || "").trim().toLowerCase();
   let h = 2166136261;
@@ -328,6 +329,31 @@ const saveExplCache = (cacheObj) => {
 };
 
 
+
+
+// ---- Current test session persistence (localStorage) ----
+const loadTestSession = () => {
+  try {
+    const raw = window.localStorage.getItem(TEST_SESSION_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? obj : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const saveTestSession = (session) => {
+  try {
+    window.localStorage.setItem(TEST_SESSION_KEY, JSON.stringify(session || null));
+  } catch (_) {}
+};
+
+const clearTestSession = () => {
+  try {
+    window.localStorage.removeItem(TEST_SESSION_KEY);
+  } catch (_) {}
+};
 const safeJsonParse = (raw, fallback) => {
   try { return JSON.parse(raw); } catch (_) { return fallback; }
 };
@@ -927,6 +953,63 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
     } catch (_) {}
   }, [historyOpen]);
+
+
+  // RESTORE_SESSION: restore unfinished test after reload/navigation
+  useEffect(() => {
+    try {
+      const saved = loadTestSession();
+      if (!saved || saved.finished) return;
+
+      // Must match current subject/level (avoid restoring wrong context)
+      if (saved.subject !== context.subject || saved.level !== context.level) return;
+      if (!Array.isArray(saved.questions) || !saved.questions.length) return;
+
+      setQuestions(saved.questions);
+      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
+      setCurrentQuestionIndex(Number.isFinite(saved.currentQuestionIndex) ? saved.currentQuestionIndex : 0);
+      setIsGenerating(false);
+      setHasStarted(true);
+      setHasFinished(false);
+
+      if (typeof saved.topicRaw === "string") setTopicRaw(saved.topicRaw);
+      if (Array.isArray(saved.topicsPayload)) setTopicsPayload(saved.topicsPayload);
+
+      // keep history collapsed while continuing
+      setHistoryOpen(false);
+    } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+  // SAVE_SESSION: persist current test while in progress
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hasStarted) return;
+
+    const session = {
+      subject: context.subject,
+      level: context.level,
+      topicRaw: typeof topicRaw === "string" ? topicRaw : "",
+      topicsPayload: Array.isArray(topicsPayload) ? topicsPayload : [],
+      questions: Array.isArray(questions) ? questions : [],
+      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+      currentQuestionIndex: Number.isFinite(currentQuestionIndex) ? currentQuestionIndex : 0,
+      finished: !!hasFinished,
+      ts: Date.now(),
+    };
+
+    if (session.questions.length) {
+      saveTestSession(session);
+    }
+  }, [hasStarted, hasFinished, questions, userAnswers, currentQuestionIndex, topicRaw, topicsPayload, context.subject, context.level]);
+
+
+  // CLEAR_SESSION_ON_FINISH: clear persisted session after finishing
+  useEffect(() => {
+    if (!hasFinished) return;
+    try { clearTestSession(); } catch (_) {}
+  }, [hasFinished]);
 if (v === null) return false;
       return v === "1";
     } catch (_) {
