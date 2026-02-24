@@ -300,6 +300,7 @@ const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOI
 
 // ---- Explanation cache (localStorage) ----
 const EXPL_CACHE_KEY = "noolix_mistake_expl_cache_v1";
+const HISTORY_OPEN_KEY = "noolix_tests_history_open_v1";
 const hashQuestion = (q) => {
   const s = String(q || "").trim().toLowerCase();
   let h = 2166136261;
@@ -913,7 +914,22 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
   const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(() => {
+    if (typeof window === "undefined") return false; // default collapsed
+    try {
+      const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
+      
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
+    } catch (_) {}
+  }, [historyOpen]);
+if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
 
   const mistakeExpRef = useRef({});
   useEffect(() => {
