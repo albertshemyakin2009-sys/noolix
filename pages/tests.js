@@ -298,6 +298,35 @@ const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOI
   return merged;
 };
 
+// ---- Explanation cache (localStorage) ----
+const EXPL_CACHE_KEY = "noolix_mistake_expl_cache_v1";
+const hashQuestion = (q) => {
+  const s = String(q || "").trim().toLowerCase();
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+};
+
+const loadExplCache = () => {
+  try {
+    const raw = localStorage.getItem(EXPL_CACHE_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === "object" ? obj : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const saveExplCache = (cacheObj) => {
+  try {
+    localStorage.setItem(EXPL_CACHE_KEY, JSON.stringify(cacheObj || {}));
+  } catch (_) {}
+};
+
+
 const safeJsonParse = (raw, fallback) => {
   try { return JSON.parse(raw); } catch (_) { return fallback; }
 };
