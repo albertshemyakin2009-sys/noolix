@@ -923,7 +923,10 @@ const [topic, setTopic] = useState("");
   const [suggestedTopics, setSuggestedTopics] = useState([]);
 const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
-  const [generating, setGenerating] = useState(false);
+  const \[generating, setGenerating\] = useState\(false\);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [pendingSession, setPendingSession] = useState(null);
+  const resumeModalDismissedRef = useRef(false);
   const [restoredNotice, setRestoredNotice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -971,15 +974,13 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Attempt restore when there is no active in-memory test
+    // If user already dismissed, don't nag until next reload
+    if (resumeModalDismissedRef.current) return;
+
+    // Only prompt when there is no active in-memory test
     if (Array.isArray(questions) && questions.length) return;
     if (generating) return;
     if (result !== null) return;
-
-    // Throttle to avoid loops (e.g., after context-driven reset)
-    const now = Date.now();
-    if (now - (lastRestoreTsRef.current || 0) < 800) return;
-    lastRestoreTsRef.current = now;
 
     try {
       const saved = loadTestSession();
@@ -988,43 +989,14 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
       if (!savedQuestions.length) return;
 
-      // Restore only unfinished sessions
+      // only unfinished
       if (saved.result !== null && saved.result !== undefined) return;
 
-      try { skipContextResetRef.current = true; } catch (_) {}
-
-      const topicDisplay =
-        (typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim())
-          ? saved.sentTopicForGeneration
-          : (typeof saved.topic === "string" ? saved.topic : "");
-
-      setTopic(typeof saved.topic === "string" ? saved.topic : "");
-      setSentTopicForGeneration(topicDisplay);
-      try { topicInputRef.current = topicDisplay; } catch (_) {}
-
-      setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
-      setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
-
-      setQuestions(savedQuestions);
-      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-      setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
-      setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
-
-      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
-      setReviewing(!!saved.reviewing);
-
-      setResult(null);
-      setGenerating(false);
-      setSubmitting(false);
-      setError("");
-
-      setHistoryOpen(false);
-      setRestoredNotice(true);
+      setPendingSession(saved);
+      setShowResumeModal(true);
     } catch (_) {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level, questions.length, generating, result]);
-
-  useEffect(() => {
+useEffect(() => {
     if (typeof window === "undefined") return;
 
     // Save only when there is a real test in progress
@@ -1300,6 +1272,44 @@ setResult(null);
     setAnalysis("");
     setReviewing(false);
     // keep historyOpen as-is
+  };
+
+
+  const applySavedSession = (saved) => {
+    try {
+      const savedQuestions = Array.isArray(saved?.questions) ? saved.questions : [];
+      if (!savedQuestions.length) return;
+
+      const topicDisplay =
+        (typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim())
+          ? saved.sentTopicForGeneration
+          : (typeof saved.topic === "string" ? saved.topic : "");
+
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setSentTopicForGeneration(topicDisplay);
+      try { topicInputRef.current = topicDisplay; } catch (_) {}
+
+      setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
+      setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
+
+      setQuestions(savedQuestions);
+      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
+      setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
+      setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
+
+      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+      setReviewing(!!saved.reviewing);
+
+      setResult(null);
+      setGenerating(false);
+      setSubmitting(false);
+      setError("");
+
+      setHistoryOpen(false);
+      setRestoredNotice(true);
+
+      try { skipContextResetRef.current = true; } catch (_) {}
+    } catch (_) {}
   };
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
@@ -1866,7 +1876,59 @@ setTopic(serverTopic);
 
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
-          <div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+          
+        {showResumeModal && pendingSession ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/70" />
+            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-black/80 backdrop-blur p-5 text-purple-50 shadow-2xl">
+              <div className="text-[14px] font-semibold">Есть незавершённый тест</div>
+              <div className="mt-2 text-[12px] text-purple-100/80 leading-relaxed">
+                Хочешь продолжить с того места, где остановился, или сбросить и начать заново?
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResumeModal(false);
+                    resumeModalDismissedRef.current = true;
+                    applySavedSession(pendingSession);
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl bg-white text-black text-[12px] font-semibold hover:bg-purple-100 transition"
+                >
+                  Продолжить тест
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResumeModal(false);
+                    resumeModalDismissedRef.current = true;
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
+                >
+                  Отложить
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResumeModal(false);
+                    resumeModalDismissedRef.current = true;
+                    try { clearTestSession(); } catch (_) {}
+                    resetSession();
+                    setRestoredNotice(false);
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
+                >
+                  Сбросить тест
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+<div className="w-full max-w-5xl flex flex-col gap-6 bg-white/5 bg-clip-padding backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-purple-200/80 bg-white/5 px-3 py-1 rounded-full shadow-sm">
