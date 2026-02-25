@@ -911,6 +911,7 @@ export default function TestsPage() {
 const [topic, setTopic] = useState("");
   const mistakeExplainAbortRef = useRef(null);
   const restoredSessionRef = useRef(false);
+  const skipContextResetRef = useRef(false);
   const topicInputRef = useRef("");
   useEffect(() => { topicInputRef.current = topic; }, [topic]);
 
@@ -963,6 +964,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   useEffect(() => {
     if (restoredSessionRef.current) return;
     restoredSessionRef.current = true;
+    skipContextResetRef.current = true;
 
     try {
       const saved = loadTestSession();
@@ -1365,8 +1367,13 @@ const clearTestHistory = () => {
     }
     setSentTopicForGeneration("");
     setDiagnosticLabel("");
-    resetSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (skipContextResetRef.current) {
+      // We restored an unfinished session; don't wipe it on this context sync.
+      skipContextResetRef.current = false;
+    } else {
+      resetSession();
+    }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level]);
 
 useEffect(() => {
