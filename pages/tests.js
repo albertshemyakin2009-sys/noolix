@@ -989,7 +989,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       skipContextResetRef.current = true;
 
       setTopic(typeof saved.topic === "string" ? saved.topic : "");
-      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim() ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
+      try { topicInputRef.current = (typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim()) ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""); } catch (_) {}
       setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
       setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
 
@@ -1021,8 +1022,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (result !== null) return;
 
     saveTestSession({
-      topic: typeof topic === "string" ? topic : "",
-      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
+      topic: (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim()) ? sentTopicForGeneration : (typeof topic === "string" ? topic : ""),
+      sentTopicForGeneration: (typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : ""),
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
       reviewStyleLabel: typeof reviewStyleLabel === "string" ? reviewStyleLabel : "",
       questions,
@@ -1038,7 +1039,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
   useEffect(() => {
     if (result === null) return;
-    try { clearTestSession(); } catch (_) {}
+    // keep saved session when switching subject/session; cleared on finish or explicit reset
   }, [result]);
 const mistakeExpRef = useRef({});
   useEffect(() => {
@@ -1281,7 +1282,7 @@ useEffect(() => {
   }, [context.subject, context.level, historyScope, historyTick]);
 
   const resetSession = () => {
-    try { clearTestSession(); } catch (_) {}
+    // keep saved session when switching subject/session; cleared on finish or explicit reset
     setError("");
     setQuestions([]);
     setUserAnswers([]);
