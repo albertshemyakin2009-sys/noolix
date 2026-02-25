@@ -966,12 +966,20 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   
 
   // TEST_SESSION_V4: save/restore last unfinished test (global, not tied to subject/level)
-  const sessionRestoredRef = useRef(false);
+  const lastRestoreTsRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (sessionRestoredRef.current) return;
-    sessionRestoredRef.current = true;
+
+    // Attempt restore when there is no active in-memory test
+    if (Array.isArray(questions) && questions.length) return;
+    if (generating) return;
+    if (result !== null) return;
+
+    // Throttle to avoid loops (e.g., after context-driven reset)
+    const now = Date.now();
+    if (now - (lastRestoreTsRef.current || 0) < 800) return;
+    lastRestoreTsRef.current = now;
 
     try {
       const saved = loadTestSession();
@@ -980,17 +988,20 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
       if (!savedQuestions.length) return;
 
-      // restore only unfinished
+      // Restore only unfinished sessions
       if (saved.result !== null && saved.result !== undefined) return;
 
-      // don't override active state
-      if (Array.isArray(questions) && questions.length) return;
+      try { skipContextResetRef.current = true; } catch (_) {}
 
-      skipContextResetRef.current = true;
+      const topicDisplay =
+        (typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim())
+          ? saved.sentTopicForGeneration
+          : (typeof saved.topic === "string" ? saved.topic : "");
 
       setTopic(typeof saved.topic === "string" ? saved.topic : "");
-      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim() ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
-      try { topicInputRef.current = (typeof saved.sentTopicForGeneration === "string" && saved.sentTopicForGeneration.trim()) ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""); } catch (_) {}
+      setSentTopicForGeneration(topicDisplay);
+      try { topicInputRef.current = topicDisplay; } catch (_) {}
+
       setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
       setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
 
@@ -1011,7 +1022,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       setRestoredNotice(true);
     } catch (_) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [context.subject, context.level, questions.length, generating, result]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1039,12 +1050,9 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
   useEffect(() => {
     if (result === null) return;
-    // keep saved session when switching subject/session; cleared on finish or explicit reset
+    try { clearTestSession(); } catch (_) {}
   }, [result]);
-const mistakeExpRef = useRef({});
-  useEffect(() => {
-    mistakeExpRef.current = mistakeExplanations || {};
-  }, [mistakeExplanations]);
+
 
   // Auto-generate short explanations for wrong answers (once per question)
   useEffect(() => {
