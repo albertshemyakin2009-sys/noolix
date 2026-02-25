@@ -946,169 +946,81 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
   const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
-  const [historyOpen, setHistoryOpen] = useState(() => {
+    const [historyOpen, setHistoryOpen] = useState(() => {
     if (typeof window === "undefined") return false; // default collapsed
     try {
       const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
-      
+      if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
+
   useEffect(() => {
     try {
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
     } catch (_) {}
   }, [historyOpen]);
 
-
   
 
-  // RESTORE_TEST_SESSION_V3: restore unfinished test after reload/navigation
+  // TEST_SESSION_V4: save/restore last unfinished test (global, not tied to subject/level)
+  const sessionRestoredRef = useRef(false);
+
   useEffect(() => {
-    if (restoredSessionRef.current) return;
-    restoredSessionRef.current = true;
-    skipContextResetRef.current = true;
+    if (typeof window === "undefined") return;
+    if (sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
 
     try {
       const saved = loadTestSession();
       if (!saved) return;
 
-      // Only restore if there is a real unfinished session
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
-      const savedResult = saved.result ?? null;
       if (!savedQuestions.length) return;
-      if (savedResult !== null) return;
 
-      // Do not override an already active session in memory
+      // restore only unfinished
+      if (saved.result !== null && saved.result !== undefined) return;
+
+      // don't override active state
       if (Array.isArray(questions) && questions.length) return;
 
-      setGenerating(false);
-      setSubmitting(false);
-      setError("");
+      skipContextResetRef.current = true;
 
       setTopic(typeof saved.topic === "string" ? saved.topic : "");
-      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
+      setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
+      setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
+
       setQuestions(savedQuestions);
       setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-
-
-  // SAVE_TEST_SESSION_V3: persist current test while in progress (no subject/level binding)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    // Save only when we have a real generated test, and we are not generating right now
-    if (generating) return;
-    if (!Array.isArray(questions) || !questions.length) return;
-
-    // Do not persist finished sessions
-    if (result !== null) return;
-
-    const session = {
-      topic: typeof topic === "string" ? topic : "",
-      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
-      questions,
-      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
-      questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
-      timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
-      analysis: typeof analysis === "string" ? analysis : "",
-      reviewing: !!reviewing,
-      result: null,
-      ts: Date.now(),
-    };
-
-    saveTestSession(session);
-  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration]);
-
-  // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
-  useEffect(() => {
-    if (result === null) return;
-    try { clearTestSession(); } catch (_) {}
-  }, [result]);
       setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
       setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
+
       setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
       setReviewing(!!saved.reviewing);
 
       setResult(null);
-      setRestoredNotice(true);
+      setGenerating(false);
+      setSubmitting(false);
+      setError("");
 
-      // keep history collapsed while continuing
       setHistoryOpen(false);
+      setRestoredNotice(true);
     } catch (_) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level]);
-// RESTORE_TEST_SESSION: restore unfinished test after reload/navigation (once per subject/level)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (restoredSessionRef.current) return;
+  }, []);
 
-    // wait until context is available
-    const subj = (context && context.subject) ? String(context.subject) : "";
-    const lvl = (context && context.level) ? String(context.level) : "";
-    // Preserve non-empty subject/level from previous saved session if context not ready yet
-    const prevSaved = loadTestSession();
-    const subjToSave = subj || String(prevSaved?.subject || "");
-    const lvlToSave = lvl || String(prevSaved?.level || "");
-
-    // do not override an active test already in memory
-    if (Array.isArray(questions) && questions.length) {
-      restoredSessionRef.current = true;
-      return;
-    }
-
-    const saved = loadTestSession();
-    if (!saved || saved.finished) {
-      restoredSessionRef.current = true;
-      return;
-    }
-
-        const savedSubj = String(saved.subject || "");
-    // If either side is empty, don't block restore (context may load after mount)
-    if (savedSubj && subj && savedSubj !== subj) {
-      restoredSessionRef.current = true;
-      return;
-    }
-    // If both sides have a non-empty level, require match; otherwise ignore level.
-    if (lvl && String(saved.level || "") && String(saved.level || "") !== lvl) {
-      restoredSessionRef.current = true;
-      return;
-    }
-
-    if (!Array.isArray(saved.questions) || !saved.questions.length) {
-      restoredSessionRef.current = true;
-      return;
-    }
-
-    setTopic(typeof saved.topic === "string" ? saved.topic : "");
-    setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
-    setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
-    setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
-    setQuestions(saved.questions);
-    setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-    setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
-    setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
-    setResult(saved.result ?? null);
-    setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
-    setGenerating(!!saved.generating);
-    setSubmitting(!!saved.submitting);
-    setError(typeof saved.error === "string" ? saved.error : "");
-
-    // keep history closed so user sees the restored test
-    setHistoryOpen(false);
-
-    restoredSessionRef.current = true;
-  }, [context.subject, context.level, questions.length]);
-
-  // SAVE_TEST_SESSION: persist while there are questions and test not finished
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const subj = (context && context.subject) ? String(context.subject) : "";
-    const lvl = (context && context.level) ? String(context.level) : "";
-
-    // If nothing to save, don't overwrite
+    // Save only when there is a real test in progress
+    if (generating) return;
     if (!Array.isArray(questions) || !questions.length) return;
+    if (result !== null) return;
 
-    const session = {
-      subject: subjToSave,
-      level: lvlToSave,
+    saveTestSession({
       topic: typeof topic === "string" ? topic : "",
       sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1117,31 +1029,18 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
       questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
       timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
-      result: result ?? null,
       analysis: typeof analysis === "string" ? analysis : "",
-      generating: !!generating,
-      submitting: !!submitting,
-      error: typeof error === "string" ? error : "",
-      finished: !!result, // finished when result exists
+      reviewing: !!reviewing,
+      result: null,
       ts: Date.now(),
-    };
+    });
+  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel, reviewStyleLabel]);
 
-    saveTestSession(session);
-  }, [context.subject, context.level, topic, sentTopicForGeneration, diagnosticLabel, reviewStyleLabel, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, result, analysis, generating, submitting, error]);
-
-  // CLEAR_TEST_SESSION_ON_FINISH: clear persisted session after finishing
   useEffect(() => {
-    if (!result) return;
+    if (result === null) return;
     try { clearTestSession(); } catch (_) {}
   }, [result]);
-if (v === null) return false;
-      return v === "1";
-    } catch (_) {
-      return false;
-    }
-  });
-
-  const mistakeExpRef = useRef({});
+const mistakeExpRef = useRef({});
   useEffect(() => {
     mistakeExpRef.current = mistakeExplanations || {};
   }, [mistakeExplanations]);
