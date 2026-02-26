@@ -913,26 +913,82 @@ const [topic, setTopic] = useState("");
   const restoredSessionRef = useRef(false);
   const skipContextResetRef = useRef(false);
   const topicInputRef = useRef("");
-  const sessionMetaRef = useRef({ subject: "", level: "" });
-
   useEffect(() => { topicInputRef.current = topic; }, [topic]);
 
+  
 
-  // LATCH_SESSION_META: remember subject/level for the current in-progress test
+  // RESUME_MODAL_V5: prompt only when saved test STRICTLY matches current subject+level
   useEffect(() => {
-    if (Array.isArray(questions) && questions.length) {
-      if (!sessionMetaRef.current.subject) {
-        sessionMetaRef.current = {
-          subject: typeof context.subject === "string" ? context.subject : "",
-          level: typeof context.level === "string" ? context.level : "",
-        };
-      }
-    } else {
-      sessionMetaRef.current = { subject: "", level: "" };
-    }
-  }, [questions.length, context.subject, context.level]);
+    try {
+      if (typeof window === "undefined") return;
+      if (resumeDismissedRef.current) return;
 
-  // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
+      if (Array.isArray(questions) && questions.length) return;
+      if (generating) return;
+      if (result !== null) return;
+
+      const saved = loadTestSession();
+      if (!saved) return;
+
+      const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      if (!savedQuestions.length) return;
+      if (saved.result !== null && saved.result !== undefined) return;
+
+      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
+      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
+      const curSubject = typeof context.subject === "string" ? context.subject.trim() : "";
+      const curLevel = typeof context.level === "string" ? context.level.trim() : "";
+
+      const okMatch = !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
+        savedSubject === curSubject && savedLevel === curLevel;
+
+      if (!okMatch) return;
+
+      setPendingSession(saved);
+      setShowResumeModal(true);
+    } catch (_) {}
+  }, [context.subject, context.level, questions.length, generating, result]);
+
+  // SAVE_SESSION_V5: save only in-progress test (strict subject+level)
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (generating) return;
+      if (!Array.isArray(questions) || !questions.length) return;
+      if (result !== null) return;
+
+      const subj = typeof context.subject === "string" ? context.subject.trim() : "";
+      const lvl = typeof context.level === "string" ? context.level.trim() : "";
+      if (!subj || !lvl) return;
+
+      const topicToSave =
+        (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim())
+          ? sentTopicForGeneration
+          : (typeof topic === "string" ? topic : "");
+
+      saveTestSession({
+        subject: subj,
+        level: lvl,
+        topic: topicToSave,
+        sentTopicForGeneration: topicToSave,
+        diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
+        questions,
+        userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+        questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
+        timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
+        analysis: typeof analysis === "string" ? analysis : "",
+        reviewing: !!reviewing,
+        result: null,
+        ts: Date.now(),
+      });
+    } catch (_) {}
+  }, [context.subject, context.level, generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel]);
+
+  useEffect(() => {
+    if (result === null) return;
+    try { clearTestSession(); } catch (_) {}
+  }, [result]);
+// If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
   const pendingAutoTopicRef = useRef(null);
   const autoStartedFromQueryRef = useRef(false);
   
@@ -943,7 +999,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [generating, setGenerating] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [pendingSession, setPendingSession] = useState(null);
-  const resumeModalDismissedRef = useRef(false);
+  const resumeDismissedRef = useRef(false);
   const [restoredNotice, setRestoredNotice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -953,9 +1009,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
 
-  const [result, setResult] = useState(null); 
-  const [mistakes, setMistakes] = useState([]); // [{idx, question, options, correctIndex, userIndex, topicTitle, timeSec, confident}]
-// {correctCount,totalCount,scorePercent}
+  const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
@@ -968,77 +1022,63 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [testHistory, setTestHistory] = useState([]);
   const [historyTick, setHistoryTick] = useState(0);
   const [historyScope, setHistoryScope] = useState("current"); // "current" | "all"
-    const [historyOpen, setHistoryOpen] = useState(() => {
+  const [historyOpen, setHistoryOpen] = useState(() => {
     if (typeof window === "undefined") return false; // default collapsed
     try {
       const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
-      if (v === null) return false;
-      return v === "1";
-    } catch (_) {
-      return false;
-    }
-  });
-
+      
   useEffect(() => {
     try {
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
     } catch (_) {}
   }, [historyOpen]);
 
+
   
 
-  // TEST_SESSION_V4: save/restore last unfinished test (global, not tied to subject/level)
-  const lastRestoreTsRef = useRef(0);
-
+  // RESTORE_TEST_SESSION_V3: restore unfinished test after reload/navigation
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    // If user already dismissed, don't nag until next reload
-    if (resumeModalDismissedRef.current) return;
-
-    // Only prompt when there is no active in-memory test
-    if (Array.isArray(questions) && questions.length) return;
-    if (generating) return;
-    if (result !== null) return;
+    if (restoredSessionRef.current) return;
+    restoredSessionRef.current = true;
+    skipContextResetRef.current = true;
 
     try {
       const saved = loadTestSession();
       if (!saved) return;
 
+      // Only restore if there is a real unfinished session
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      const savedResult = saved.result ?? null;
       if (!savedQuestions.length) return;
+      if (savedResult !== null) return;
 
-      // show only for the same subject AND level (strict)
-      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
-      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
-      const curSubject = typeof context.subject === "string" ? context.subject.trim() : "";
-      const curLevel = typeof context.level === "string" ? context.level.trim() : "";
-      const okMatch = !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
-        savedSubject === curSubject && savedLevel === curLevel;
-      if (!okMatch) return;
+      // Do not override an already active session in memory
+      if (Array.isArray(questions) && questions.length) return;
 
-      // only unfinished
-      if (saved.result !== null && saved.result !== undefined) return;
+      setGenerating(false);
+      setSubmitting(false);
+      setError("");
 
-      setPendingSession(saved);
-      setShowResumeModal(true);
-    } catch (_) {}
-  }, [context.subject, context.level, questions.length, generating, result]);
-useEffect(() => {
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
+      setQuestions(savedQuestions);
+      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
+
+
+  // SAVE_TEST_SESSION_V3: persist current test while in progress (no subject/level binding)
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Save only when there is a real test in progress
+    // Save only when we have a real generated test, and we are not generating right now
     if (generating) return;
     if (!Array.isArray(questions) || !questions.length) return;
+
+    // Do not persist finished sessions
     if (result !== null) return;
 
-    saveTestSession({
-      subject: (typeof context.subject === "string" ? context.subject.trim() : ""),
-      level: (typeof context.level === "string" ? context.level.trim() : ""),
-      topic: (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim()) ? sentTopicForGeneration : (typeof topic === "string" ? topic : ""),
-      sentTopicForGeneration: (typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : ""),
-      diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
-      reviewStyleLabel: typeof reviewStyleLabel === "string" ? reviewStyleLabel : "",
+    const session = {
+      topic: typeof topic === "string" ? topic : "",
+      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
       questions,
       userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
       questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
@@ -1047,14 +1087,140 @@ useEffect(() => {
       reviewing: !!reviewing,
       result: null,
       ts: Date.now(),
-    });
-  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel, reviewStyleLabel]);
+    };
 
+    saveTestSession(session);
+  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration]);
+
+  // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
   useEffect(() => {
     if (result === null) return;
     try { clearTestSession(); } catch (_) {}
   }, [result]);
+      setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
+      setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
+      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+      setReviewing(!!saved.reviewing);
 
+      setResult(null);
+      setRestoredNotice(true);
+
+      // keep history collapsed while continuing
+      setHistoryOpen(false);
+    } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
+// RESTORE_TEST_SESSION: restore unfinished test after reload/navigation (once per subject/level)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (restoredSessionRef.current) return;
+
+    // wait until context is available
+    const subj = (context && context.subject) ? String(context.subject) : "";
+    const lvl = (context && context.level) ? String(context.level) : "";
+    // Preserve non-empty subject/level from previous saved session if context not ready yet
+    const prevSaved = loadTestSession();
+    const subjToSave = subj || String(prevSaved?.subject || "");
+    const lvlToSave = lvl || String(prevSaved?.level || "");
+
+    // do not override an active test already in memory
+    if (Array.isArray(questions) && questions.length) {
+      restoredSessionRef.current = true;
+      return;
+    }
+
+    const saved = loadTestSession();
+    if (!saved || saved.finished) {
+      restoredSessionRef.current = true;
+      return;
+    }
+
+        const savedSubj = String(saved.subject || "");
+    // If either side is empty, don't block restore (context may load after mount)
+    if (savedSubj && subj && savedSubj !== subj) {
+      restoredSessionRef.current = true;
+      return;
+    }
+    // If both sides have a non-empty level, require match; otherwise ignore level.
+    if (lvl && String(saved.level || "") && String(saved.level || "") !== lvl) {
+      restoredSessionRef.current = true;
+      return;
+    }
+
+    if (!Array.isArray(saved.questions) || !saved.questions.length) {
+      restoredSessionRef.current = true;
+      return;
+    }
+
+    setTopic(typeof saved.topic === "string" ? saved.topic : "");
+    setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
+    setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
+    setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
+    setQuestions(saved.questions);
+    setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
+    setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
+    setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
+    setResult(saved.result ?? null);
+    setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
+    setGenerating(!!saved.generating);
+    setSubmitting(!!saved.submitting);
+    setError(typeof saved.error === "string" ? saved.error : "");
+
+    // keep history closed so user sees the restored test
+    setHistoryOpen(false);
+
+    restoredSessionRef.current = true;
+  }, [context.subject, context.level, questions.length]);
+
+  // SAVE_TEST_SESSION: persist while there are questions and test not finished
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const subj = (context && context.subject) ? String(context.subject) : "";
+    const lvl = (context && context.level) ? String(context.level) : "";
+
+    // If nothing to save, don't overwrite
+    if (!Array.isArray(questions) || !questions.length) return;
+
+    const session = {
+      subject: subjToSave,
+      level: lvlToSave,
+      topic: typeof topic === "string" ? topic : "",
+      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
+      diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
+      reviewStyleLabel: typeof reviewStyleLabel === "string" ? reviewStyleLabel : "",
+      questions,
+      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+      questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
+      timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
+      result: result ?? null,
+      analysis: typeof analysis === "string" ? analysis : "",
+      generating: !!generating,
+      submitting: !!submitting,
+      error: typeof error === "string" ? error : "",
+      finished: !!result, // finished when result exists
+      ts: Date.now(),
+    };
+
+    saveTestSession(session);
+  }, [context.subject, context.level, topic, sentTopicForGeneration, diagnosticLabel, reviewStyleLabel, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, result, analysis, generating, submitting, error]);
+
+  // CLEAR_TEST_SESSION_ON_FINISH: clear persisted session after finishing
+  useEffect(() => {
+    if (!result) return;
+    try { clearTestSession(); } catch (_) {}
+  }, [result]);
+if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const mistakeExpRef = useRef({});
+  useEffect(() => {
+    mistakeExpRef.current = mistakeExplanations || {};
+  }, [mistakeExplanations]);
 
   // Auto-generate short explanations for wrong answers (once per question)
   useEffect(() => {
@@ -1292,7 +1458,7 @@ useEffect(() => {
   }, [context.subject, context.level, historyScope, historyTick]);
 
   const resetSession = () => {
-    // keep saved session when switching subject/session; cleared on finish or explicit reset
+    try { clearTestSession(); } catch (_) {}
     setError("");
     setQuestions([]);
     setUserAnswers([]);
@@ -1302,11 +1468,7 @@ setResult(null);
     setAnalysis("");
     setReviewing(false);
     // keep historyOpen as-is
-    setMistakes([]);
-    setMistakeExplanations({});
-    setMistakeExplainErrors({});
   };
-
 
   const applySavedSession = (saved) => {
     try {
@@ -1318,17 +1480,11 @@ setResult(null);
           ? saved.sentTopicForGeneration
           : (typeof saved.topic === "string" ? saved.topic : "");
 
-      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setTopic(topicDisplay);
       setSentTopicForGeneration(topicDisplay);
       try { topicInputRef.current = topicDisplay; } catch (_) {}
 
       setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
-      setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
-
-      sessionMetaRef.current = {
-        subject: typeof saved.subject === "string" ? saved.subject : "",
-        level: typeof saved.level === "string" ? saved.level : "",
-      };
 
       setQuestions(savedQuestions);
       setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
@@ -1344,11 +1500,9 @@ setResult(null);
       setError("");
 
       setHistoryOpen(false);
-      setRestoredNotice(true);
-
-      try { skipContextResetRef.current = true; } catch (_) {}
     } catch (_) {}
   };
+
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
     setError("");
@@ -1657,10 +1811,6 @@ setTopic(serverTopic);
         return { ...m, topicTitle: normalizeTopicKeySingle(qt) };
       });
 
-      setMistakes(mistakesWithTopic);
-      setMistakeExplanations({});
-      setMistakeExplainErrors({});
-
       // Remember questions to avoid repeats in future tests (per topic)
       Object.entries(perTopic).forEach(([tKey, info]) => {
         if (!tKey || tKey === "Общее") return;
@@ -1921,11 +2071,11 @@ setTopic(serverTopic);
           
         {showResumeModal && pendingSession ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div className="absolute inset-0 bg-black/70" />
-            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 text-purple-50 shadow-2xl">
-              <div className="text-[14px] font-semibold">Есть незавершённый тест</div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#0B0B10]/90 p-5 text-purple-50 shadow-2xl">
+              <div className="text-[14px] font-semibold">Незавершённый тест</div>
               <div className="mt-2 text-[12px] text-purple-100/80 leading-relaxed">
-                Хочешь продолжить с того места, где остановился, или сбросить и начать заново?
+                У тебя есть незавершённый тест в этой сессии. Продолжим или сбросим?
               </div>
 
               <div className="mt-4 flex flex-col gap-2">
@@ -1933,21 +2083,21 @@ setTopic(serverTopic);
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeModalDismissedRef.current = true;
+                    resumeDismissedRef.current = true;
                     applySavedSession(pendingSession);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl bg-gradient-to-br from-purple-300 to-purple-500 text-black text-[12px] font-semibold shadow-lg hover:opacity-95 transition"
+                  className="w-full px-4 py-3 rounded-2xl bg-purple-200 text-black text-[12px] font-semibold hover:bg-purple-100 transition"
                 >
-                  Продолжить тест
+                  Продолжить
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeModalDismissedRef.current = true;
+                    resumeDismissedRef.current = true;
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-white/5 text-[12px] text-purple-50 hover:bg-white/10 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
                 >
                   Отложить
                 </button>
@@ -1956,12 +2106,11 @@ setTopic(serverTopic);
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeModalDismissedRef.current = true;
+                    resumeDismissedRef.current = true;
                     try { clearTestSession(); } catch (_) {}
                     resetSession();
-                    setRestoredNotice(false);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/15 bg-white/0 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
                 >
                   Сбросить тест
                 </button>
@@ -2407,9 +2556,9 @@ setTopic(serverTopic);
                                     <p className="text-[11px] text-purple-200/80">
                                       Твой ответ: {userText} • Правильно: {correctText}
                                     </p>
-                                    {mistakeExplanations[m.idx] ? (
+                                    {mistakeExplanations[i] ? (
                                       <p className="mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed">
-                                        <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[m.idx]}
+                                        <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
                                         {mistakeExplainErrors[i] ? (
                                           <button
                                             type="button"
@@ -2647,9 +2796,9 @@ setTopic(serverTopic);
                                 {userText}
                               </div>
 
-                            {mistakeExplanations[m.idx] ? (
+                            {mistakeExplanations[i] ? (
                               <p className="mt-2 text-[12px] text-purple-100/90 whitespace-pre-wrap leading-relaxed">
-                                <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[m.idx]}
+                                <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
                               </p>
                             ) : (mistakeExplaining ? (
                               <p className="mt-2 text-[11px] text-purple-200/50">Готовим объяснение…</p>
