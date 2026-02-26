@@ -936,7 +936,9 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [questionShownAt, setQuestionShownAt] = useState([]); // ms timestamps
   const [timeToFirstAnswerSec, setTimeToFirstAnswerSec] = useState([]); // number|null
 
-  const [result, setResult] = useState(null); // {correctCount,totalCount,scorePercent}
+  const [result, setResult] = useState(null); 
+  const [mistakes, setMistakes] = useState([]); // [{idx, question, options, correctIndex, userIndex, topicTitle, timeSec, confident}]
+// {correctCount,totalCount,scorePercent}
   const [analysis, setAnalysis] = useState("");
   const [reviewStyleLabel, setReviewStyleLabel] = useState("");
   const [reviewing, setReviewing] = useState(false);
@@ -989,6 +991,14 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
       if (!savedQuestions.length) return;
 
+      // show only for the same subject/level session
+      const savedSubject = typeof saved.subject === "string" ? saved.subject : "";
+      const savedLevel = typeof saved.level === "string" ? saved.level : "";
+      const curSubject = typeof context.subject === "string" ? context.subject : "";
+      const curLevel = typeof context.level === "string" ? context.level : "";
+      if (savedSubject && curSubject && savedSubject !== curSubject) return;
+      if (savedLevel && curLevel && savedLevel !== curLevel) return;
+
       // only unfinished
       if (saved.result !== null && saved.result !== undefined) return;
 
@@ -1005,6 +1015,8 @@ useEffect(() => {
     if (result !== null) return;
 
     saveTestSession({
+      subject: context.subject,
+      level: context.level,
       topic: (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim()) ? sentTopicForGeneration : (typeof topic === "string" ? topic : ""),
       sentTopicForGeneration: (typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : ""),
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1272,6 +1284,9 @@ setResult(null);
     setAnalysis("");
     setReviewing(false);
     // keep historyOpen as-is
+    setMistakes([]);
+    setMistakeExplanations([]);
+    setMistakeExplainErrors({});
   };
 
 
@@ -1619,6 +1634,10 @@ setTopic(serverTopic);
         return { ...m, topicTitle: normalizeTopicKeySingle(qt) };
       });
 
+      setMistakes(mistakesWithTopic);
+      setMistakeExplanations(new Array(mistakesWithTopic.length).fill(""));
+      setMistakeExplainErrors({});
+
       // Remember questions to avoid repeats in future tests (per topic)
       Object.entries(perTopic).forEach(([tKey, info]) => {
         if (!tKey || tKey === "Общее") return;
@@ -1880,7 +1899,7 @@ setTopic(serverTopic);
         {showResumeModal && pendingSession ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/70" />
-            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-black/80 backdrop-blur p-5 text-purple-50 shadow-2xl">
+            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 text-purple-50 shadow-2xl">
               <div className="text-[14px] font-semibold">Есть незавершённый тест</div>
               <div className="mt-2 text-[12px] text-purple-100/80 leading-relaxed">
                 Хочешь продолжить с того места, где остановился, или сбросить и начать заново?
@@ -1894,7 +1913,7 @@ setTopic(serverTopic);
                     resumeModalDismissedRef.current = true;
                     applySavedSession(pendingSession);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl bg-white text-black text-[12px] font-semibold hover:bg-purple-100 transition"
+                  className="w-full px-4 py-3 rounded-2xl bg-gradient-to-br from-purple-300 to-purple-500 text-black text-[12px] font-semibold shadow-lg hover:opacity-95 transition"
                 >
                   Продолжить тест
                 </button>
@@ -1905,7 +1924,7 @@ setTopic(serverTopic);
                     setShowResumeModal(false);
                     resumeModalDismissedRef.current = true;
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-white/5 text-[12px] text-purple-50 hover:bg-white/10 transition"
                 >
                   Отложить
                 </button>
@@ -1919,7 +1938,7 @@ setTopic(serverTopic);
                     resetSession();
                     setRestoredNotice(false);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/15 bg-white/0 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
                 >
                   Сбросить тест
                 </button>
