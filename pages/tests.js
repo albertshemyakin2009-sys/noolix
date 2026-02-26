@@ -1,5 +1,62 @@
 // pages/tests.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error: error ? String(error?.message || error) : "Unknown error" };
+  }
+  componentDidCatch(error) {
+    try {
+      // eslint-disable-next-line no-console
+      console.error("Tests page crashed:", error);
+    } catch (_) {}
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen w-full bg-black text-purple-50 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0B0B10]/90 p-5 shadow-2xl">
+            <div className="text-[14px] font-semibold">Ошибка на странице тестов</div>
+            <div className="mt-2 text-[12px] text-purple-100/80 whitespace-pre-wrap leading-relaxed">
+              {this.state.error}
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem("noolix_tests_session_v5");
+                    localStorage.removeItem("noolix_tests_session_v4");
+                    localStorage.removeItem("noolix_tests_session_v3");
+                    localStorage.removeItem("noolix_tests_session_v2");
+                    localStorage.removeItem("noolix_tests_session_v1");
+                  } catch (_) {}
+                  try { location.reload(); } catch (_) {}
+                }}
+                className="w-full px-4 py-3 rounded-2xl bg-purple-200 text-black text-[12px] font-semibold hover:bg-purple-100 transition"
+              >
+                Сбросить сохранённый тест и перезагрузить
+              </button>
+              <button
+                type="button"
+                onClick={() => this.setState({ error: null })}
+                className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
+              >
+                Попробовать продолжить
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
   { label: "Диалог", href: "/chat", icon: "💬", key: "chat" },
