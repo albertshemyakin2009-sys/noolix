@@ -1033,8 +1033,8 @@ useEffect(() => {
     if (result !== null) return;
 
     saveTestSession({
-      subject: sessionMetaRef.current.subject,
-      level: sessionMetaRef.current.level,
+      subject: (typeof context.subject === "string" ? context.subject.trim() : ""),
+      level: (typeof context.level === "string" ? context.level.trim() : ""),
       topic: (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim()) ? sentTopicForGeneration : (typeof topic === "string" ? topic : ""),
       sentTopicForGeneration: (typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : ""),
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1303,7 +1303,7 @@ setResult(null);
     setReviewing(false);
     // keep historyOpen as-is
     setMistakes([]);
-    setMistakeExplanations([]);
+    setMistakeExplanations({});
     setMistakeExplainErrors({});
   };
 
@@ -1658,7 +1658,7 @@ setTopic(serverTopic);
       });
 
       setMistakes(mistakesWithTopic);
-      setMistakeExplanations(new Array(mistakesWithTopic.length).fill(""));
+      setMistakeExplanations({});
       setMistakeExplainErrors({});
 
       // Remember questions to avoid repeats in future tests (per topic)
@@ -2407,9 +2407,9 @@ setTopic(serverTopic);
                                     <p className="text-[11px] text-purple-200/80">
                                       Твой ответ: {userText} • Правильно: {correctText}
                                     </p>
-                                    {mistakeExplanations[i] ? (
+                                    {mistakeExplanations[m.idx] ? (
                                       <p className="mt-1 text-[11px] text-purple-100/80 whitespace-pre-wrap leading-relaxed">
-                                        <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
+                                        <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[m.idx]}
                                         {mistakeExplainErrors[i] ? (
                                           <button
                                             type="button"
@@ -2647,9 +2647,9 @@ setTopic(serverTopic);
                                 {userText}
                               </div>
 
-                            {mistakeExplanations[i] ? (
+                            {mistakeExplanations[m.idx] ? (
                               <p className="mt-2 text-[12px] text-purple-100/90 whitespace-pre-wrap leading-relaxed">
-                                <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[i]}
+                                <span className="text-purple-300/80">Объяснение:</span> {mistakeExplanations[m.idx]}
                               </p>
                             ) : (mistakeExplaining ? (
                               <p className="mt-2 text-[11px] text-purple-200/50">Готовим объяснение…</p>
