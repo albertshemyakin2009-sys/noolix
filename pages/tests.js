@@ -917,17 +917,50 @@ const [topic, setTopic] = useState("");
 
   
 
-  // RESUME_MODAL_V5: prompt only when saved test STRICTLY matches current subject+level
+  
+  // SESSION_GUARD_V5: safely read/validate saved session once (prevents crashes from corrupted localStorage)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(TEST_SESSION_KEY);
+      if (!raw) {
+        setSavedTestSession(null);
+        setSessionGuardReady(true);
+        return;
+      }
+      try {
+        const obj = JSON.parse(raw);
+        const ok = obj && typeof obj === "object" && Array.isArray(obj.questions) && obj.questions.length > 0;
+        if (!ok) {
+          window.localStorage.removeItem(TEST_SESSION_KEY);
+          setSavedTestSession(null);
+        } else {
+          setSavedTestSession(obj);
+        }
+      } catch (_) {
+        // corrupted JSON
+        try { window.localStorage.removeItem(TEST_SESSION_KEY); } catch (_) {}
+        setSavedTestSession(null);
+      }
+    } catch (_) {
+      setSavedTestSession(null);
+    } finally {
+      setSessionGuardReady(true);
+    }
+  }, []);
+
+// RESUME_MODAL_V5: prompt only when saved test STRICTLY matches current subject+level
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
+      if (!sessionGuardReady) return;
       if (resumeDismissedRef.current) return;
 
       if (Array.isArray(questions) && questions.length) return;
       if (generating) return;
       if (result !== null) return;
 
-      const saved = loadTestSession();
+      const saved = savedTestSession;
       if (!saved) return;
 
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
@@ -981,12 +1014,15 @@ const [topic, setTopic] = useState("");
         result: null,
         ts: Date.now(),
       });
+      try { setSavedTestSession(loadTestSession()); } catch (_) {}
+
     } catch (_) {}
   }, [context.subject, context.level, generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel]);
 
   useEffect(() => {
     if (result === null) return;
     try { clearTestSession(); } catch (_) {}
+    setSavedTestSession(null)
   }, [result]);
 // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
   const pendingAutoTopicRef = useRef(null);
@@ -996,7 +1032,9 @@ const [topic, setTopic] = useState("");
   const [suggestedTopics, setSuggestedTopics] = useState([]);
 const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
-  const [generating, setGenerating] = useState(false);
+  const \[generating, setGenerating\] = useState\(false\);
+  const [sessionGuardReady, setSessionGuardReady] = useState(false);
+  const [savedTestSession, setSavedTestSession] = useState(null);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [pendingSession, setPendingSession] = useState(null);
   const resumeDismissedRef = useRef(false);
@@ -1043,7 +1081,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     skipContextResetRef.current = true;
 
     try {
-      const saved = loadTestSession();
+      const saved = savedTestSession;
       if (!saved) return;
 
       // Only restore if there is a real unfinished session
@@ -1129,7 +1167,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       return;
     }
 
-    const saved = loadTestSession();
+    const saved = savedTestSession;
     if (!saved || saved.finished) {
       restoredSessionRef.current = true;
       return;
