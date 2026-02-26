@@ -913,7 +913,24 @@ const [topic, setTopic] = useState("");
   const restoredSessionRef = useRef(false);
   const skipContextResetRef = useRef(false);
   const topicInputRef = useRef("");
+  const sessionMetaRef = useRef({ subject: "", level: "" });
+
   useEffect(() => { topicInputRef.current = topic; }, [topic]);
+
+
+  // LATCH_SESSION_META: remember subject/level for the current in-progress test
+  useEffect(() => {
+    if (Array.isArray(questions) && questions.length) {
+      if (!sessionMetaRef.current.subject) {
+        sessionMetaRef.current = {
+          subject: typeof context.subject === "string" ? context.subject : "",
+          level: typeof context.level === "string" ? context.level : "",
+        };
+      }
+    } else {
+      sessionMetaRef.current = { subject: "", level: "" };
+    }
+  }, [questions.length, context.subject, context.level]);
 
   // If we came from Progress via /tests?topic=..., we may want to auto-generate a mini-test for that topic.
   const pendingAutoTopicRef = useRef(null);
@@ -991,13 +1008,14 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
       if (!savedQuestions.length) return;
 
-      // show only for the same subject/level session
-      const savedSubject = typeof saved.subject === "string" ? saved.subject : "";
-      const savedLevel = typeof saved.level === "string" ? saved.level : "";
-      const curSubject = typeof context.subject === "string" ? context.subject : "";
-      const curLevel = typeof context.level === "string" ? context.level : "";
-      if (savedSubject && curSubject && savedSubject !== curSubject) return;
-      if (savedLevel && curLevel && savedLevel !== curLevel) return;
+      // show only for the same subject AND level (strict)
+      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
+      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
+      const curSubject = typeof context.subject === "string" ? context.subject.trim() : "";
+      const curLevel = typeof context.level === "string" ? context.level.trim() : "";
+      const okMatch = !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
+        savedSubject === curSubject && savedLevel === curLevel;
+      if (!okMatch) return;
 
       // only unfinished
       if (saved.result !== null && saved.result !== undefined) return;
@@ -1015,8 +1033,8 @@ useEffect(() => {
     if (result !== null) return;
 
     saveTestSession({
-      subject: context.subject,
-      level: context.level,
+      subject: sessionMetaRef.current.subject,
+      level: sessionMetaRef.current.level,
       topic: (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim()) ? sentTopicForGeneration : (typeof topic === "string" ? topic : ""),
       sentTopicForGeneration: (typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : ""),
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1306,6 +1324,11 @@ setResult(null);
 
       setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
       setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
+
+      sessionMetaRef.current = {
+        subject: typeof saved.subject === "string" ? saved.subject : "",
+        level: typeof saved.level === "string" ? saved.level : "",
+      };
 
       setQuestions(savedQuestions);
       setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
