@@ -1066,19 +1066,19 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (typeof window === "undefined") return false; // default collapsed
     try {
       const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
-      
+      if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
+
   useEffect(() => {
     try {
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
     } catch (_) {}
   }, [historyOpen]);
-
-
-  
-
-  
-
-  // RESUME_MODAL: show prompt if there is an unfinished test for THIS subject+level
+// RESUME_MODAL: show prompt if there is an unfinished test for THIS subject+level
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -1267,12 +1267,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!result) return;
     try { clearTestSession(); } catch (_) {}
   }, [result]);
-if (v === null) return false;
-      return v === "1";
-    } catch (_) {
-      return false;
-    }
-  });
 
   const mistakeExpRef = useRef({});
   useEffect(() => {
