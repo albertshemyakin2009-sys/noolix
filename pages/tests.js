@@ -1137,7 +1137,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
   useEffect(() => {
     if (result === null) return;
-    try { clearTestSession(); } catch (_) {}
+    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
   }, [result]);
       setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
       setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
@@ -1250,7 +1250,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   // CLEAR_TEST_SESSION_ON_FINISH: clear persisted session after finishing
   useEffect(() => {
     if (!result) return;
-    try { clearTestSession(); } catch (_) {}
+    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
   }, [result]);
 if (v === null) return false;
       return v === "1";
@@ -1573,10 +1573,10 @@ useEffect(() => {
 
   useEffect(() => {
     if (result === null) return;
-    try { clearTestSession(); } catch (_) {}
+    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
   }, [result]);
 const resetSession = () => {
-    try { clearTestSession(); } catch (_) {}
+    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
     setError("");
     setQuestions([]);
     setUserAnswers([]);
@@ -2225,7 +2225,7 @@ setTopic(serverTopic);
                   onClick={() => {
                     setShowResumeModal(false);
                     resumeDismissedRef.current = true;
-                    try { clearTestSession(); } catch (_) {}
+                    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
                     resetSession();
                   }}
                   className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
