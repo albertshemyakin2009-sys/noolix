@@ -142,6 +142,8 @@ const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-n
 
 
 
+const normalizeKey = (v) => String(v || "").trim().toLowerCase();
+
 const normalizeLevel = (lvl) => {
   const v = String(lvl || "").trim();
   if (v === "7–9 класс") return "7–9 класс";
@@ -1516,10 +1518,10 @@ useEffect(() => {
       if (!savedQuestions.length) return;
       if (saved.result !== null && saved.result !== undefined) return;
 
-      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
-      const savedLevel = normalizeLevel(saved.level);
-      const curSubject = typeof context.subject === "string" ? String(context.subject).trim() : "";
-      const curLevel = normalizeLevel(context.level);
+      const savedSubject = (saved && typeof saved.normSubject === "string") ? saved.normSubject : normalizeKey(saved?.subject);
+      const savedLevel = (saved && typeof saved.normLevel === "string") ? saved.normLevel : normalizeKey(normalizeLevel(saved?.level));
+      const curSubject = normalizeKey(context.subject);
+      const curLevel = normalizeKey(normalizeLevel(context.level));
 
       const okMatch =
         !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
@@ -1540,8 +1542,8 @@ useEffect(() => {
       if (!Array.isArray(questions) || !questions.length) return;
       if (result !== null) return;
 
-      const subj = typeof context.subject === "string" ? String(context.subject).trim() : "";
-      const lvl = normalizeLevel(context.level);
+      const subj = normalizeKey(context.subject);
+      const lvl = normalizeKey(normalizeLevel(context.level));
       if (!subj || !lvl) return;
 
       const topicToSave =
@@ -1552,6 +1554,8 @@ useEffect(() => {
       saveTestSession({
         subject: subj,
         level: lvl,
+        normSubject: subj,
+        normLevel: lvl,
         topic: topicToSave,
         sentTopicForGeneration: topicToSave,
         diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -2971,4 +2975,3 @@ export default function TestsPage() {
     </GlobalErrorCapture>
   );
 }
-
