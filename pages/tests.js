@@ -1066,90 +1066,73 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (typeof window === "undefined") return false; // default collapsed
     try {
       const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
-      if (v === null) return false;
-      return v === "1";
-    } catch (_) {
-      return false;
-    }
-  });
-
+      
   useEffect(() => {
     try {
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
     } catch (_) {}
   }, [historyOpen]);
-// RESUME_MODAL: show prompt if there is an unfinished test for THIS subject+level
+
+
+  
+
+  // RESTORE_TEST_SESSION_V3: restore unfinished test after reload/navigation
   useEffect(() => {
+    if (restoredSessionRef.current) return;
+    restoredSessionRef.current = true;
+    skipContextResetRef.current = true;
+
     try {
-      if (typeof window === "undefined") return;
-      if (resumeDismissedRef.current) return;
-
-      if (Array.isArray(questions) && questions.length) return;
-      if (generating) return;
-      if (result !== null) return;
-
       const saved = loadTestSession();
       if (!saved) return;
 
+      // Only restore if there is a real unfinished session
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      const savedResult = saved.result ?? null;
       if (!savedQuestions.length) return;
+      if (savedResult !== null) return;
 
-      if (saved.result !== null && saved.result !== undefined) return;
+      // Do not override an already active session in memory
+      if (Array.isArray(questions) && questions.length) return;
 
-      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
-      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
-      const curSubject = typeof context.subject === "string" ? context.subject.trim() : "";
-      const curLevel = typeof context.level === "string" ? context.level.trim() : "";
+      setGenerating(false);
+      setSubmitting(false);
+      setError("");
 
-      const okMatch =
-        !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
-        savedSubject === curSubject && savedLevel === curLevel;
+      setTopic(typeof saved.topic === "string" ? saved.topic : "");
+      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
+      setQuestions(savedQuestions);
+      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
 
-      if (!okMatch) return;
 
-      setPendingSession(saved);
-      setShowResumeModal(true);
-      try { skipContextResetRef.current = true; } catch (_) {}
-    } catch (_) {}
-  }, [context.subject, context.level, questions.length, generating, result]);
-
-// SAVE_TEST_SESSION: persist current test while in progress (strict subject+level)
+  // SAVE_TEST_SESSION_V3: persist current test while in progress (no subject/level binding)
   useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
 
-      if (generating) return;
-      if (!Array.isArray(questions) || !questions.length) return;
-      if (result !== null) return;
+    // Save only when we have a real generated test, and we are not generating right now
+    if (generating) return;
+    if (!Array.isArray(questions) || !questions.length) return;
 
-      const subj = typeof context.subject === "string" ? context.subject.trim() : "";
-      const lvl = typeof context.level === "string" ? context.level.trim() : "";
-      if (!subj || !lvl) return;
+    // Do not persist finished sessions
+    if (result !== null) return;
 
-      const topicToSave =
-        (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim())
-          ? sentTopicForGeneration
-          : (typeof topic === "string" ? topic : "");
+    const session = {
+      topic: typeof topic === "string" ? topic : "",
+      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
+      questions,
+      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+      questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
+      timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
+      analysis: typeof analysis === "string" ? analysis : "",
+      reviewing: !!reviewing,
+      result: null,
+      ts: Date.now(),
+    };
 
-      saveTestSession({
-        subject: subj,
-        level: lvl,
-        topic: topicToSave,
-        sentTopicForGeneration: topicToSave,
-        diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
-        questions,
-        userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
-        questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
-        timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
-        analysis: typeof analysis === "string" ? analysis : "",
-        reviewing: !!reviewing,
-        result: null,
-        ts: Date.now(),
-      });
-    } catch (_) {}
-  }, [context.subject, context.level, generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel]);
+    saveTestSession(session);
+  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration]);
 
-// CLEAR_TEST_SESSION_V3: clear persisted session after finishing
+  // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
   useEffect(() => {
     if (result === null) return;
     try { clearTestSession(); } catch (_) {}
@@ -1267,6 +1250,12 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!result) return;
     try { clearTestSession(); } catch (_) {}
   }, [result]);
+if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
 
   const mistakeExpRef = useRef({});
   useEffect(() => {
@@ -1508,7 +1497,81 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level, historyScope, historyTick]);
 
-  const resetSession = () => {
+  
+
+  // RESUME_MODAL_V6: prompt only when saved test STRICTLY matches current subject+level
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (resumeDismissedRef.current) return;
+
+      if (Array.isArray(questions) && questions.length) return;
+      if (generating) return;
+      if (result !== null) return;
+
+      const saved = loadTestSession();
+      if (!saved) return;
+
+      const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      if (!savedQuestions.length) return;
+      if (saved.result !== null && saved.result !== undefined) return;
+
+      const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
+      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
+      const curSubject = typeof context.subject === "string" ? String(context.subject).trim() : "";
+      const curLevel = typeof context.level === "string" ? String(context.level).trim() : "";
+
+      const okMatch =
+        !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
+        savedSubject === curSubject && savedLevel === curLevel;
+
+      if (!okMatch) return;
+
+      setPendingSession(saved);
+      setShowResumeModal(true);
+    } catch (_) {}
+  }, [context.subject, context.level, questions.length, generating, result]);
+
+  // SAVE_SESSION_V6: save only in-progress test, strictly bound to subject+level
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (generating) return;
+      if (!Array.isArray(questions) || !questions.length) return;
+      if (result !== null) return;
+
+      const subj = typeof context.subject === "string" ? String(context.subject).trim() : "";
+      const lvl = typeof context.level === "string" ? String(context.level).trim() : "";
+      if (!subj || !lvl) return;
+
+      const topicToSave =
+        (typeof sentTopicForGeneration === "string" && sentTopicForGeneration.trim())
+          ? sentTopicForGeneration
+          : (typeof topic === "string" ? topic : "");
+
+      saveTestSession({
+        subject: subj,
+        level: lvl,
+        topic: topicToSave,
+        sentTopicForGeneration: topicToSave,
+        diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
+        questions,
+        userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
+        questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
+        timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
+        analysis: typeof analysis === "string" ? analysis : "",
+        reviewing: !!reviewing,
+        result: null,
+        ts: Date.now(),
+      });
+    } catch (_) {}
+  }, [context.subject, context.level, generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration, diagnosticLabel]);
+
+  useEffect(() => {
+    if (result === null) return;
+    try { clearTestSession(); } catch (_) {}
+  }, [result]);
+const resetSession = () => {
     try { clearTestSession(); } catch (_) {}
     setError("");
     setQuestions([]);
@@ -1551,7 +1614,6 @@ setResult(null);
       setError("");
 
       setHistoryOpen(false);
-      try { skipContextResetRef.current = true; } catch (_) {}
     } catch (_) {}
   };
 
