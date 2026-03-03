@@ -2189,14 +2189,42 @@ setTopic(serverTopic);
           
         {showResumeModal && pendingSession ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#0B0B10]/90 p-5 text-purple-50 shadow-2xl">
-              <div className="text-[14px] font-semibold">Незавершённый тест</div>
-              <div className="mt-2 text-[12px] text-purple-100/80 leading-relaxed">
-                У тебя есть незавершённый тест в этой сессии. Продолжим или сбросим?
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+            <div className="absolute inset-0 opacity-80 bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.25),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(236,72,153,0.18),_transparent_55%)]" />
+
+            <div className="relative w-full max-w-md rounded-[28px] border border-white/12 bg-white/8 p-6 text-purple-50 shadow-[0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 h-11 w-11 rounded-2xl bg-gradient-to-br from-purple-100 to-white text-black flex items-center justify-center shadow-md ring-2 ring-white/30">
+                  <span className="text-lg">⏳</span>
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
+                    Незавершённый тест
+                  </div>
+                  <div className="mt-1 text-[12px] text-purple-100/80 leading-relaxed">
+                    Нашёл сохранённую попытку в этой сессии. Хочешь продолжить с того места, где остановился?
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-3">
+                <div className="flex flex-wrap gap-2 text-[11px] text-purple-100/90">
+                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                    <span className="text-purple-200/70">Предмет:</span> {pendingSession?.subject || context.subject}
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                    <span className="text-purple-200/70">Уровень:</span> {pendingSession?.level || context.level}
+                  </span>
+                  {(pendingSession?.topic || pendingSession?.sentTopicForGeneration) ? (
+                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 max-w-full truncate">
+                      <span className="text-purple-200/70">Тема:</span> {(pendingSession?.topic || pendingSession?.sentTopicForGeneration)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -2204,7 +2232,7 @@ setTopic(serverTopic);
                     resumeDismissedRef.current = true;
                     applySavedSession(pendingSession);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl bg-purple-200 text-black text-[12px] font-semibold hover:bg-purple-100 transition"
+                  className="w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-100 via-white to-purple-100 text-black text-[12px] font-semibold shadow-md hover:opacity-95 transition"
                 >
                   Продолжить
                 </button>
@@ -2215,7 +2243,7 @@ setTopic(serverTopic);
                     setShowResumeModal(false);
                     resumeDismissedRef.current = true;
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/15 bg-white/5 text-[12px] text-purple-50 hover:bg-white/10 transition"
                 >
                   Отложить
                 </button>
@@ -2228,7 +2256,7 @@ setTopic(serverTopic);
                     // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
                     resetSession();
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-orange-200/30 bg-orange-500/10 text-[12px] text-orange-50/90 hover:bg-orange-500/15 transition"
                 >
                   Сбросить тест
                 </button>
