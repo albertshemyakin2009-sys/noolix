@@ -1517,9 +1517,9 @@ useEffect(() => {
       if (saved.result !== null && saved.result !== undefined) return;
 
       const savedSubject = typeof saved.subject === "string" ? saved.subject.trim() : "";
-      const savedLevel = typeof saved.level === "string" ? saved.level.trim() : "";
+      const savedLevel = normalizeLevel(saved.level);
       const curSubject = typeof context.subject === "string" ? String(context.subject).trim() : "";
-      const curLevel = typeof context.level === "string" ? String(context.level).trim() : "";
+      const curLevel = normalizeLevel(context.level);
 
       const okMatch =
         !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
@@ -1541,7 +1541,7 @@ useEffect(() => {
       if (result !== null) return;
 
       const subj = typeof context.subject === "string" ? String(context.subject).trim() : "";
-      const lvl = typeof context.level === "string" ? String(context.level).trim() : "";
+      const lvl = normalizeLevel(context.level);
       if (!subj || !lvl) return;
 
       const topicToSave =
@@ -2971,3 +2971,4 @@ export default function TestsPage() {
     </GlobalErrorCapture>
   );
 }
+
