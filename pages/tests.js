@@ -26,6 +26,7 @@ class ErrorBoundary extends React.Component {
                 type="button"
                 onClick={() => {
                   try {
+                    localStorage.removeItem("noolix_tests_sessions_v1");
                     localStorage.removeItem("noolix_tests_session_v5");
                     localStorage.removeItem("noolix_tests_session_v4");
                     localStorage.removeItem("noolix_tests_session_v3");
@@ -92,7 +93,8 @@ function GlobalErrorCapture({ children }) {
               type="button"
               onClick={() => {
                 try {
-                  localStorage.removeItem("noolix_tests_session_v5");
+                  localStorage.removeItem("noolix_tests_sessions_v1");
+                    localStorage.removeItem("noolix_tests_session_v5");
                   localStorage.removeItem("noolix_tests_session_v4");
                   localStorage.removeItem("noolix_tests_session_v3");
                   localStorage.removeItem("noolix_tests_session_v2");
@@ -416,7 +418,146 @@ const getAvoidStemsMulti = ({ subject, level, topicTitles, limit = QUESTION_AVOI
 // ---- Explanation cache (localStorage) ----
 const EXPL_CACHE_KEY = "noolix_mistake_expl_cache_v1";
 const HISTORY_OPEN_KEY = "noolix_tests_history_open_v1";
-const TEST_SESSION_KEY = "noolix_tests_session_v3";
+
+// ---- Current test session persistence (localStorage) ----
+// We store sessions PER subject+level so switching context doesn't overwrite an unfinished test.
+const TEST_SESSIONS_KEY = "noolix_tests_sessions_v1";
+const LEGACY_TEST_SESSION_KEYS = [
+  "noolix_tests_session_v5",
+  "noolix_tests_session_v4",
+  "noolix_tests_session_v3",
+  "noolix_tests_session_v2",
+  "noolix_tests_session_v1",
+];
+
+const makeSessionScopeKey = (subject, level) => {
+  const s = normalizeKey(subject);
+  const l = normalizeKey(normalizeLevel(level));
+  return `${s}|${l}`;
+};
+
+const loadAllTestSessions = () => {
+  try {
+    const raw = window.localStorage.getItem(TEST_SESSIONS_KEY);
+    const obj = raw ? JSON.parse(raw) : null;
+    if (obj && typeof obj === "object" && obj.sessions && typeof obj.sessions === "object") {
+      return obj;
+    }
+    return { v: 1, sessions: {} };
+  } catch (_) {
+    return { v: 1, sessions: {} };
+  }
+};
+
+const saveAllTestSessions = (obj) => {
+  try {
+    window.localStorage.setItem(TEST_SESSIONS_KEY, JSON.stringify(obj || { v: 1, sessions: {} }));
+  } catch (_) {}
+};
+
+const migrateLegacySessionOnce = () => {
+  try {
+    const existing = loadAllTestSessions();
+    if (existing && existing.sessions && Object.keys(existing.sessions).length > 0) return;
+
+    // Prefer v3 (the one used in this build), but accept any legacy key.
+    let legacyRaw = null;
+    let legacyKey = null;
+    for (const k of LEGACY_TEST_SESSION_KEYS) {
+      const r = window.localStorage.getItem(k);
+      if (r) { legacyRaw = r; legacyKey = k; break; }
+    }
+    if (!legacyRaw) return;
+
+    const legacy = JSON.parse(legacyRaw);
+    if (!legacy || typeof legacy !== "object") return;
+
+    const subj = legacy.normSubject || legacy.subject || "";
+    const lvl = legacy.normLevel || legacy.level || "";
+    const scope = makeSessionScopeKey(subj, lvl);
+    if (!scope || scope === "|") return;
+
+    const savedQuestions = Array.isArray(legacy.questions) ? legacy.questions : [];
+    const savedResult = legacy.result ?? null;
+    // Migrate only unfinished sessions with questions (otherwise don't clutter the map)
+    if (!savedQuestions.length) return;
+    if (savedResult !== null) return;
+
+    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevel(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevel(lvl)) } } };
+    saveAllTestSessions(next);
+    // Keep legacy key to be safe; we'll let user actions clear it.
+    try { if (legacyKey) window.localStorage.removeItem(legacyKey); } catch (_) {}
+  } catch (_) {}
+};
+
+// Returns a scoped session if subject+level provided, otherwise returns the most recent unfinished session (fallback).
+const loadTestSession = (subject, level) => {
+  try {
+    migrateLegacySessionOnce();
+    const all = loadAllTestSessions();
+    const sessions = all?.sessions || {};
+
+    const s = normalizeKey(subject);
+    const l = normalizeKey(normalizeLevel(level));
+    if (s && l) {
+      const key = makeSessionScopeKey(s, l);
+      const sess = sessions[key];
+      return sess && typeof sess === "object" ? sess : null;
+    }
+
+    // Fallback: pick most recent unfinished session
+    let best = null;
+    let bestTs = -1;
+    for (const k of Object.keys(sessions)) {
+      const sess = sessions[k];
+      if (!sess || typeof sess !== "object") continue;
+      const q = Array.isArray(sess.questions) ? sess.questions : [];
+      const r = sess.result ?? null;
+      if (!q.length) continue;
+      if (r !== null) continue;
+      const ts = typeof sess.ts === "number" ? sess.ts : 0;
+      if (ts > bestTs) { bestTs = ts; best = sess; }
+    }
+    return best;
+  } catch (_) {
+    return null;
+  }
+};
+
+const saveTestSession = (session) => {
+  try {
+    migrateLegacySessionOnce();
+    const subj = session?.normSubject || session?.subject || "";
+    const lvl = session?.normLevel || session?.level || "";
+    const s = normalizeKey(subj);
+    const l = normalizeKey(normalizeLevel(lvl));
+    if (!s || !l) return;
+
+    const all = loadAllTestSessions();
+    const sessions = all?.sessions && typeof all.sessions === "object" ? all.sessions : {};
+    const key = makeSessionScopeKey(s, l);
+    sessions[key] = { ...(session || {}), subject: s, level: l, normSubject: s, normLevel: l, ts: typeof session?.ts === "number" ? session.ts : Date.now() };
+    saveAllTestSessions({ v: 1, sessions });
+  } catch (_) {}
+};
+
+const clearTestSession = (subject, level) => {
+  try {
+    migrateLegacySessionOnce();
+    const s = normalizeKey(subject);
+    const l = normalizeKey(normalizeLevel(level));
+    if (!s || !l) {
+      window.localStorage.removeItem(TEST_SESSIONS_KEY);
+      return;
+    }
+    const all = loadAllTestSessions();
+    const sessions = all?.sessions && typeof all.sessions === "object" ? all.sessions : {};
+    const key = makeSessionScopeKey(s, l);
+    if (sessions[key]) delete sessions[key];
+    saveAllTestSessions({ v: 1, sessions });
+  } catch (_) {}
+};
+
 const hashQuestion = (q) => {
   const s = String(q || "").trim().toLowerCase();
   let h = 2166136261;
@@ -425,46 +566,6 @@ const hashQuestion = (q) => {
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0).toString(16);
-};
-
-const loadExplCache = () => {
-  try {
-    const raw = localStorage.getItem(EXPL_CACHE_KEY);
-    const obj = raw ? JSON.parse(raw) : {};
-    return obj && typeof obj === "object" ? obj : {};
-  } catch (_) {
-    return {};
-  }
-};
-
-const saveExplCache = (cacheObj) => {
-  try {
-    localStorage.setItem(EXPL_CACHE_KEY, JSON.stringify(cacheObj || {}));
-  } catch (_) {}
-};
-
-// ---- Current test session persistence (localStorage) ----
-const loadTestSession = () => {
-  try {
-    const raw = window.localStorage.getItem(TEST_SESSION_KEY);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === "object" ? obj : null;
-  } catch (_) {
-    return null;
-  }
-};
-
-const saveTestSession = (session) => {
-  try {
-    window.localStorage.setItem(TEST_SESSION_KEY, JSON.stringify(session || null));
-  } catch (_) {}
-};
-
-const clearTestSession = () => {
-  try {
-    window.localStorage.removeItem(TEST_SESSION_KEY);
-  } catch (_) {}
 };
 
 
@@ -1041,7 +1142,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [generating, setGenerating] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [pendingSession, setPendingSession] = useState(null);
-  const resumeDismissedRef = useRef(false);
+  const resumeDismissedScopeRef = useRef("");
   const [restoredNotice, setRestoredNotice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -1078,141 +1179,39 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
 
   
 
-  // RESTORE_TEST_SESSION_V3: restore unfinished test after reload/navigation
-  useEffect(() => {
-    if (restoredSessionRef.current) return;
-    restoredSessionRef.current = true;
-    skipContextResetRef.current = true;
-
-    try {
-      const saved = loadTestSession();
-      if (!saved) return;
-
-      // Only restore if there is a real unfinished session
-      const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
-      const savedResult = saved.result ?? null;
-      if (!savedQuestions.length) return;
-      if (savedResult !== null) return;
-
-      // Do not override an already active session in memory
-      if (Array.isArray(questions) && questions.length) return;
-
-      setGenerating(false);
-      setSubmitting(false);
-      setError("");
-
-      setTopic(typeof saved.topic === "string" ? saved.topic : "");
-      setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : (typeof saved.topic === "string" ? saved.topic : ""));
-      setQuestions(savedQuestions);
-      setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-
-
-  // SAVE_TEST_SESSION_V3: persist current test while in progress (no subject/level binding)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    // Save only when we have a real generated test, and we are not generating right now
-    if (generating) return;
-    if (!Array.isArray(questions) || !questions.length) return;
-
-    // Do not persist finished sessions
-    if (result !== null) return;
-
-    const session = {
-      topic: typeof topic === "string" ? topic : "",
-      sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
-      questions,
-      userAnswers: Array.isArray(userAnswers) ? userAnswers : [],
-      questionShownAt: Array.isArray(questionShownAt) ? questionShownAt : [],
-      timeToFirstAnswerSec: Array.isArray(timeToFirstAnswerSec) ? timeToFirstAnswerSec : [],
-      analysis: typeof analysis === "string" ? analysis : "",
-      reviewing: !!reviewing,
-      result: null,
-      ts: Date.now(),
-    };
-
-    saveTestSession(session);
-  }, [generating, questions, userAnswers, questionShownAt, timeToFirstAnswerSec, analysis, reviewing, result, topic, sentTopicForGeneration]);
-
-  // CLEAR_TEST_SESSION_V3: clear persisted session after finishing
-  useEffect(() => {
-    if (result === null) return;
-    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
-  }, [result]);
-      setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
-      setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
-      setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
-      setReviewing(!!saved.reviewing);
-
-      setResult(null);
-      setRestoredNotice(true);
-
-      // keep history collapsed while continuing
-      setHistoryOpen(false);
-    } catch (_) {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level]);
-// RESTORE_TEST_SESSION: restore unfinished test after reload/navigation (once per subject/level)
+  // RESTORE_TEST_SESSION_V7: auto-restore unfinished test for CURRENT subject+level after reload/navigation
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (restoredSessionRef.current) return;
 
-    // wait until context is available
-    const subj = (context && context.subject) ? String(context.subject) : "";
-    const lvl = (context && context.level) ? String(context.level) : "";
-    // Preserve non-empty subject/level from previous saved session if context not ready yet
-    const prevSaved = loadTestSession();
-    const subjToSave = subj || String(prevSaved?.subject || "");
-    const lvlToSave = lvl || String(prevSaved?.level || "");
+    const curSubject = normalizeKey(context.subject);
+    const curLevel = normalizeKey(normalizeLevel(context.level));
+    if (!curSubject || !curLevel) return;
 
-    // do not override an active test already in memory
+    // Don't override an active session in memory
     if (Array.isArray(questions) && questions.length) {
       restoredSessionRef.current = true;
       return;
     }
 
-    const saved = loadTestSession();
-    if (!saved || saved.finished) {
-      restoredSessionRef.current = true;
-      return;
-    }
+    try {
+      const saved = loadTestSession(context.subject, context.level);
+      if (!saved) { restoredSessionRef.current = true; return; }
 
-        const savedSubj = String(saved.subject || "");
-    // If either side is empty, don't block restore (context may load after mount)
-    if (savedSubj && subj && savedSubj !== subj) {
-      restoredSessionRef.current = true;
-      return;
-    }
-    // If both sides have a non-empty level, require match; otherwise ignore level.
-    if (lvl && String(saved.level || "") && String(saved.level || "") !== lvl) {
-      restoredSessionRef.current = true;
-      return;
-    }
+      const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
+      const savedResult = saved.result ?? null;
+      if (!savedQuestions.length) { restoredSessionRef.current = true; return; }
+      if (savedResult !== null) { restoredSessionRef.current = true; return; }
 
-    if (!Array.isArray(saved.questions) || !saved.questions.length) {
-      restoredSessionRef.current = true;
-      return;
-    }
+      // Prevent context-change reset from wiping restored state
+      skipContextResetRef.current = true;
 
-    setTopic(typeof saved.topic === "string" ? saved.topic : "");
-    setSentTopicForGeneration(typeof saved.sentTopicForGeneration === "string" ? saved.sentTopicForGeneration : "");
-    setDiagnosticLabel(typeof saved.diagnosticLabel === "string" ? saved.diagnosticLabel : "");
-    setReviewStyleLabel(typeof saved.reviewStyleLabel === "string" ? saved.reviewStyleLabel : "");
-    setQuestions(saved.questions);
-    setUserAnswers(Array.isArray(saved.userAnswers) ? saved.userAnswers : []);
-    setQuestionShownAt(Array.isArray(saved.questionShownAt) ? saved.questionShownAt : []);
-    setTimeToFirstAnswerSec(Array.isArray(saved.timeToFirstAnswerSec) ? saved.timeToFirstAnswerSec : []);
-    setResult(saved.result ?? null);
-    setAnalysis(typeof saved.analysis === "string" ? saved.analysis : "");
-    setGenerating(!!saved.generating);
-    setSubmitting(!!saved.submitting);
-    setError(typeof saved.error === "string" ? saved.error : "");
-
-    // keep history closed so user sees the restored test
-    setHistoryOpen(false);
-
+      applySavedSession(saved);
+      setRestoredNotice(true);
+    } catch (_) {}
     restoredSessionRef.current = true;
-  }, [context.subject, context.level, questions.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.subject, context.level]);
 
   // SAVE_TEST_SESSION: persist while there are questions and test not finished
   useEffect(() => {
@@ -1501,17 +1500,25 @@ useEffect(() => {
 
   
 
-  // RESUME_MODAL_V6: prompt only when saved test STRICTLY matches current subject+level
+  // RESUME_MODAL_V6: prompt only when there is a saved unfinished test for CURRENT subject+level
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
-      if (resumeDismissedRef.current) return;
+
+      const curScope = makeSessionScopeKey(context.subject, context.level);
+
+      // "Отложить" hides the modal only until the user changes subject/level.
+      if (resumeDismissedScopeRef.current && resumeDismissedScopeRef.current !== curScope) {
+        resumeDismissedScopeRef.current = "";
+      }
+
+      if (resumeDismissedScopeRef.current === curScope) return;
 
       if (Array.isArray(questions) && questions.length) return;
       if (generating) return;
       if (result !== null) return;
 
-      const saved = loadTestSession();
+      const saved = loadTestSession(context.subject, context.level);
       if (!saved) return;
 
       const savedQuestions = Array.isArray(saved.questions) ? saved.questions : [];
@@ -1623,6 +1630,19 @@ setResult(null);
 
 
   const generateFocusedTest = async (forcedTopicTitles, count = 2) => {
+    // Guard: don't overwrite an unfinished saved test for this subject+level
+    try {
+      const saved = loadTestSession(context.subject, context.level);
+      const savedQuestions = Array.isArray(saved?.questions) ? saved.questions : [];
+      const savedResult = saved?.result ?? null;
+      if (!Array.isArray(questions) || questions.length === 0) {
+        if (saved && savedQuestions.length && savedResult === null) {
+          setPendingSession(saved);
+          setShowResumeModal(true);
+          return;
+        }
+      }
+    } catch (_) {}
     setError("");
     setGenerating(true);
     setAnalysis("");
@@ -1714,6 +1734,19 @@ setTopic(serverTopic);
   }, [context.subject, context.level, generating, questions.length]);
 
   const generateTest = async () => {
+    // Guard: don't overwrite an unfinished saved test for this subject+level
+    try {
+      const saved = loadTestSession(context.subject, context.level);
+      const savedQuestions = Array.isArray(saved?.questions) ? saved.questions : [];
+      const savedResult = saved?.result ?? null;
+      if (!Array.isArray(questions) || questions.length === 0) {
+        if (saved && savedQuestions.length && savedResult === null) {
+          setPendingSession(saved);
+          setShowResumeModal(true);
+          return;
+        }
+      }
+    } catch (_) {}
     setError("");
     setGenerating(true);
     setAnalysis("");
@@ -2034,6 +2067,11 @@ setTopic(serverTopic);
       // обновим блок истории тестов на странице
       setHistoryTick((t) => t + 1);
       try { loadTestHistory(); } catch (_) {}
+
+      // После успешной отправки: убираем сохранённый незавершённый тест для текущего subject+level
+      clearTestSession(context.subject, context.level);
+      setPendingSession(null);
+
     } catch (e) {
       setError(typeof e?.message === "string" ? e.message : "Ошибка при проверке теста.");
     } finally {
@@ -2189,50 +2227,22 @@ setTopic(serverTopic);
           
         {showResumeModal && pendingSession ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
-            <div className="absolute inset-0 opacity-80 bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.25),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(236,72,153,0.18),_transparent_55%)]" />
-
-            <div className="relative w-full max-w-md rounded-[28px] border border-white/12 bg-white/8 p-6 text-purple-50 shadow-[0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 h-11 w-11 rounded-2xl bg-gradient-to-br from-purple-100 to-white text-black flex items-center justify-center shadow-md ring-2 ring-white/30">
-                  <span className="text-lg">⏳</span>
-                </div>
-
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
-                    Незавершённый тест
-                  </div>
-                  <div className="mt-1 text-[12px] text-purple-100/80 leading-relaxed">
-                    Нашёл сохранённую попытку в этой сессии. Хочешь продолжить с того места, где остановился?
-                  </div>
-                </div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#0B0B10]/90 p-5 text-purple-50 shadow-2xl">
+              <div className="text-[14px] font-semibold">Незавершённый тест</div>
+              <div className="mt-2 text-[12px] text-purple-100/80 leading-relaxed">
+                У тебя есть незавершённый тест в этой сессии. Продолжим или сбросим?
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-3">
-                <div className="flex flex-wrap gap-2 text-[11px] text-purple-100/90">
-                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                    <span className="text-purple-200/70">Предмет:</span> {pendingSession?.subject || context.subject}
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                    <span className="text-purple-200/70">Уровень:</span> {pendingSession?.level || context.level}
-                  </span>
-                  {(pendingSession?.topic || pendingSession?.sentTopicForGeneration) ? (
-                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 max-w-full truncate">
-                      <span className="text-purple-200/70">Тема:</span> {(pendingSession?.topic || pendingSession?.sentTopicForGeneration)}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeDismissedRef.current = true;
+                    resumeDismissedScopeRef.current = makeSessionScopeKey(context.subject, context.level);
                     applySavedSession(pendingSession);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-100 via-white to-purple-100 text-black text-[12px] font-semibold shadow-md hover:opacity-95 transition"
+                  className="w-full px-4 py-3 rounded-2xl bg-purple-200 text-black text-[12px] font-semibold hover:bg-purple-100 transition"
                 >
                   Продолжить
                 </button>
@@ -2241,9 +2251,9 @@ setTopic(serverTopic);
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeDismissedRef.current = true;
+                    resumeDismissedScopeRef.current = makeSessionScopeKey(context.subject, context.level);
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-white/15 bg-white/5 text-[12px] text-purple-50 hover:bg-white/10 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/30 text-[12px] text-purple-50 hover:bg-white/5 transition"
                 >
                   Отложить
                 </button>
@@ -2252,11 +2262,12 @@ setTopic(serverTopic);
                   type="button"
                   onClick={() => {
                     setShowResumeModal(false);
-                    resumeDismissedRef.current = true;
-                    // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
+                    resumeDismissedScopeRef.current = makeSessionScopeKey(context.subject, context.level);
+                    clearTestSession(context.subject, context.level);
+                    setPendingSession(null);
                     resetSession();
                   }}
-                  className="w-full px-4 py-3 rounded-2xl border border-orange-200/30 bg-orange-500/10 text-[12px] text-orange-50/90 hover:bg-orange-500/15 transition"
+                  className="w-full px-4 py-3 rounded-2xl border border-white/20 bg-black/20 text-[12px] text-purple-100/80 hover:bg-white/5 transition"
                 >
                   Сбросить тест
                 </button>
@@ -2394,7 +2405,7 @@ setTopic(serverTopic);
                   <button
                     type="button"
                     disabled={generating}
-                    onClick={() => { if (generating) return; topicInputRef.current = ""; setTopic(""); resetSession(); }}
+                    onClick={() => { if (generating) return; clearTestSession(context.subject, context.level); topicInputRef.current = ""; setTopic(""); resetSession(); }}
                     className={ACTION_BTN}
                   >
                     Сброс
@@ -2423,6 +2434,7 @@ setTopic(serverTopic);
                 <button
                   type="button"
                   onClick={() => {
+                    clearTestSession(context.subject, context.level);
                     resetSession();
                     setRestoredNotice(false);
                   }}
