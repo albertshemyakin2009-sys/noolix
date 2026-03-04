@@ -28,7 +28,23 @@ const PROFILE_LIBRARY_IDS = {
 };
 
 const SUBJECT_OPTIONS = ["Математика", "Физика", "Русский язык", "Английский язык"];
-const LEVEL_OPTIONS = ["7-9 класс", "10-11 класс", "1 курс вуза"];
+const LEVEL_OPTIONS = ["7–9 класс", "10–11 класс"];
+
+const normalizeLevel = (lvl) => {
+  const s0 = String(lvl || "").trim();
+  if (!s0) return "";
+  const s = s0
+    .toLowerCase()
+    .replace(/[‒–—―]/g, "-") // dash variants -> hyphen
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/(^|\b)(7\s*-\s*9)(\b|$)/.test(s) || s.includes("7-9")) return "7–9 класс";
+  if (/(^|\b)(10\s*-\s*11)(\b|$)/.test(s) || s.includes("10-11")) return "10–11 класс";
+  if (s.includes("7") || s.includes("8") || s.includes("9")) return "7–9 класс";
+  if (s.includes("10") || s.includes("11")) return "10–11 класс";
+  return "";
+};
 
 const AVATAR_OPTIONS = [
   { key: "panda", label: "Панда", icon: "🐼" },
@@ -92,7 +108,7 @@ export default function ProfilePage() {
     if (ctx && typeof ctx === "object") {
       setContext({
         subject: ctx.subject || SUBJECT_OPTIONS[0],
-        level: ctx.level || LEVEL_OPTIONS[0],
+        level: normalizeLevel(ctx.level) || LEVEL_OPTIONS[0],
       });
     }
 
@@ -111,7 +127,8 @@ export default function ProfilePage() {
   // persist context
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(context));
+    const safe = { ...context, level: normalizeLevel(context.level) || context.level };
+    window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safe));
   }, [context]);
 
   // persist profile
@@ -759,7 +776,7 @@ export default function ProfilePage() {
                     <select
                       className="mt-2 w-full text-sm px-3 py-2 rounded-2xl bg-black/30 border border-white/15 focus:outline-none focus:ring-2 focus:ring-purple-300"
                       value={context.level}
-                      onChange={(e) => setContext((c) => ({ ...c, level: e.target.value }))}
+                      onChange={(e) => setContext((c) => ({ ...c, level: normalizeLevel(e.target.value) || e.target.value }))}
                     >
                       {LEVEL_OPTIONS.map((l) => (
                         <option key={l}>{l}</option>
