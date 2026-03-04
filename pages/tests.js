@@ -149,7 +149,7 @@ const normalizeKey = (v) => String(v || "").trim().toLowerCase();
 const normalizeLevel = (lvl) => {
   // Accept different dashes/spaces and a few common variants (e.g. "7-9", "7–9", "7 — 9", "10-11", etc.)
   const s = String(lvl || "").trim().toLowerCase();
-  if (!s) return "10–11 класс";
+  if (!s) return "";
 
   // If user/UI passes something like "7-9", "7–9", "7 — 9", "7 9", or includes any of 7/8/9 grades
   if (
@@ -172,27 +172,6 @@ const normalizeLevel = (lvl) => {
 
   return "10–11 класс";
 };
-
-const normalizeLevelKey = (lvl) => {
-  // Strict key for storage/matching: if level is missing/empty, return "" (do NOT default to 10–11).
-  const raw = String(lvl || "").trim();
-  if (!raw) return "";
-  return normalizeLevel(raw);
-};
-
-const sessionMatchesScope = (sess, subject, level) => {
-  try {
-    if (!sess) return false;
-    const curSubject = normalizeKey(subject);
-    const curLevel = normalizeKey(normalizeLevelKey(level));
-    const psSubject = typeof sess?.normSubject === "string" ? sess.normSubject : normalizeKey(sess?.subject);
-    const psLevel = typeof sess?.normLevel === "string" ? sess.normLevel : normalizeKey(normalizeLevelKey(sess?.level));
-    return !!curSubject && !!curLevel && !!psSubject && !!psLevel && curSubject === psSubject && curLevel === psLevel;
-  } catch (_) {
-    return false;
-  }
-};
-
 
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
@@ -473,7 +452,7 @@ const LEGACY_TEST_SESSION_KEYS = [
 
 const makeSessionScopeKey = (subject, level) => {
   const s = normalizeKey(subject);
-  const l = normalizeKey(normalizeLevelKey(level));
+  const l = normalizeKey(normalizeLevel(level));
   return `${s}|${l}`;
 };
 
@@ -524,15 +503,14 @@ const migrateLegacySessionOnce = () => {
     if (!savedQuestions.length) return;
     if (savedResult !== null) return;
 
-    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevelKey(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevelKey(lvl)) } } };
+    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevel(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevel(lvl)) } } };
     saveAllTestSessions(next);
     // Keep legacy key to be safe; we'll let user actions clear it.
     try { if (legacyKey) window.localStorage.removeItem(legacyKey); } catch (_) {}
   } catch (_) {}
 };
 
-// Returns a session ONLY when there is an exact subject+level match.
-// Important: no "latest session" fallback, otherwise unfinished tests can leak across levels/subjects.
+// Returns a scoped session if subject+level provided, otherwise returns the most recent unfinished session (fallback).
 const loadTestSession = (subject, level) => {
   try {
     migrateLegacySessionOnce();
@@ -540,12 +518,27 @@ const loadTestSession = (subject, level) => {
     const sessions = all?.sessions || {};
 
     const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevelKey(level));
-    if (!s || !l) return null;
+    const l = normalizeKey(normalizeLevel(level));
+    if (s && l) {
+      const key = makeSessionScopeKey(s, l);
+      const sess = sessions[key];
+      return sess && typeof sess === "object" ? sess : null;
+    }
 
-    const key = makeSessionScopeKey(s, l);
-    const sess = sessions[key];
-    return sess && typeof sess === "object" ? sess : null;
+    // Fallback: pick most recent unfinished session
+    let best = null;
+    let bestTs = -1;
+    for (const k of Object.keys(sessions)) {
+      const sess = sessions[k];
+      if (!sess || typeof sess !== "object") continue;
+      const q = Array.isArray(sess.questions) ? sess.questions : [];
+      const r = sess.result ?? null;
+      if (!q.length) continue;
+      if (r !== null) continue;
+      const ts = typeof sess.ts === "number" ? sess.ts : 0;
+      if (ts > bestTs) { bestTs = ts; best = sess; }
+    }
+    return best;
   } catch (_) {
     return null;
   }
@@ -557,7 +550,7 @@ const saveTestSession = (session) => {
     const subj = session?.normSubject || session?.subject || "";
     const lvl = session?.normLevel || session?.level || "";
     const s = normalizeKey(subj);
-    const l = normalizeKey(normalizeLevelKey(lvl));
+    const l = normalizeKey(normalizeLevel(lvl));
     if (!s || !l) return;
 
     const all = loadAllTestSessions();
@@ -572,7 +565,7 @@ const clearTestSession = (subject, level) => {
   try {
     migrateLegacySessionOnce();
     const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevelKey(level));
+    const l = normalizeKey(normalizeLevel(level));
     if (!s || !l) {
       window.localStorage.removeItem(TEST_SESSIONS_KEY);
       return;
@@ -1212,7 +1205,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (restoredSessionRef.current) return;
 
     const curSubject = normalizeKey(context.subject);
-    const curLevel = normalizeKey(normalizeLevelKey(context.level));
+    const curLevel = normalizeKey(normalizeLevel(context.level));
     if (!curSubject || !curLevel) return;
 
     // Don't override an active session in memory
@@ -1251,8 +1244,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!Array.isArray(questions) || !questions.length) return;
 
     const session = {
-      subject: subj,
-      level: lvl,
+      subject: subjToSave,
+      level: lvlToSave,
       topic: typeof topic === "string" ? topic : "",
       sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1360,7 +1353,7 @@ if (v === null) return false;
     const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
     const parsed = safeParse(rawCtx, null);
     if (parsed && typeof parsed === "object") {
-      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
+      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) || prev.level }));
     }
   }, []);
 
@@ -1380,11 +1373,17 @@ if (v === null) return false;
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
-    setContext(safeNext);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
-    }
+    // Important: do NOT default level when it is missing.
+    // During subject switches some callers pass only {subject}, and level can be temporarily empty.
+    // If we "default" to 10–11 here, resume logic will incorrectly surface 10–11 sessions under 7–9 UI.
+    setContext((prev) => {
+      const nextLevel = normalizeLevel(nextCtx?.level);
+      const safeNext = { ...prev, ...nextCtx, level: nextLevel || prev.level };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
+      }
+      return safeNext;
+    });
   };
 
   const refreshSuggestedTopics = () => {
@@ -1553,9 +1552,9 @@ useEffect(() => {
       if (saved.result !== null && saved.result !== undefined) return;
 
       const savedSubject = (saved && typeof saved.normSubject === "string") ? saved.normSubject : normalizeKey(saved?.subject);
-      const savedLevel = (saved && typeof saved.normLevel === "string") ? saved.normLevel : normalizeKey(normalizeLevelKey(saved?.level));
+      const savedLevel = (saved && typeof saved.normLevel === "string") ? saved.normLevel : normalizeKey(normalizeLevel(saved?.level));
       const curSubject = normalizeKey(context.subject);
-      const curLevel = normalizeKey(normalizeLevelKey(context.level));
+      const curLevel = normalizeKey(normalizeLevel(context.level));
 
       const okMatch =
         !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
@@ -1577,7 +1576,7 @@ useEffect(() => {
       if (result !== null) return;
 
       const subj = normalizeKey(context.subject);
-      const lvl = normalizeKey(normalizeLevelKey(context.level));
+      const lvl = normalizeKey(normalizeLevel(context.level));
       if (!subj || !lvl) return;
 
       const topicToSave =
