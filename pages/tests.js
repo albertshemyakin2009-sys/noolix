@@ -519,30 +519,20 @@ const loadTestSession = (subject, level) => {
 
     const s = normalizeKey(subject);
     const l = normalizeKey(normalizeLevel(level));
-    if (s && l) {
-      const key = makeSessionScopeKey(s, l);
-      const sess = sessions[key];
-      return sess && typeof sess === "object" ? sess : null;
-    }
 
-    // Fallback: pick most recent unfinished session
-    let best = null;
-    let bestTs = -1;
-    for (const k of Object.keys(sessions)) {
-      const sess = sessions[k];
-      if (!sess || typeof sess !== "object") continue;
-      const q = Array.isArray(sess.questions) ? sess.questions : [];
-      const r = sess.result ?? null;
-      if (!q.length) continue;
-      if (r !== null) continue;
-      const ts = typeof sess.ts === "number" ? sess.ts : 0;
-      if (ts > bestTs) { bestTs = ts; best = sess; }
-    }
-    return best;
+    // STRICT: show/restore only for exact subject+level match.
+    // If either is missing/undefined (often happens briefly during switching),
+    // do NOT fall back to another session — that would mix levels.
+    if (!s || !l) return null;
+
+    const key = makeSessionScopeKey(s, l);
+    const sess = sessions[key];
+    return sess && typeof sess === "object" ? sess : null;
   } catch (_) {
     return null;
   }
 };
+
 
 const saveTestSession = (session) => {
   try {
