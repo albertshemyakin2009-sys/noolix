@@ -149,7 +149,7 @@ const normalizeKey = (v) => String(v || "").trim().toLowerCase();
 const normalizeLevel = (lvl) => {
   // Accept different dashes/spaces and a few common variants (e.g. "7-9", "7–9", "7 — 9", "10-11", etc.)
   const s = String(lvl || "").trim().toLowerCase();
-  if (!s) return "";
+  if (!s) return "10–11 класс";
 
   // If user/UI passes something like "7-9", "7–9", "7 — 9", "7 9", or includes any of 7/8/9 grades
   if (
@@ -1233,6 +1233,30 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.subject, context.level]);
 
+  // GUARD_RESUME_SCOPE: if a saved pendingSession leaked across scope switches, close it immediately
+  useEffect(() => {
+    try {
+      if (!pendingSession) return;
+      const curSubject = normalizeKey(context.subject);
+      const curLevel = normalizeKey(normalizeLevel(context.level));
+      const savedSubject =
+        (pendingSession && typeof pendingSession.normSubject === "string")
+          ? pendingSession.normSubject
+          : normalizeKey(pendingSession?.subject);
+      const savedLevel =
+        (pendingSession && typeof pendingSession.normLevel === "string")
+          ? pendingSession.normLevel
+          : normalizeKey(normalizeLevel(pendingSession?.level));
+
+      if (!curSubject || !curLevel || !savedSubject || !savedLevel) return;
+
+      if (savedSubject !== curSubject || savedLevel !== curLevel) {
+        setShowResumeModal(false);
+        setPendingSession(null);
+      }
+    } catch (_) {}
+  }, [context.subject, context.level]);
+
   // SAVE_TEST_SESSION: persist while there are questions and test not finished
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1353,7 +1377,7 @@ if (v === null) return false;
     const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
     const parsed = safeParse(rawCtx, null);
     if (parsed && typeof parsed === "object") {
-      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) || prev.level }));
+      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
     }
   }, []);
 
@@ -1373,72 +1397,22 @@ if (v === null) return false;
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    // Important: do NOT default level when it is missing.
-    // During subject switches some callers pass only {subject}, and level can be temporarily empty.
-    // If we "default" to 10–11 here, resume logic will incorrectly surface 10–11 sessions under 7–9 UI.
-    setContext((prev) => {
-      const nextLevel = normalizeLevel(nextCtx?.level);
-      const safeNext = { ...prev, ...nextCtx, level: nextLevel || prev.level };
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
+    const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
+
+    // IMPORTANT: prevent stale "resume" modal/session from leaking across subject/level switches
+    try {
+      setShowResumeModal(false);
+      setPendingSession(null);
+      if (resumeDismissedScopeRef && resumeDismissedScopeRef.current) {
+        resumeDismissedScopeRef.current = "";
       }
-      return safeNext;
-    });
-  };
+    } catch (_) {}
 
-  const refreshSuggestedTopics = () => {
-    const bank = getTopicBank(context.subject, context.level);
-    setSuggestedTopics(pickRandom(bank, 3));
-  };
-
-  useEffect(() => {
-    refreshSuggestedTopics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.subject, context.level]);
-
-
-  
-const loadTestHistory = () => {
-  if (typeof window === "undefined") return;
-
-  // новый формат
-  const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-  let by = safeParse(rawBy, null);
-
-  // если нет — мигрируем из legacy
-  if (!by || typeof by !== "object" || Array.isArray(by)) {
-    const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-    const legacyArr = safeParse(rawLegacy, []);
-    const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-    const migrated = {};
-    for (const item of legacy) {
-      const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-      if (!migrated[s]) migrated[s] = [];
-      migrated[s].push(item);
+    setContext(safeNext);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
     }
-    by = migrated;
-    try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
-  }
-
-  const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
-  const curList = Array.isArray(by?.[subjKey]) ? by[subjKey] : [];
-
-  let scoped = curList;
-
-  // scope: current = текущий предмет (все уровни), all = все предметы
-  if (historyScope === "all") {
-    scoped = Object.values(by || {}).flat().filter(Boolean);
-  }
-
-  // newest first
-  scoped = scoped.slice().sort((a, b) => {
-    const da = new Date(a?.createdAt || a?.ts || a?.savedAt || 0).getTime();
-    const db = new Date(b?.createdAt || b?.ts || b?.savedAt || 0).getTime();
-    return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
-  });
-
-  setTestHistory(scoped.slice(0, 20));
-};
+  };
 
   
 const clearTestHistory = () => {
