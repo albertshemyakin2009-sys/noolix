@@ -180,6 +180,20 @@ const normalizeLevelKey = (lvl) => {
   return normalizeLevel(raw);
 };
 
+const sessionMatchesScope = (sess, subject, level) => {
+  try {
+    if (!sess) return false;
+    const curSubject = normalizeKey(subject);
+    const curLevel = normalizeKey(normalizeLevelKey(level));
+    const psSubject = typeof sess?.normSubject === "string" ? sess.normSubject : normalizeKey(sess?.subject);
+    const psLevel = typeof sess?.normLevel === "string" ? sess.normLevel : normalizeKey(normalizeLevelKey(sess?.level));
+    return !!curSubject && !!curLevel && !!psSubject && !!psLevel && curSubject === psSubject && curLevel === psLevel;
+  } catch (_) {
+    return false;
+  }
+};
+
+
 
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
@@ -1549,9 +1563,7 @@ useEffect(() => {
       const curSubject = normalizeKey(context.subject);
       const curLevel = normalizeKey(normalizeLevelKey(context.level));
 
-      const okMatch =
-        !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
-        savedSubject === curSubject && savedLevel === curLevel;
+      const okMatch = sessionMatchesScope(saved, context.subject, context.level);
 
       if (!okMatch) return;
 
@@ -1569,7 +1581,7 @@ useEffect(() => {
       const curLevel = normalizeKey(normalizeLevelKey(context.level));
       const psSubject = typeof pendingSession?.normSubject === "string" ? pendingSession.normSubject : normalizeKey(pendingSession?.subject);
       const psLevel = typeof pendingSession?.normLevel === "string" ? pendingSession.normLevel : normalizeKey(normalizeLevelKey(pendingSession?.level));
-      const match = !!curSubject && !!curLevel && !!psSubject && !!psLevel && curSubject === psSubject && curLevel === psLevel;
+      const match = sessionMatchesScope(pendingSession, context.subject, context.level);
       if (!match) {
         setShowResumeModal(false);
         setPendingSession(null);
@@ -2261,7 +2273,7 @@ setTopic(serverTopic);
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           
-        {showResumeModal && pendingSession ? (
+        {(showResumeModal && pendingSession && sessionMatchesScope(pendingSession, context.subject, context.level)) ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
             <div className="absolute inset-0 opacity-80 bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.25),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(236,72,153,0.18),_transparent_55%)]" />
