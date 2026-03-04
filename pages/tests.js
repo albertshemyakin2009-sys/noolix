@@ -173,6 +173,14 @@ const normalizeLevel = (lvl) => {
   return "10–11 класс";
 };
 
+const normalizeLevelKey = (lvl) => {
+  // Strict key for storage/matching: if level is missing/empty, return "" (do NOT default to 10–11).
+  const raw = String(lvl || "").trim();
+  if (!raw) return "";
+  return normalizeLevel(raw);
+};
+
+
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
 const DIFFICULTIES = [
@@ -452,7 +460,7 @@ const LEGACY_TEST_SESSION_KEYS = [
 
 const makeSessionScopeKey = (subject, level) => {
   const s = normalizeKey(subject);
-  const l = normalizeKey(normalizeLevel(level));
+  const l = normalizeKey(normalizeLevelKey(level));
   return `${s}|${l}`;
 };
 
@@ -503,7 +511,7 @@ const migrateLegacySessionOnce = () => {
     if (!savedQuestions.length) return;
     if (savedResult !== null) return;
 
-    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevel(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevel(lvl)) } } };
+    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevelKey(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevelKey(lvl)) } } };
     saveAllTestSessions(next);
     // Keep legacy key to be safe; we'll let user actions clear it.
     try { if (legacyKey) window.localStorage.removeItem(legacyKey); } catch (_) {}
@@ -518,21 +526,16 @@ const loadTestSession = (subject, level) => {
     const sessions = all?.sessions || {};
 
     const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevel(level));
-
-    // STRICT: show/restore only for exact subject+level match.
-    // If either is missing/undefined (often happens briefly during switching),
-    // do NOT fall back to another session — that would mix levels.
-    if (!s || !l) return null;
-
-    const key = makeSessionScopeKey(s, l);
-    const sess = sessions[key];
-    return sess && typeof sess === "object" ? sess : null;
+    const l = normalizeKey(normalizeLevelKey(level));
+    if (s && l) {
+      const key = makeSessionScopeKey(s, l);
+      const sess = sessions[key];
+      return sess && typeof sess === "object" ? sess : null;
+    }
   } catch (_) {
     return null;
   }
 };
-
 
 const saveTestSession = (session) => {
   try {
@@ -540,7 +543,7 @@ const saveTestSession = (session) => {
     const subj = session?.normSubject || session?.subject || "";
     const lvl = session?.normLevel || session?.level || "";
     const s = normalizeKey(subj);
-    const l = normalizeKey(normalizeLevel(lvl));
+    const l = normalizeKey(normalizeLevelKey(lvl));
     if (!s || !l) return;
 
     const all = loadAllTestSessions();
@@ -555,7 +558,7 @@ const clearTestSession = (subject, level) => {
   try {
     migrateLegacySessionOnce();
     const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevel(level));
+    const l = normalizeKey(normalizeLevelKey(level));
     if (!s || !l) {
       window.localStorage.removeItem(TEST_SESSIONS_KEY);
       return;
@@ -1195,7 +1198,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (restoredSessionRef.current) return;
 
     const curSubject = normalizeKey(context.subject);
-    const curLevel = normalizeKey(normalizeLevel(context.level));
+    const curLevel = normalizeKey(normalizeLevelKey(context.level));
     if (!curSubject || !curLevel) return;
 
     // Don't override an active session in memory
@@ -1536,9 +1539,9 @@ useEffect(() => {
       if (saved.result !== null && saved.result !== undefined) return;
 
       const savedSubject = (saved && typeof saved.normSubject === "string") ? saved.normSubject : normalizeKey(saved?.subject);
-      const savedLevel = (saved && typeof saved.normLevel === "string") ? saved.normLevel : normalizeKey(normalizeLevel(saved?.level));
+      const savedLevel = (saved && typeof saved.normLevel === "string") ? saved.normLevel : normalizeKey(normalizeLevelKey(saved?.level));
       const curSubject = normalizeKey(context.subject);
-      const curLevel = normalizeKey(normalizeLevel(context.level));
+      const curLevel = normalizeKey(normalizeLevelKey(context.level));
 
       const okMatch =
         !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
@@ -1551,6 +1554,23 @@ useEffect(() => {
     } catch (_) {}
   }, [context.subject, context.level, questions.length, generating, result]);
 
+  // If subject/level changed and the currently cached pendingSession doesn't match anymore,
+  // immediately close the resume modal to avoid cross-level leakage (e.g. 10–11 showing on 7–9).
+  useEffect(() => {
+    try {
+      if (!pendingSession) return;
+      const curSubject = normalizeKey(context.subject);
+      const curLevel = normalizeKey(normalizeLevelKey(context.level));
+      const psSubject = typeof pendingSession?.normSubject === "string" ? pendingSession.normSubject : normalizeKey(pendingSession?.subject);
+      const psLevel = typeof pendingSession?.normLevel === "string" ? pendingSession.normLevel : normalizeKey(normalizeLevelKey(pendingSession?.level));
+      const match = !!curSubject && !!curLevel && !!psSubject && !!psLevel && curSubject === psSubject && curLevel === psLevel;
+      if (!match) {
+        setShowResumeModal(false);
+        setPendingSession(null);
+      }
+    } catch (_) {}
+  }, [context.subject, context.level]);
+
   // SAVE_SESSION_V6: save only in-progress test, strictly bound to subject+level
   useEffect(() => {
     try {
@@ -1560,7 +1580,7 @@ useEffect(() => {
       if (result !== null) return;
 
       const subj = normalizeKey(context.subject);
-      const lvl = normalizeKey(normalizeLevel(context.level));
+      const lvl = normalizeKey(normalizeLevelKey(context.level));
       if (!subj || !lvl) return;
 
       const topicToSave =
