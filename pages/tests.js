@@ -194,7 +194,6 @@ const sessionMatchesScope = (sess, subject, level) => {
 };
 
 
-
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
 const DIFFICULTIES = [
@@ -532,7 +531,8 @@ const migrateLegacySessionOnce = () => {
   } catch (_) {}
 };
 
-// Returns a scoped session if subject+level provided, otherwise returns the most recent unfinished session (fallback).
+// Returns a session ONLY when there is an exact subject+level match.
+// Important: no "latest session" fallback, otherwise unfinished tests can leak across levels/subjects.
 const loadTestSession = (subject, level) => {
   try {
     migrateLegacySessionOnce();
@@ -541,11 +541,11 @@ const loadTestSession = (subject, level) => {
 
     const s = normalizeKey(subject);
     const l = normalizeKey(normalizeLevelKey(level));
-    if (s && l) {
-      const key = makeSessionScopeKey(s, l);
-      const sess = sessions[key];
-      return sess && typeof sess === "object" ? sess : null;
-    }
+    if (!s || !l) return null;
+
+    const key = makeSessionScopeKey(s, l);
+    const sess = sessions[key];
+    return sess && typeof sess === "object" ? sess : null;
   } catch (_) {
     return null;
   }
@@ -1251,8 +1251,8 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!Array.isArray(questions) || !questions.length) return;
 
     const session = {
-      subject: subjToSave,
-      level: lvlToSave,
+      subject: subj,
+      level: lvl,
       topic: typeof topic === "string" ? topic : "",
       sentTopicForGeneration: typeof sentTopicForGeneration === "string" ? sentTopicForGeneration : "",
       diagnosticLabel: typeof diagnosticLabel === "string" ? diagnosticLabel : "",
@@ -1360,7 +1360,7 @@ if (v === null) return false;
     const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
     const parsed = safeParse(rawCtx, null);
     if (parsed && typeof parsed === "object") {
-      setContext((prev) => ({ ...prev, ...parsed, level: parsed?.level ? normalizeLevel(parsed.level) : prev.level }));
+      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
     }
   }, []);
 
@@ -1380,17 +1380,11 @@ if (v === null) return false;
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    // IMPORTANT: do not default level to "10–11 класс" when nextCtx.level is missing.
-    // When switching subject, some handlers pass only { subject } and we must keep the existing level.
-    setContext((prev) => {
-      const hasLevel = typeof nextCtx?.level === "string" ? nextCtx.level.trim() !== "" : !!nextCtx?.level;
-      const finalLevel = hasLevel ? normalizeLevel(nextCtx.level) : prev.level;
-      const safeNext = { ...prev, ...nextCtx, level: finalLevel };
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
-      }
-      return safeNext;
-    });
+    const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
+    setContext(safeNext);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
+    }
   };
 
   const refreshSuggestedTopics = () => {
@@ -1563,7 +1557,9 @@ useEffect(() => {
       const curSubject = normalizeKey(context.subject);
       const curLevel = normalizeKey(normalizeLevelKey(context.level));
 
-      const okMatch = sessionMatchesScope(saved, context.subject, context.level);
+      const okMatch =
+        !!savedSubject && !!savedLevel && !!curSubject && !!curLevel &&
+        savedSubject === curSubject && savedLevel === curLevel;
 
       if (!okMatch) return;
 
@@ -1571,23 +1567,6 @@ useEffect(() => {
       setShowResumeModal(true);
     } catch (_) {}
   }, [context.subject, context.level, questions.length, generating, result]);
-
-  // If subject/level changed and the currently cached pendingSession doesn't match anymore,
-  // immediately close the resume modal to avoid cross-level leakage (e.g. 10–11 showing on 7–9).
-  useEffect(() => {
-    try {
-      if (!pendingSession) return;
-      const curSubject = normalizeKey(context.subject);
-      const curLevel = normalizeKey(normalizeLevelKey(context.level));
-      const psSubject = typeof pendingSession?.normSubject === "string" ? pendingSession.normSubject : normalizeKey(pendingSession?.subject);
-      const psLevel = typeof pendingSession?.normLevel === "string" ? pendingSession.normLevel : normalizeKey(normalizeLevelKey(pendingSession?.level));
-      const match = sessionMatchesScope(pendingSession, context.subject, context.level);
-      if (!match) {
-        setShowResumeModal(false);
-        setPendingSession(null);
-      }
-    } catch (_) {}
-  }, [context.subject, context.level]);
 
   // SAVE_SESSION_V6: save only in-progress test, strictly bound to subject+level
   useEffect(() => {
@@ -2273,7 +2252,7 @@ setTopic(serverTopic);
       <div className="flex-1 flex flex-col min-h-screen">
         <main className="flex-1 px-4 py-6 md:px-10 md:py-10 flex justify-center">
           
-        {(showResumeModal && pendingSession && sessionMatchesScope(pendingSession, context.subject, context.level)) ? (
+        {showResumeModal && pendingSession ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
             <div className="absolute inset-0 opacity-80 bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.25),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(236,72,153,0.18),_transparent_55%)]" />
