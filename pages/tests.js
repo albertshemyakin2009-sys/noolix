@@ -1346,7 +1346,7 @@ if (v === null) return false;
     const rawCtx = window.localStorage.getItem(CONTEXT_STORAGE_KEY);
     const parsed = safeParse(rawCtx, null);
     if (parsed && typeof parsed === "object") {
-      setContext((prev) => ({ ...prev, ...parsed, level: normalizeLevel(parsed?.level) }));
+      setContext((prev) => ({ ...prev, ...parsed, level: parsed?.level ? normalizeLevel(parsed.level) : prev.level }));
     }
   }, []);
 
@@ -1366,11 +1366,17 @@ if (v === null) return false;
   }, []);
 
   const applyContextChange = (nextCtx) => {
-    const safeNext = { ...nextCtx, level: normalizeLevel(nextCtx?.level) };
-    setContext(safeNext);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
-    }
+    // IMPORTANT: do not default level to "10–11 класс" when nextCtx.level is missing.
+    // When switching subject, some handlers pass only { subject } and we must keep the existing level.
+    setContext((prev) => {
+      const hasLevel = typeof nextCtx?.level === "string" ? nextCtx.level.trim() !== "" : !!nextCtx?.level;
+      const finalLevel = hasLevel ? normalizeLevel(nextCtx.level) : prev.level;
+      const safeNext = { ...prev, ...nextCtx, level: finalLevel };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
+      }
+      return safeNext;
+    });
   };
 
   const refreshSuggestedTopics = () => {
