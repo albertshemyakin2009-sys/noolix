@@ -1496,57 +1496,54 @@ const clearTestHistory = () => {
 };
 
 
-const loadTestHistory = () => {
-  if (typeof window === "undefined") return;
+  const loadTestHistory = () => {
+    if (typeof window === "undefined") return;
 
-  try {
-    const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
+    try {
+      const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
 
-    // prefer new format (object by subject); migrate legacy array if needed
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    let by = safeParse(rawBy, null);
+      const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
+      let by = safeParse(rawBy, null);
 
-    if (!by || typeof by !== "object" || Array.isArray(by)) {
-      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const legacyArr = safeParse(rawLegacy, []);
-      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-      const migrated = {};
-      for (const item of legacy) {
-        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-        if (!migrated[s]) migrated[s] = [];
-        migrated[s].push(item);
+      if (!by || typeof by !== "object" || Array.isArray(by)) {
+        // migrate from legacy flat array format
+        const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
+        const legacyArr = safeParse(rawLegacy, []);
+        const legacy = Array.isArray(legacyArr) ? legacyArr : [];
+        const migrated = {};
+        for (const item of legacy) {
+          const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
+          if (!migrated[s]) migrated[s] = [];
+          migrated[s].push(item);
+        }
+        by = migrated;
+        try {
+          window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
+        } catch (_) {}
       }
-      by = migrated;
-      try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
-    }
 
-    let list = [];
-    if (historyScope === "current") {
-      list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
-    } else {
-      // merge all subjects into one list
-      for (const k of Object.keys(by || {})) {
-        const arr = Array.isArray(by[k]) ? by[k] : [];
-        for (const it of arr) list.push(it);
+      let list = [];
+      if (historyScope === "current") {
+        list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
+      } else {
+        const all = [];
+        for (const k of Object.keys(by || {})) {
+          const arr = Array.isArray(by[k]) ? by[k] : [];
+          for (const item of arr) all.push(item);
+        }
+        all.sort((a, b) => {
+          const ta = Date.parse(a?.createdAt || "") || 0;
+          const tb = Date.parse(b?.createdAt || "") || 0;
+          return tb - ta;
+        });
+        list = all.slice(0, 200);
       }
+
+      setTestHistory(Array.isArray(list) ? list : []);
+    } catch (_) {
+      setTestHistory([]);
     }
-
-    // Ensure newest first (fallback to id)
-    list = list
-      .filter(Boolean)
-      .slice()
-      .sort((a, b) => {
-        const at = Date.parse(a?.createdAt || "") || (typeof a?.id === "number" ? a.id : 0);
-        const bt = Date.parse(b?.createdAt || "") || (typeof b?.id === "number" ? b.id : 0);
-        return bt - at;
-      })
-      .slice(0, 50);
-
-    setTestHistory(list);
-  } catch (_) {
-    setTestHistory([]);
-  }
-};
+  };
 
 
   const canGenerate = useMemo(() => {
