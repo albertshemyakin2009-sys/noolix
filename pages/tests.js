@@ -1210,7 +1210,7 @@ const [topic, setTopic] = useState("");
     const unique = Array.from(new Set((bank || []).filter(Boolean)));
     // light shuffle
     const shuffled = [...unique].sort(() => Math.random() - 0.5);
-    setSuggestedTopics(shuffled.slice(0, 6));
+    setSuggestedTopics(shuffled.slice(0, 3));
   }, [context?.subject, context?.level, SUGGESTED_TOPICS_BANK]);
 
   useEffect(() => {
