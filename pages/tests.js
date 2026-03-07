@@ -7,6 +7,7 @@ import {
   saveTestHistoryEntry,
   clearTestHistory as clearStoredTestHistory,
 } from "../lib/testHistoryStorage";
+import { getSuggestedTopics } from "../lib/suggestedTopics";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -951,60 +952,9 @@ const [topic, setTopic] = useState("");
 
   const [suggestedTopics, setSuggestedTopics] = useState([]);
 
-  // Suggested topics are purely UX helpers (no API). They must never affect session matching.
-  const SUGGESTED_TOPICS_BANK = useMemo(
-    () => ({
-      default: [
-        "Алгебра: уравнения",
-        "Геометрия: треугольники",
-        "Функции и графики",
-        "Проценты и пропорции",
-        "Текстовые задачи",
-        "Вероятность и статистика",
-      ],
-      "Математика": {
-        "7–9 класс": [
-          "Линейные уравнения",
-          "Квадратные уравнения",
-          "Системы уравнений",
-          "Дроби и проценты",
-          "Геометрия: углы и треугольники",
-          "Неравенства",
-          "Графики функций",
-        ],
-        "10–11 класс": [
-          "ЕГЭ: производная",
-          "ЕГЭ: тригонометрия",
-          "ЕГЭ: планиметрия",
-          "ЕГЭ: стереометрия",
-          "ЕГЭ: логарифмы",
-          "ЕГЭ: параметры",
-          "ЕГЭ: вероятность",
-        ],
-        default: [
-          "Уравнения и неравенства",
-          "Функции",
-          "Геометрия",
-          "Тригонометрия",
-          "Вероятность",
-          "Текстовые задачи",
-        ],
-      },
-    }),
-    []
-  );
-
   const refreshSuggestedTopics = useCallback(() => {
-    const subj = String(context?.subject || "").trim() || "Математика";
-    const lvl = String(context?.level || "").trim();
-    const bank =
-      (SUGGESTED_TOPICS_BANK[subj] && (SUGGESTED_TOPICS_BANK[subj][lvl] || SUGGESTED_TOPICS_BANK[subj].default)) ||
-      SUGGESTED_TOPICS_BANK.default;
-    const unique = Array.from(new Set((bank || []).filter(Boolean)));
-    // light shuffle
-    const shuffled = [...unique].sort(() => Math.random() - 0.5);
-    setSuggestedTopics(shuffled.slice(0, 3));
-  }, [context?.subject, context?.level, SUGGESTED_TOPICS_BANK]);
+    setSuggestedTopics(getSuggestedTopics(context?.subject, context?.level, 3));
+  }, [context?.subject, context?.level]);
 
   useEffect(() => {
     refreshSuggestedTopics();
