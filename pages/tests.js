@@ -1,5 +1,6 @@
 // pages/tests.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { normalizeKey, normalizeLevel, makeScopeKey, isSameScope } from "../lib/testScope";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -144,34 +145,6 @@ const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-n
 
 
 
-const normalizeKey = (v) => String(v || "").trim().toLowerCase();
-
-const normalizeLevel = (lvl) => {
-  // Accept different dashes/spaces and a few common variants (e.g. "7-9", "7–9", "7 — 9", "10-11", etc.)
-  const s = String(lvl || "").trim().toLowerCase();
-  if (!s) return "10–11 класс";
-
-  // If user/UI passes something like "7-9", "7–9", "7 — 9", "7 9", or includes any of 7/8/9 grades
-  if (
-    s.includes("7–9") || s.includes("7-9") || s.includes("7 — 9") || s.includes("7—9") ||
-    s.includes("7 9") || s.includes("7– 9") || s.includes("7 - 9") ||
-    (s.includes("7") && (s.includes("8") || s.includes("9"))) ||
-    s.includes("7 класс") || s.includes("8 класс") || s.includes("9 класс")
-  ) {
-    return "7–9 класс";
-  }
-
-  // 10–11
-  if (
-    s.includes("10–11") || s.includes("10-11") || s.includes("10 — 11") || s.includes("10—11") ||
-    s.includes("10 11") || s.includes("10– 11") || s.includes("10 - 11") ||
-    s.includes("10 класс") || s.includes("11 класс") || s.includes("10") || s.includes("11")
-  ) {
-    return "10–11 класс";
-  }
-
-  return "10–11 класс";
-};
 
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
@@ -450,11 +423,7 @@ const LEGACY_TEST_SESSION_KEYS = [
   "noolix_tests_session_v1",
 ];
 
-const makeSessionScopeKey = (subject, level) => {
-  const s = normalizeKey(subject);
-  const l = normalizeKey(normalizeLevel(level));
-  return `${s}|${l}`;
-};
+const makeSessionScopeKey = (subject, level) => makeScopeKey(subject, level);
 
 const loadAllTestSessions = () => {
   try {
