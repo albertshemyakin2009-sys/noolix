@@ -1,6 +1,7 @@
 // pages/tests.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeKey, normalizeLevel, makeScopeKey, isSameScope } from "../lib/testScope";
+import { loadTestSession, saveTestSession, clearTestSession } from "../lib/testSessionStorage";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -145,6 +146,7 @@ const ACTION_BTN_DISABLED = ACTION_BTN + " disabled:opacity-50 disabled:cursor-n
 
 
 
+const makeSessionScopeKey = makeScopeKey;
 
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Английский язык"];
 
@@ -414,139 +416,6 @@ const HISTORY_OPEN_KEY = "noolix_tests_history_open_v1";
 
 // ---- Current test session persistence (localStorage) ----
 // We store sessions PER subject+level so switching context doesn't overwrite an unfinished test.
-const TEST_SESSIONS_KEY = "noolix_tests_sessions_v1";
-const LEGACY_TEST_SESSION_KEYS = [
-  "noolix_tests_session_v5",
-  "noolix_tests_session_v4",
-  "noolix_tests_session_v3",
-  "noolix_tests_session_v2",
-  "noolix_tests_session_v1",
-];
-
-const makeSessionScopeKey = (subject, level) => makeScopeKey(subject, level);
-
-const loadAllTestSessions = () => {
-  try {
-    const raw = window.localStorage.getItem(TEST_SESSIONS_KEY);
-    const obj = raw ? JSON.parse(raw) : null;
-    if (obj && typeof obj === "object" && obj.sessions && typeof obj.sessions === "object") {
-      return obj;
-    }
-    return { v: 1, sessions: {} };
-  } catch (_) {
-    return { v: 1, sessions: {} };
-  }
-};
-
-const saveAllTestSessions = (obj) => {
-  try {
-    window.localStorage.setItem(TEST_SESSIONS_KEY, JSON.stringify(obj || { v: 1, sessions: {} }));
-  } catch (_) {}
-};
-
-const migrateLegacySessionOnce = () => {
-  try {
-    const existing = loadAllTestSessions();
-    if (existing && existing.sessions && Object.keys(existing.sessions).length > 0) return;
-
-    // Prefer v3 (the one used in this build), but accept any legacy key.
-    let legacyRaw = null;
-    let legacyKey = null;
-    for (const k of LEGACY_TEST_SESSION_KEYS) {
-      const r = window.localStorage.getItem(k);
-      if (r) { legacyRaw = r; legacyKey = k; break; }
-    }
-    if (!legacyRaw) return;
-
-    const legacy = JSON.parse(legacyRaw);
-    if (!legacy || typeof legacy !== "object") return;
-
-    const subj = legacy.normSubject || legacy.subject || "";
-    const lvl = legacy.normLevel || legacy.level || "";
-    const scope = makeSessionScopeKey(subj, lvl);
-    if (!scope || scope === "|") return;
-
-    const savedQuestions = Array.isArray(legacy.questions) ? legacy.questions : [];
-    const savedResult = legacy.result ?? null;
-    // Migrate only unfinished sessions with questions (otherwise don't clutter the map)
-    if (!savedQuestions.length) return;
-    if (savedResult !== null) return;
-
-    const next = { v: 1, sessions: { [scope]: { ...legacy, subject: normalizeKey(subj), level: normalizeKey(normalizeLevel(lvl)), normSubject: normalizeKey(subj), normLevel: normalizeKey(normalizeLevel(lvl)) } } };
-    saveAllTestSessions(next);
-    // Keep legacy key to be safe; we'll let user actions clear it.
-    try { if (legacyKey) window.localStorage.removeItem(legacyKey); } catch (_) {}
-  } catch (_) {}
-};
-
-// Returns a scoped session if subject+level provided, otherwise returns the most recent unfinished session (fallback).
-const loadTestSession = (subject, level) => {
-  try {
-    migrateLegacySessionOnce();
-    const all = loadAllTestSessions();
-    const sessions = all?.sessions || {};
-
-    const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevel(level));
-    if (s && l) {
-      const key = makeSessionScopeKey(s, l);
-      const sess = sessions[key];
-      return sess && typeof sess === "object" ? sess : null;
-    }
-
-    // Fallback: pick most recent unfinished session
-    let best = null;
-    let bestTs = -1;
-    for (const k of Object.keys(sessions)) {
-      const sess = sessions[k];
-      if (!sess || typeof sess !== "object") continue;
-      const q = Array.isArray(sess.questions) ? sess.questions : [];
-      const r = sess.result ?? null;
-      if (!q.length) continue;
-      if (r !== null) continue;
-      const ts = typeof sess.ts === "number" ? sess.ts : 0;
-      if (ts > bestTs) { bestTs = ts; best = sess; }
-    }
-    return best;
-  } catch (_) {
-    return null;
-  }
-};
-
-const saveTestSession = (session) => {
-  try {
-    migrateLegacySessionOnce();
-    const subj = session?.normSubject || session?.subject || "";
-    const lvl = session?.normLevel || session?.level || "";
-    const s = normalizeKey(subj);
-    const l = normalizeKey(normalizeLevel(lvl));
-    if (!s || !l) return;
-
-    const all = loadAllTestSessions();
-    const sessions = all?.sessions && typeof all.sessions === "object" ? all.sessions : {};
-    const key = makeSessionScopeKey(s, l);
-    sessions[key] = { ...(session || {}), subject: s, level: l, normSubject: s, normLevel: l, ts: typeof session?.ts === "number" ? session.ts : Date.now() };
-    saveAllTestSessions({ v: 1, sessions });
-  } catch (_) {}
-};
-
-const clearTestSession = (subject, level) => {
-  try {
-    migrateLegacySessionOnce();
-    const s = normalizeKey(subject);
-    const l = normalizeKey(normalizeLevel(level));
-    if (!s || !l) {
-      window.localStorage.removeItem(TEST_SESSIONS_KEY);
-      return;
-    }
-    const all = loadAllTestSessions();
-    const sessions = all?.sessions && typeof all.sessions === "object" ? all.sessions : {};
-    const key = makeSessionScopeKey(s, l);
-    if (sessions[key]) delete sessions[key];
-    saveAllTestSessions({ v: 1, sessions });
-  } catch (_) {}
-};
-
 const hashQuestion = (q) => {
   const s = String(q || "").trim().toLowerCase();
   let h = 2166136261;
@@ -1279,7 +1148,7 @@ const [topic, setTopic] = useState("");
 
       if (!curSubject || !curLevel || !savedSubject || !savedLevel) return;
 
-      if (savedSubject !== curSubject || savedLevel !== curLevel) {
+      if (!isSameScope({ subject: curSubject, level: curLevel }, { subject: savedSubject, level: savedLevel })) {
         setShowResumeModal(false);
         setPendingSession(null);
       }
