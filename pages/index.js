@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { brandConfig } from "../config/brand";
 
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
@@ -162,10 +163,10 @@ export default function Home() {
       >
         <div className="mb-3">
           <div className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#FDF2FF] via-[#E5DEFF] to-white text-transparent bg-clip-text">
-            NOOLIX
+            {brandConfig.brandName}
           </div>
           <p className="text-xs text-purple-200 mt-1 opacity-80">
-            AI-платформа для учёбы
+            {brandConfig.tagline}
           </p>
         </div>
 
@@ -225,7 +226,7 @@ export default function Home() {
                 </div>
                 <h1 className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight">
                   Учись осознанно. <br className="hidden md:block" />
-                  NOOLIX помогает ставить цели, разбирать темы и закреплять их в
+                  {brandConfig.brandName} помогает ставить цели, разбирать темы и закреплять их в
                   диалоге.
                 </h1>
                 <p className="text-xs md:text-sm text-purple-100/90 max-w-xl">
@@ -317,14 +318,14 @@ export default function Home() {
                   {!currentGoal && (
                     <p className="text-purple-200/80">
                       Цель пока не выбрана. Можно задать её на странице целей —
-                      и NOOLIX подстроит диалог и тесты под неё.
+                      и {brandConfig.brandName} подстроит диалог и тесты под неё.
                     </p>
                   )}
                 </div>
 
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-purple-100.space-y-2">
                   <p className="text-[11px] uppercase tracking-wide text-purple-300/80">
-                    Что может NOOLIX
+                    Что может {brandConfig.brandName}
                   </p>
                   <ul className="space-y-1 list-disc list-inside">
                     <li>Объяснять темы простым языком и в диалоге</li>
@@ -344,7 +345,7 @@ export default function Home() {
                     С чего начать
                   </p>
                   <p className="text-xs md:text-sm text-purple-100/90">
-                    Три шага, чтобы NOOLIX начал работать на твой результат.
+                    Три шага, чтобы {brandConfig.brandName} начал работать на твой результат.
                   </p>
                 </div>
               </div>
@@ -489,8 +490,8 @@ export default function Home() {
         </main>
 
         <footer className="bg-[#1A001F]/90 border-t border-white/10 text-center py-3 text-xs text-purple-200">
-          © 2025 NOOLIX — образовательная платформа будущего. Связь:
-          support@noolix.ai
+          © 2025 {brandConfig.brandName} — {brandConfig.footerDescription}. Связь:
+          {brandConfig.supportEmail}
         </footer>
       </div>
 
