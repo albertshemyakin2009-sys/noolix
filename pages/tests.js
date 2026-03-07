@@ -8,6 +8,7 @@ import {
   clearTestHistory as clearStoredTestHistory,
 } from "../lib/testHistoryStorage";
 import { getSuggestedTopics } from "../lib/suggestedTopics";
+import { explainQuestionRequest, generateTestRequest, reviewTestRequest } from "../lib/testApi";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -1147,14 +1148,7 @@ if (v === null) return false;
             userAnswerIndex: userAnswers[idx],
           };
           try {
-            const resp = await fetch("/api/explain-question", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-              body: JSON.stringify(payload),
-            });
-            const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data?.error || "explain-failed");
+            const data = await explainQuestionRequest(payload, controller.signal);
             const explanation = typeof data?.explanation === "string" ? data.explanation.trim() : "";
             if (!explanation) continue;
             if (cancelled) return;
@@ -1472,25 +1466,13 @@ setResult(null);
         topicTitles: titles,
       });
 
-      const res = await fetch("/api/generate-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: context.subject,
-          topics: topicsToSend,
-          questionCount: count,
-          difficulty,
-          avoid,
-        }),
+      const data = await generateTestRequest({
+        subject: context.subject,
+        topics: topicsToSend,
+        questionCount: count,
+        difficulty,
+        avoid,
       });
-
-      if (!res.ok) {
-        let msg = "";
-        try { msg = (await res.json())?.error || ""; } catch (_) {}
-        throw new Error(msg || "Не удалось сгенерировать тест");
-      }
-
-      const data = await res.json();
       const q = Array.isArray(data?.questions) ? data.questions : [];
       if (!q.length) throw new Error("Пустой тест. Попробуй ещё раз.");
 
@@ -1598,28 +1580,14 @@ setTopic(serverTopic);
         topicTitles: titles,
       });
 
-      const res = await fetch("/api/generate-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: context.subject,
-          topics: topicsPayload,
-          questionCount: 5,
-          difficulty,
-          avoid,
-          diagnostic: manualTopics.length === 0 && !autoWeakest,
-        }),
+      const data = await generateTestRequest({
+        subject: context.subject,
+        topics: topicsPayload,
+        questionCount: 5,
+        difficulty,
+        avoid,
+        diagnostic: manualTopics.length === 0 && !autoWeakest,
       });
-
-      if (!res.ok) {
-        let data = {};
-        try {
-          data = await res.json();
-        } catch (_) {}
-        throw new Error(data?.error || data?.message || "Не удалось сгенерировать тест.");
-      }
-
-      const data = await res.json();
 
       const q =
         Array.isArray(data?.questions) ? data.questions :
@@ -1922,29 +1890,15 @@ setTopic(serverTopic);
         questions,
       });
 
-      const res = await fetch("/api/review-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: context.subject,
-          topic: finalTopic,
-          questions,
-          userAnswers,
-          reviewStyleKey: reviewStyle?.key || "",
-          reviewStyleLabel: reviewStyle?.label || "",
-          reviewStyleInstruction: reviewStyle?.instruction || "",
-        }),
+      const data = await reviewTestRequest({
+        subject: context.subject,
+        topic: finalTopic,
+        questions,
+        userAnswers,
+        reviewStyleKey: reviewStyle?.key || "",
+        reviewStyleLabel: reviewStyle?.label || "",
+        reviewStyleInstruction: reviewStyle?.instruction || "",
       });
-
-      if (!res.ok) {
-        let data = {};
-        try {
-          data = await res.json();
-        } catch (_) {}
-        throw new Error(data?.error || data?.message || "Не удалось получить разбор ошибок.");
-      }
-
-      const data = await res.json();
       setAnalysis(typeof data?.analysis === "string" ? data.analysis : "");
       try { markReviewStyleUsed(reviewTopicKey, reviewStyle?.key); } catch (_) {}
     } catch (e) {
@@ -2560,20 +2514,14 @@ setTopic(serverTopic);
                                                 try {
                                                   const controller = new AbortController();
                                                   mistakeExplainAbortRef.current = controller;
-                                                  const resp = await fetch("/api/explain-question", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    signal: controller.signal,
-                                                    body: JSON.stringify({
-                                                      question: mistakes[i]?.question,
-                                                      options: mistakes[i]?.options,
-                                                      correctIndex: mistakes[i]?.correctIndex,
-                                                      topicTitle: mistakes[i]?.topicTitle,
-                                                      subject: context.subject,
-                                                      level: context.level,
-                                                    }),
-                                                  });
-                                                  const data = await resp.json();
+                                                  const data = await explainQuestionRequest({
+                                                    question: mistakes[i]?.question,
+                                                    options: mistakes[i]?.options,
+                                                    correctIndex: mistakes[i]?.correctIndex,
+                                                    topicTitle: mistakes[i]?.topicTitle,
+                                                    subject: context.subject,
+                                                    level: context.level,
+                                                  }, controller.signal);
                                                   const exp = data?.explanation || data?.text || "";
                                                   setMistakeExplanations((prev) => {
                                                     const next = Array.isArray(prev) ? [...prev] : [];
