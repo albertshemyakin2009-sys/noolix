@@ -2,6 +2,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeKey, normalizeLevel, makeScopeKey, isSameScope } from "../lib/testScope";
 import { loadTestSession, saveTestSession, clearTestSession } from "../lib/testSessionStorage";
+import {
+  loadTestHistory as loadStoredTestHistory,
+  saveTestHistoryEntry,
+  clearTestHistory as clearStoredTestHistory,
+} from "../lib/testHistoryStorage";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -918,56 +923,6 @@ const updateKnowledgeFromTest = ({ subject, level, topic, correctCount, totalCou
 };
 
 
-const pushTestHistory = ({ subject, level, topic, score, correctCount, totalCount, mistakesSummary }) => {
-  const topicKey = normalizeTopicKey(topic);
-  if (typeof window === "undefined") return { ok: false, count: 0, error: "no-window" };
-
-  try {
-    const subjKey = (subject || "Без предмета").toString().trim() || "Без предмета";
-
-    // читаем/мигрируем: сначала новый формат (объект по предметам)
-    const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-    let by = safeParse(rawBy, null);
-
-    if (!by || typeof by !== "object" || Array.isArray(by)) {
-      // миграция из legacy массива
-      const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-      const legacyArr = safeParse(rawLegacy, []);
-      const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-      const migrated = {};
-      for (const item of legacy) {
-        const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-        if (!migrated[s]) migrated[s] = [];
-        migrated[s].push(item);
-      }
-      by = migrated;
-      // сохраняем миграцию, чтобы дальше не читать legacy
-      window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
-    }
-
-    const list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
-
-    list.unshift({
-      id: Date.now(),
-      subject: subjKey,
-      level,
-      topic: topicKey,
-      score,
-      correctCount,
-      totalCount,
-      createdAt: new Date().toISOString(),
-      mistakesSummary: mistakesSummary || null,
-    });
-
-    const trimmed = list.slice(0, 50);
-    by[subjKey] = trimmed;
-    window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by));
-
-    return { ok: true, count: trimmed.length, error: null };
-  } catch (e) {
-    return { ok: false, count: 0, error: e?.message || "history-write-failed" };
-  }
-};
 
 
 function TestsPageInner() {
@@ -1314,25 +1269,28 @@ if (v === null) return false;
 
   
 const clearTestHistory = () => {
-  if (typeof window === "undefined") return;
+  const res = clearStoredTestHistory({
+    subject: context.subject,
+    historyScope,
+  });
 
-  const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-  let by = safeParse(rawBy, null);
-  if (!by || typeof by !== "object" || Array.isArray(by)) by = {};
-
-  const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
-
-  if (historyScope === "current") {
-    // очищаем историю только по текущему предмету
-    by[subjKey] = [];
+  if (res?.ok) {
+    setHistoryTick((t) => t + 1);
   } else {
-    // очищаем всю историю
-    by = {};
+    setTestHistory([]);
   }
-
-  try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
-  setHistoryTick((t) => t + 1);
 };
+
+
+  const loadTestHistory = () => {
+    const list = loadStoredTestHistory({
+      subject: context.subject,
+      historyScope,
+    });
+
+    setTestHistory(Array.isArray(list) ? list : []);
+  };
+
 
   const canGenerate = useMemo(() => {
     return !generating && context.subject && context.level;
@@ -1937,7 +1895,7 @@ setTopic(serverTopic);
       });
 
       // пишем историю тестов
-      const hRes = pushTestHistory({
+      const hRes = saveTestHistoryEntry({
         subject: context.subject,
         level: context.level,
         topic: finalTopicForHistory,
