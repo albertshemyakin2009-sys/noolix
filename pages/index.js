@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { brandConfig } from "../config/brand";
+
+const brandConfig = {
+  brandName: "NOOLIX",
+  tagline: "AI-платформа для учёбы",
+  supportEmail: "support@noolix.ai",
+  footerDescription: "образовательная платформа будущего",
+};
 
 const primaryMenuItems = [
   { label: "Главная", href: "/", icon: "🏛", key: "home" },
