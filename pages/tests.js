@@ -1216,7 +1216,8 @@ const [topic, setTopic] = useState("");
   useEffect(() => {
     refreshSuggestedTopics();
   }, [refreshSuggestedTopics]);
-const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
+
+  const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
   const [diagnosticLabel, setDiagnosticLabel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
@@ -1248,12 +1249,7 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (typeof window === "undefined") return false; // default collapsed
     try {
       const v = window.localStorage.getItem(HISTORY_OPEN_KEY);
-      if (v === null) return false;
-      return v === "1";
-    } catch (_) {
-      return false;
-    }
-  });
+      
   useEffect(() => {
     try {
       window.localStorage.setItem(HISTORY_OPEN_KEY, historyOpen ? "1" : "0");
@@ -1359,6 +1355,12 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
     if (!result) return;
     // NOTE: do not clear saved session here; it is cleared on finish or explicit "Сбросить тест"
   }, [result]);
+if (v === null) return false;
+      return v === "1";
+    } catch (_) {
+      return false;
+    }
+  });
 
   const mistakeExpRef = useRef({});
   useEffect(() => {
@@ -1471,55 +1473,6 @@ const [sentTopicForGeneration, setSentTopicForGeneration] = useState("");
       window.localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(safeNext));
     }
   };
-
-  const loadTestHistory = () => {
-    if (typeof window === "undefined") return;
-    try {
-      const subjKey = (context.subject || "Без предмета").toString().trim() || "Без предмета";
-
-      // читаем/мигрируем: сначала новый формат (объект по предметам)
-      const rawBy = window.localStorage.getItem(TEST_HISTORY_BY_SUBJECT_KEY);
-      let by = safeParse(rawBy, null);
-
-      if (!by || typeof by !== "object" || Array.isArray(by)) {
-        // миграция из legacy массива
-        const rawLegacy = window.localStorage.getItem(TEST_HISTORY_KEY);
-        const legacyArr = safeParse(rawLegacy, []);
-        const legacy = Array.isArray(legacyArr) ? legacyArr : [];
-        const migrated = {};
-        for (const item of legacy) {
-          const s = (item?.subject || "Без предмета").toString().trim() || "Без предмета";
-          if (!migrated[s]) migrated[s] = [];
-          migrated[s].push(item);
-        }
-        by = migrated;
-        try { window.localStorage.setItem(TEST_HISTORY_BY_SUBJECT_KEY, JSON.stringify(by)); } catch (_) {}
-      }
-
-      let list = [];
-      if (historyScope === "current") {
-        list = Array.isArray(by[subjKey]) ? by[subjKey] : [];
-      } else {
-        // собираем по всем предметам
-        for (const k of Object.keys(by)) {
-          const arr = Array.isArray(by[k]) ? by[k] : [];
-          list = list.concat(arr);
-        }
-      }
-
-      // сортировка по времени (на всякий случай)
-      const sorted = [...list].sort((a, b) => {
-        const ta = Date.parse(a?.createdAt || "") || (typeof a?.id === "number" ? a.id : 0) || 0;
-        const tb = Date.parse(b?.createdAt || "") || (typeof b?.id === "number" ? b.id : 0) || 0;
-        return tb - ta;
-      });
-
-      setTestHistory(sorted.slice(0, 50));
-    } catch (_) {
-      setTestHistory([]);
-    }
-  };
-
 
   
 const clearTestHistory = () => {
